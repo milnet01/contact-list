@@ -180,11 +180,6 @@ class TestThemeRendering:
     def client(self, app):
         return app.test_client()
 
-    def _csrf(self, client):
-        client.get('/settings')
-        with client.session_transaction() as sess:
-            return sess.get('_csrf_token', '')
-
     def test_auto_theme_omits_attribute(self, client):
         resp = client.get('/contacts')
         assert b'data-theme=""' not in resp.data
