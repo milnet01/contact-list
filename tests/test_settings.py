@@ -80,3 +80,35 @@ class TestUpdateSettings:
         s = settings_mod.get_settings(db)
         assert s['theme'] == 'comfortable' or s['theme'] == ''  # default, NOT 'dark'
         assert s['theme'] == settings_mod.SETTINGS_DEFAULTS['theme']
+
+
+class TestFriendlyDate:
+    def _render(self, app, db, value):
+        # Exercise the filter through the app's Jinja env, inside a request so
+        # g.settings is populated by the before_request hook.
+        with app.test_request_context('/'):
+            app.preprocess_request()  # runs before_request hooks -> g.settings
+            tmpl = app.jinja_env.from_string("{{ value|friendly_date }}")
+            return tmpl.render(value=value)
+
+    def test_default_format_utc(self, app, db):
+        out = self._render(app, db, '2026-06-30T14:30:00Z')
+        assert out == '30 Jun 2026, 14:30'
+
+    def test_timezone_shifts_hour(self, app, db):
+        settings_mod.update_settings(db, {'timezone': 'Asia/Kolkata'})  # UTC+5:30
+        out = self._render(app, db, '2026-06-30T14:30:00Z')
+        assert out == '30 Jun 2026, 20:00'
+
+    def test_custom_format_key(self, app, db):
+        settings_mod.update_settings(db, {'date_format': 'iso'})
+        out = self._render(app, db, '2026-06-30T14:30:00Z')
+        assert out == '2026-06-30 14:30'
+
+    def test_bad_value_falls_back_to_raw(self, app, db):
+        out = self._render(app, db, 'not-a-date')
+        assert out == 'not-a-date'
+
+    def test_empty_value(self, app, db):
+        out = self._render(app, db, '')
+        assert out == ''

@@ -4,8 +4,9 @@ import hmac
 import logging
 import secrets
 from datetime import datetime
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from flask import Flask, abort, render_template, request, session
+from flask import Flask, abort, g, render_template, request, session
 
 from config import Config
 from db import close_db, init_db
@@ -48,6 +49,17 @@ def create_app(test_config: dict | None = None) -> Flask:
         log.debug('%s %s', request.method, request.path)
 
     @app.before_request
+    def _load_settings() -> None:
+        import settings as settings_mod
+        from db import get_db
+        try:
+            g.settings = settings_mod.get_settings(get_db())
+        except Exception:
+            # Never let a settings-load failure 500 the request; fall back to
+            # defaults so the page (and error pages) still render.
+            g.settings = dict(settings_mod.SETTINGS_DEFAULTS)
+
+    @app.before_request
     def _check_csrf() -> None:
         if request.method in ('POST', 'PUT', 'DELETE'):
             token = request.form.get('_csrf_token', '')
@@ -63,21 +75,29 @@ def create_app(test_config: dict | None = None) -> Flask:
             total = db.execute('SELECT COUNT(*) FROM contacts').fetchone()[0]
         except Exception:
             total = 0
+        import settings as settings_mod
         return {
             'csrf_token': csrf_token,
             'active_nav': request.path,
             'contact_count': total,
+            'settings': getattr(g, 'settings', None) or settings_mod.SETTINGS_DEFAULTS,
         }
 
     @app.template_filter('friendly_date')
     def friendly_date(value: str) -> str:
-        """Convert ISO 8601 timestamp to human-readable format."""
+        """Convert an ISO-8601 UTC timestamp to the user's timezone and format."""
         if not value:
             return ''
+        import settings as settings_mod
+        s = getattr(g, 'settings', None) or settings_mod.SETTINGS_DEFAULTS
         try:
             dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
-            return dt.strftime('%d %b %Y, %H:%M')
-        except (ValueError, AttributeError):
+            dt = dt.astimezone(ZoneInfo(s['timezone']))
+            fmt = settings_mod.DATE_FORMATS.get(
+                s['date_format'], settings_mod.DATE_FORMATS['dmy_hm']
+            )
+            return dt.strftime(fmt)
+        except (ValueError, AttributeError, ZoneInfoNotFoundError):
             return value
 
     # ------------------------------------------------------------------
