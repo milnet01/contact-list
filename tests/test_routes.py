@@ -6,13 +6,14 @@ from app import create_app
 @pytest.fixture()
 def app(tmp_path):
     db_path = str(tmp_path / 'test.db')
+    gcreds = tmp_path / 'gcreds'
     app = create_app({
         'TESTING': True,
         'DATABASE': db_path,
         'SECRET_KEY': 'test-secret',
-        'GOOGLE_CREDENTIALS_DIR': '/tmp/test-contact-list',
-        'GOOGLE_CREDENTIALS_FILE': '/tmp/test-contact-list/creds.json',
-        'GOOGLE_TOKEN_FILE': '/tmp/test-contact-list/token.json',
+        'GOOGLE_CREDENTIALS_DIR': str(gcreds),
+        'GOOGLE_CREDENTIALS_FILE': str(gcreds / 'creds.json'),
+        'GOOGLE_TOKEN_FILE': str(gcreds / 'token.json'),
     })
     yield app
 

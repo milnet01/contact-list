@@ -27,7 +27,10 @@ def main() -> int:
     creds = flow.run_local_server(port=0, open_browser=True)
 
     os.makedirs(CREDS_DIR, exist_ok=True)
-    with open(TOKEN_FILE, 'w') as f:
+    # Create with 0600 from the start so the token is never briefly
+    # world-readable between write and chmod.
+    fd = os.open(TOKEN_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, 'w') as f:
         f.write(creds.to_json())
     os.chmod(TOKEN_FILE, 0o600)
 

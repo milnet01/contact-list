@@ -298,16 +298,30 @@
     if (recentContainer && window.location.pathname === '/contacts') {
         var recent = getRecent();
         if (recent.length > 0) {
-            var html = '<div class="recently-viewed-title">Recently viewed</div><div class="recently-viewed-list">';
+            // Build with createElement/textContent (not innerHTML) so a contact
+            // name containing HTML can never be re-parsed as markup.
+            var titleEl = document.createElement('div');
+            titleEl.className = 'recently-viewed-title';
+            titleEl.textContent = 'Recently viewed';
+
+            var listEl = document.createElement('div');
+            listEl.className = 'recently-viewed-list';
+
             recent.forEach(function (r) {
                 var initial = r.name.charAt(0).toUpperCase();
                 var cls = /[A-Z]/.test(initial) ? 'avatar-' + initial : 'avatar-other';
-                html += '<a href="' + r.href + '" class="recently-viewed-item">'
-                    + '<span class="avatar ' + cls + '">' + initial + '</span> '
-                    + r.name + '</a>';
+                var link = document.createElement('a');
+                link.setAttribute('href', r.href);
+                link.className = 'recently-viewed-item';
+                var avatar = document.createElement('span');
+                avatar.className = 'avatar ' + cls;
+                avatar.textContent = initial;
+                link.appendChild(avatar);
+                link.appendChild(document.createTextNode(' ' + r.name));
+                listEl.appendChild(link);
             });
-            html += '</div>';
-            recentContainer.innerHTML = html;
+
+            recentContainer.replaceChildren(titleEl, listEl);
             recentContainer.hidden = false;
         }
     }

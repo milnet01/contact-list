@@ -2,19 +2,20 @@ import pytest
 
 import models
 from app import create_app
-from db import get_db, init_db
+from db import get_db
 
 
 @pytest.fixture()
 def app(tmp_path):
     db_path = str(tmp_path / 'test.db')
+    gcreds = tmp_path / 'gcreds'
     app = create_app({
         'TESTING': True,
         'DATABASE': db_path,
         'SECRET_KEY': 'test',
-        'GOOGLE_CREDENTIALS_DIR': '/tmp/test-contact-list',
-        'GOOGLE_CREDENTIALS_FILE': '/tmp/test-contact-list/creds.json',
-        'GOOGLE_TOKEN_FILE': '/tmp/test-contact-list/token.json',
+        'GOOGLE_CREDENTIALS_DIR': str(gcreds),
+        'GOOGLE_CREDENTIALS_FILE': str(gcreds / 'creds.json'),
+        'GOOGLE_TOKEN_FILE': str(gcreds / 'token.json'),
     })
     yield app
 
@@ -239,5 +240,66 @@ class TestCountContacts:
 class TestEscapeLike:
     def test_special_chars(self, db):
         models.create_contact(db, 'individual', '100% Organic')
+        models.create_contact(db, 'individual', '1000 Oaks')
         results, total = models.list_contacts(db, search='100%')
         assert total == 1
+        assert results[0]['name'] == '100% Organic'
+
+
+class TestCustomFieldValidation:
+    def test_create_rejects_bad_field_name(self, db):
+        with pytest.raises(ValueError):
+            models.create_contact(
+                db, 'individual', 'X', custom_fields=[('bad;name', 'v')]
+            )
+
+    def test_update_rejects_bad_field_name_without_deleting(self, db):
+        cid = models.create_contact(
+            db, 'individual', 'X', custom_fields=[('Phone2', '555')]
+        )
+        with pytest.raises(ValueError):
+            models.update_contact(
+                db, cid, 'individual', 'X', custom_fields=[('bad;name', 'v')]
+            )
+        # The rejected update must run before any mutation, so the existing
+        # custom field survives.
+        cfs = models.get_custom_fields(db, cid)
+        assert any(cf['field_name'] == 'Phone2' for cf in cfs)
+
+
+class TestUpdateAtomicity:
+    def test_failed_update_does_not_wipe_existing_custom_fields(self, db):
+        cid = models.create_contact(
+            db, 'individual', 'Alice', custom_fields=[('Phone2', '555')]
+        )
+        # A NULL field value violates the NOT NULL constraint, failing the
+        # re-insert *after* the UPDATE + DELETE. Without a rolled-back
+        # transaction this would leave Alice renamed and her custom field gone.
+        with pytest.raises(Exception):
+            models.update_contact(
+                db, cid, 'individual', 'Renamed', custom_fields=[('Birthday', None)]
+            )
+        contact = models.get_contact(db, cid)
+        assert contact['name'] == 'Alice'
+        cfs = models.get_custom_fields(db, cid)
+        assert any(cf['field_name'] == 'Phone2' for cf in cfs)
+
+    def test_duplicate_field_name_rejected(self, db):
+        with pytest.raises(ValueError):
+            models.create_contact(
+                db, 'individual', 'X',
+                custom_fields=[('Phone', '1'), ('phone', '2')],
+            )
+
+
+class TestLetterBucketConsistency:
+    def test_non_ascii_initial_is_consistent(self, db):
+        models.create_contact(db, 'individual', 'Élodie')
+        counts = models.get_letter_counts(db)
+        # Counted under '#', not a non-ASCII letter bucket...
+        assert counts.get('#', 0) == 1
+        assert 'É' not in counts and 'é' not in counts
+        # ...and the '#' filter actually returns it (count and filter agree).
+        results, total = models.list_contacts(db, letter='#')
+        assert total == 1
+        assert results[0]['name'] == 'Élodie'

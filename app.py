@@ -3,7 +3,7 @@ from __future__ import annotations
 import hmac
 import logging
 import secrets
-from datetime import datetime, timezone
+from datetime import datetime
 
 from flask import Flask, abort, render_template, request, session
 

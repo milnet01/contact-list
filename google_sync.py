@@ -20,7 +20,7 @@ def _format_phone(raw: str | None) -> str | None:
         if phonenumbers.is_valid_number(parsed) or phonenumbers.is_possible_number(parsed):
             return phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.INTERNATIONAL)
     except Exception:
-        pass
+        log.debug('Could not format phone number %r; keeping raw value', raw)
     return raw
 
 
@@ -61,7 +61,11 @@ def _load_credentials(config: dict):
 def _save_credentials(config: dict, creds) -> None:
     token_path = config['GOOGLE_TOKEN_FILE']
     os.makedirs(os.path.dirname(token_path), exist_ok=True)
-    with open(token_path, 'w') as f:
+    # Create with 0600 from the start so the token is never briefly
+    # world-readable between write and chmod (the chmod still covers the
+    # case where the file already existed with looser permissions).
+    fd = os.open(token_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, 'w') as f:
         f.write(creds.to_json())
     os.chmod(token_path, 0o600)
 
@@ -113,19 +117,41 @@ def sync_contacts(config: dict, db: sqlite3.Connection) -> tuple[int, str | None
         try:
             results = service.people().connections().list(**kwargs).execute()
         except Exception as exc:
-            if 'Sync token' in str(exc) and sync_token:
+            if 'sync token' in str(exc).lower() and sync_token:
+                # Expired sync token: restart a clean full resync from page 1.
+                # Reset the page cursor and count too, or the retry would reuse
+                # a stale pageToken from the delta attempt and miscount.
                 sync_token = None
+                next_page_token = None
+                synced = 0
                 db.execute('DELETE FROM sync_state WHERE id = 1')
                 db.commit()
                 continue
-            return 0, str(exc)
+            # Log the detail server-side; don't surface raw API error text
+            # (which can include request URLs / error JSON) to the user.
+            log.exception('Google Contacts sync failed')
+            return 0, 'A Google API error occurred. Check the logs for details.'
 
         for person in results.get('connections', []):
-            _upsert_person(db, person)
-            synced += 1
+            # Isolate each contact in its own SAVEPOINT: a malformed record must
+            # not abort the run, nor leave a half-applied upsert behind (the
+            # upsert does UPDATE + DELETE custom_fields + INSERT, which has to be
+            # all-or-nothing or the contact silently loses its custom fields).
+            try:
+                db.execute('SAVEPOINT person')
+                imported = _upsert_person(db, person)
+                db.execute('RELEASE SAVEPOINT person')
+            except Exception:
+                db.execute('ROLLBACK TO SAVEPOINT person')
+                db.execute('RELEASE SAVEPOINT person')
+                log.exception('Skipping a contact that failed to import')
+            else:
+                if imported:
+                    synced += 1
 
         next_page_token = results.get('nextPageToken')
-        new_sync_token = results.get('nextSyncToken')
+        # Never let a None on a later page clobber a token seen earlier.
+        new_sync_token = results.get('nextSyncToken') or new_sync_token
 
         if not next_page_token:
             break
@@ -145,19 +171,21 @@ def sync_contacts(config: dict, db: sqlite3.Connection) -> tuple[int, str | None
     return synced, None
 
 
-def _upsert_person(db: sqlite3.Connection, person: dict) -> None:
+def _upsert_person(db: sqlite3.Connection, person: dict) -> bool:
+    """Import one Google person. Returns True if a contact was imported/updated,
+    False for a delete tombstone or a record with no usable name."""
     metadata = person.get('metadata', {})
     google_id = person.get('resourceName')
 
     if metadata.get('deleted'):
         if google_id:
             db.execute('DELETE FROM contacts WHERE google_id = ?', [google_id])
-        return
+        return False
 
     names = person.get('names', [])
     name = names[0].get('displayName', '') if names else ''
     if not name:
-        return
+        return False
 
     etag = person.get('etag')
     emails = person.get('emailAddresses', [])
@@ -202,11 +230,14 @@ def _upsert_person(db: sqlite3.Connection, person: dict) -> None:
     birthdays = person.get('birthdays', [])
     if birthdays:
         bday = birthdays[0].get('date', {})
-        if bday:
-            year = bday.get('year', '????')
-            month = bday.get('month', 1)
-            day = bday.get('day', 1)
-            cf.append((contact_id, 'birthday', f'{year}-{month:02d}-{day:02d}'))
+        month, day = bday.get('month'), bday.get('day')
+        # Only store a birthday when month+day are present (don't fabricate
+        # Jan 1). Year is optional in the People API — omit it cleanly rather
+        # than emit a non-ISO "????-MM-DD".
+        if month and day:
+            year = bday.get('year')
+            value = f'{year:04d}-{month:02d}-{day:02d}' if year else f'{month:02d}-{day:02d}'
+            cf.append((contact_id, 'birthday', value))
 
     addresses = person.get('addresses', [])
     if addresses:
@@ -225,3 +256,5 @@ def _upsert_person(db: sqlite3.Connection, person: dict) -> None:
             'VALUES (?, ?, ?)',
             cf,
         )
+
+    return True

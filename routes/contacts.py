@@ -18,8 +18,6 @@ from flask import (
     url_for,
 )
 
-log = logging.getLogger(__name__)
-
 from db import get_db
 from models import (
     count_contacts,
@@ -35,6 +33,8 @@ from models import (
     update_contact,
     valid_field_name,
 )
+
+log = logging.getLogger(__name__)
 
 bp = Blueprint('contacts', __name__)
 
@@ -61,12 +61,15 @@ def _validate_custom_fields(form) -> tuple[list[tuple[str, str]], list[str]]:
     custom_fields: list[tuple[str, str]] = []
     errors: list[str] = []
     seen: set[str] = set()
-    for cn, cv in zip(cf_names, cf_values):
+    for cn, cv in zip(cf_names, cf_values, strict=False):
         cn, cv = cn.strip(), cv.strip()
         if not (cn and cv):
             continue
         if not valid_field_name(cn):
-            errors.append(f'Invalid field name: "{cn}" (letters, numbers, spaces, underscores only, max 64 chars).')
+            errors.append(
+                f'Invalid field name: "{cn}" (letters, numbers, spaces, '
+                'underscores only, max 64 chars).'
+            )
         elif cn.lower() in seen:
             errors.append(f'Duplicate field name: "{cn}".')
         else:
@@ -200,8 +203,21 @@ def _get_ref() -> str:
 
 
 def _safe_ref(ref: str) -> str:
-    """Only allow local paths as return targets (reject protocol-relative URLs)."""
-    return ref if ref.startswith('/') and not ref.startswith('//') else ''
+    """Only allow local paths as return targets.
+
+    Rejects protocol-relative URLs (``//host``) and the backslash variant
+    (``/\\host``) that browsers normalise to ``//host`` — both would otherwise
+    redirect off-site. Also rejects any control character (CR/LF etc.) so the
+    value can never carry a header-splitting payload.
+    """
+    if (
+        ref.startswith('/')
+        and not ref.startswith('//')
+        and '\\' not in ref
+        and ref.isprintable()
+    ):
+        return ref
+    return ''
 
 
 @bp.route('/contacts/new')

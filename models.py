@@ -31,7 +31,7 @@ def _build_contact_query(
         conditions.append('type = ?')
         params.append(contact_type)
 
-    if letter and len(letter) == 1 and letter.isalpha():
+    if letter and len(letter) == 1 and letter.isascii() and letter.isalpha():
         conditions.append("UPPER(SUBSTR(name, 1, 1)) = ?")
         params.append(letter.upper())
     elif letter == '#':
@@ -64,6 +64,11 @@ def list_contacts(
     sort: str = 'name',
     sort_dir: str = 'asc',
 ) -> tuple[list[sqlite3.Row], int]:
+    # Clamp pagination at the data layer too, so the "max 200 per page" contract
+    # holds for every caller (tests, future API), not just the web route.
+    per_page = max(1, min(per_page, 200))
+    page = max(1, page)
+
     query, params = _build_contact_query(search, contact_type, letter)
 
     count_query = f'SELECT COUNT(*) FROM ({query})'
@@ -95,7 +100,11 @@ def get_letter_counts(db: sqlite3.Connection) -> dict[str, int]:
     other = 0
     for row in rows:
         ltr = row['letter']
-        if ltr and ltr.isalpha():
+        # Only ASCII A-Z get their own bucket; SQLite's UPPER() (used by the
+        # letter filter) folds only ASCII, so non-ASCII initials must fall into
+        # the '#' bucket here too or the count and the filter would disagree
+        # (bucket shows a count but clicking it returns nothing).
+        if ltr and ltr.isascii() and ltr.isalpha():
             counts[ltr] = row['cnt']
         else:
             other += row['cnt']
@@ -125,7 +134,7 @@ def find_duplicates(
 
     rows = db.execute(
         f'SELECT id, name FROM contacts WHERE name = ? COLLATE NOCASE {id_filter}',
-        [name] + base_params,
+        [name, *base_params],
     ).fetchall()
     if rows:
         warnings.append(f'A contact named "{name}" already exists.')
@@ -133,7 +142,7 @@ def find_duplicates(
     if phone:
         rows = db.execute(
             f'SELECT id, name FROM contacts WHERE phone = ? {id_filter}',
-            [phone] + base_params,
+            [phone, *base_params],
         ).fetchall()
         if rows:
             existing = rows[0]['name']
@@ -208,6 +217,22 @@ def get_custom_fields(db: sqlite3.Connection, contact_id: int) -> list[sqlite3.R
     ).fetchall()
 
 
+def _validate_custom_field_names(custom_fields: list[tuple[str, str]] | None) -> None:
+    """Reject invalid or case-insensitively-duplicate custom field names before
+    any DML, so the persistence layer enforces the contract for every caller
+    (and so a colliding name can't trip the idx_cf_unique constraint mid-write)."""
+    if not custom_fields:
+        return
+    seen: set[str] = set()
+    for fn, _ in custom_fields:
+        if not valid_field_name(fn):
+            raise ValueError(f'Invalid custom field name: {fn!r}')
+        key = fn.lower()
+        if key in seen:
+            raise ValueError(f'Duplicate custom field name: {fn!r}')
+        seen.add(key)
+
+
 def create_contact(
     db: sqlite3.Connection,
     contact_type: str,
@@ -217,19 +242,22 @@ def create_contact(
     notes: str | None = None,
     custom_fields: list[tuple[str, str]] | None = None,
 ) -> int:
-    cursor = db.execute(
-        'INSERT INTO contacts (type, name, email, phone, notes) VALUES (?, ?, ?, ?, ?)',
-        [contact_type, name, email, phone, notes],
-    )
-    contact_id = cursor.lastrowid
+    _validate_custom_field_names(custom_fields)
 
-    if custom_fields:
-        db.executemany(
-            'INSERT INTO custom_fields (contact_id, field_name, field_value) VALUES (?, ?, ?)',
-            [(contact_id, fn, fv) for fn, fv in custom_fields],
+    # `with db` commits on success and rolls back on any error, so a failed
+    # custom-field insert can't leave a half-applied write pending on the
+    # connection for a later commit() to flush.
+    with db:
+        cursor = db.execute(
+            'INSERT INTO contacts (type, name, email, phone, notes) VALUES (?, ?, ?, ?, ?)',
+            [contact_type, name, email, phone, notes],
         )
-
-    db.commit()
+        contact_id = cursor.lastrowid
+        if custom_fields:
+            db.executemany(
+                'INSERT INTO custom_fields (contact_id, field_name, field_value) VALUES (?, ?, ?)',
+                [(contact_id, fn, fv) for fn, fv in custom_fields],
+            )
     return contact_id
 
 
@@ -243,26 +271,33 @@ def update_contact(
     notes: str | None = None,
     custom_fields: list[tuple[str, str]] | None = None,
 ) -> None:
-    db.execute(
-        """UPDATE contacts
-           SET type=?, name=?, email=?, phone=?, notes=?,
-               updated_at=strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-           WHERE id=?""",
-        [contact_type, name, email, phone, notes, contact_id],
-    )
-    # Replace custom fields: delete all, re-insert
-    db.execute('DELETE FROM custom_fields WHERE contact_id = ?', [contact_id])
-    if custom_fields:
-        db.executemany(
-            'INSERT INTO custom_fields (contact_id, field_name, field_value) VALUES (?, ?, ?)',
-            [(contact_id, fn, fv) for fn, fv in custom_fields],
+    # Validate before any mutation — update deletes the old custom fields below,
+    # so a bad/duplicate name must fail before that delete, not after.
+    _validate_custom_field_names(custom_fields)
+
+    # `with db` makes the UPDATE + DELETE + re-insert atomic: if the re-insert
+    # fails, the delete of the old custom fields is rolled back too, so a failed
+    # update can't silently wipe a contact's existing custom fields.
+    with db:
+        db.execute(
+            """UPDATE contacts
+               SET type=?, name=?, email=?, phone=?, notes=?,
+                   updated_at=strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+               WHERE id=?""",
+            [contact_type, name, email, phone, notes, contact_id],
         )
-    db.commit()
+        # Replace custom fields: delete all, re-insert
+        db.execute('DELETE FROM custom_fields WHERE contact_id = ?', [contact_id])
+        if custom_fields:
+            db.executemany(
+                'INSERT INTO custom_fields (contact_id, field_name, field_value) VALUES (?, ?, ?)',
+                [(contact_id, fn, fv) for fn, fv in custom_fields],
+            )
 
 
 def delete_contact(db: sqlite3.Connection, contact_id: int) -> None:
-    db.execute('DELETE FROM contacts WHERE id = ?', [contact_id])
-    db.commit()
+    with db:
+        db.execute('DELETE FROM contacts WHERE id = ?', [contact_id])
 
 
 _FIELD_NAME_RE = re.compile(r'^[a-zA-Z0-9_ ]{1,64}$')

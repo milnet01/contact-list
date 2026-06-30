@@ -1,13 +1,62 @@
+import logging
 import os
+import secrets
+
+_CONFIG_DIR = os.path.expanduser('~/.config/contact-list')
+_log = logging.getLogger(__name__)
+
+
+def _load_or_create_secret_key() -> str:
+    """Return a stable Flask secret key.
+
+    An explicit ``SECRET_KEY`` env var always wins. Otherwise the key is
+    persisted under the config dir so signed sessions and CSRF tokens survive
+    app restarts and stay valid across multiple worker processes. A fresh
+    ``os.urandom()`` per process (the previous behaviour) invalidated every
+    open session on restart and would 403 every POST when run under more than
+    one worker.
+    """
+    env_key = os.environ.get('SECRET_KEY')
+    if env_key:
+        return env_key
+
+    key_path = os.path.join(_CONFIG_DIR, 'secret_key')
+    try:
+        with open(key_path, encoding='utf-8') as f:
+            stored = f.read().strip()
+        if stored:
+            return stored
+    except FileNotFoundError:
+        pass
+
+    key = secrets.token_hex(32)
+    try:
+        os.makedirs(_CONFIG_DIR, exist_ok=True)
+        fd = os.open(key_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, 'w') as f:
+            f.write(key)
+    except OSError:
+        # Can't persist (e.g. read-only home dir) — fall back to an ephemeral
+        # key so the app still starts; sessions just won't survive a restart.
+        # Surface it rather than swallow: under multiple workers each would get
+        # a different key and CSRF/session cookies would break. Set the
+        # SECRET_KEY env var to a fixed value for any multi-worker deployment.
+        _log.warning(
+            'Could not persist a secret key under %s; using an ephemeral key. '
+            'Sessions will not survive a restart. Set the SECRET_KEY env var '
+            'for a stable key (required for multi-worker deployments).',
+            _CONFIG_DIR,
+        )
+    return key
 
 
 class Config:
-    SECRET_KEY = os.environ.get('SECRET_KEY') or os.urandom(32).hex()
+    SECRET_KEY = _load_or_create_secret_key()
     DATABASE = os.environ.get(
         'CONTACT_LIST_DB',
         os.path.join(os.path.dirname(os.path.abspath(__file__)), 'contacts.db'),
     )
-    GOOGLE_CREDENTIALS_DIR = os.path.expanduser('~/.config/contact-list')
+    GOOGLE_CREDENTIALS_DIR = _CONFIG_DIR
     GOOGLE_CREDENTIALS_FILE = os.path.join(GOOGLE_CREDENTIALS_DIR, 'credentials.json')
     GOOGLE_TOKEN_FILE = os.path.join(GOOGLE_CREDENTIALS_DIR, 'token.json')
     PORT = int(os.environ.get('CONTACT_LIST_PORT', 5002))
