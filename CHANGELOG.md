@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Settings page for per-user preferences**
+  A new /settings page lets you customise the app and have it remembered
+  server-side (in the database) across devices: timezone and date format for
+  how timestamps display, theme (light/dark/colour schemes, now applied without
+  a flash), layout (compact/roomy and list/card views), default phone region,
+  contacts-per-page, default sort column/direction, and the default type for new
+  contacts. Phone formatting was unified into a single shared helper that uses
+  your chosen region (CL-0001 through CL-0007, CL-0016).
+
 - **Project docs and tooling: README, ROADMAP, CHANGELOG, a project-level CLAUDE.md, an MIT LICENSE, and an Ants .ants/project.json layout declaration.**
 
 ### Changed

@@ -8,47 +8,54 @@ efficiency / coding standards every item must comply with.
 
 ## Planned Features
 
-- 📋 [CL-0001] **Add a Settings page.**
+- ✅ [CL-0001] **Add a Settings page.**
   Foundation for the per-user preferences below. Single-user app, so persist settings in a small settings table (or a JSON file in the config dir) and load them into app config / template context. Add a /settings route + nav link.
   **Layman:** A dedicated page where you can change how the app looks and behaves.
   Kind: feature.
   Source: user-request-2026-06-30.
+  Resolved (2026-07-01): Settings page shipped on feat/settings-page (subagent-driven build, 98/98 tests, whole-branch review clean).
 
-- 📋 [CL-0002] **Let the user pick their timezone on the Settings page.**
+- ✅ [CL-0002] **Let the user pick their timezone on the Settings page.**
   Timestamps are stored ISO-8601 UTC (correct). Add a timezone preference and convert for display in the friendly_date filter. Depends on the Settings page.
   **Layman:** Show dates and times in your own timezone instead of UTC.
   Kind: feature.
   Source: user-request-2026-06-30.
+  Resolved (2026-07-01): timezone preference applied in friendly_date.
 
-- 📋 [CL-0003] **Let the user choose their preferred date format on the Settings page.**
+- ✅ [CL-0003] **Let the user choose their preferred date format on the Settings page.**
   Drive the friendly_date Jinja filter (app.py) from a stored format preference instead of the hardcoded '%d %b %Y, %H:%M'. Depends on the Settings page.
   **Layman:** Choose how dates look, e.g. 30 Jun 2026 vs 06/30/2026.
   Kind: feature.
   Source: user-request-2026-06-30.
+  Resolved (2026-07-01): date-format preference (DATE_FORMATS) applied in friendly_date.
 
-- 📋 [CL-0004] **Add theme options (light/dark/color schemes).**
+- ✅ [CL-0004] **Add theme options (light/dark/color schemes).**
   Partial groundwork exists (a theme-init script + data-theme-choice hooks in static/app.js). Formalise it on the Settings page with persistence and a CSS-variable palette. Keep CSP-compatible (no inline script).
   **Layman:** Switch between light and dark mode and pick an accent colour.
   Kind: feature.
   Source: user-request-2026-06-30.
+  Resolved (2026-07-01): theme now server-rendered from settings; browser-only theme JS removed.
 
-- 📋 [CL-0005] **Add layout options (density / list vs card view).**
+- ✅ [CL-0005] **Add layout options (density / list vs card view).**
   Per-user layout preference applied via a body class + CSS. Depends on the Settings page.
   **Layman:** Choose a compact or roomy layout, and list or card view for contacts.
   Kind: feature.
   Source: user-request-2026-06-30.
+  Resolved (2026-07-01): density + list/card layout via body classes.
 
-- 📋 [CL-0006] **Make the default phone region a user setting.**
+- ✅ [CL-0006] **Make the default phone region a user setting.**
   DEFAULT_REGION is hardcoded to 'ZA' in routes/contacts.py and google_sync.py. Expose it as a setting so phonenumbers parses/formats for the user's country.
   **Layman:** Pick your country so phone numbers are understood and formatted correctly.
   Kind: enhancement.
   Source: in-session-2026-06-30 suggested.
+  Resolved (2026-07-01): phone region is now a user setting, threaded into phoneutil.
 
-- 📋 [CL-0007] **Add further user settings: contacts-per-page, default sort, default new-contact type.**
+- ✅ [CL-0007] **Add further user settings: contacts-per-page, default sort, default new-contact type.**
   CONTACTS_PER_PAGE already exists as a config constant; expose it plus default sort column/direction and default contact type on the Settings page.
   **Layman:** Small conveniences: contacts per page, default sort order, and whether new contacts default to person or company.
   Kind: feature.
   Source: in-session-2026-06-30 suggested.
+  Resolved (2026-07-01): per-page, default sort/dir, and default new-contact type are settings consumed by the contact list & form.
 
 ## Audit & Review Follow-ups
 
@@ -126,11 +133,12 @@ Performance and code-health opportunities surfaced during the 2026-06-30 review.
 None are urgent — the app already meets the DESIGN.md efficiency targets — but
 they reduce duplication and query count.
 
-- 📋 [CL-0016] **Extract a shared phone-format/region helper.**
+- ✅ [CL-0016] **Extract a shared phone-format/region helper.**
   _format_phone is duplicated in routes/contacts.py (format_phone) and google_sync.py (_format_phone) with the same DEFAULT_REGION='ZA'. Extract one helper (e.g. a phoneutil module) and call it from both; ties in with making the region a user setting (CL-0006).
   **Layman:** Remove duplicated phone-number code so there's one place to maintain it.
   Kind: refactor.
   Source: in-session-2026-06-30 suggested.
+  Resolved (2026-07-01): shared phoneutil.format_phone(raw, region) extracted; duplication in routes/contacts.py and google_sync.py removed.
 
 - 📋 [CL-0017] **Consolidate the contact-list page's aggregate queries.**
   contact_list runs count_contacts + list_contacts (which also counts) + get_letter_counts + a type-breakdown query on every load. list_contacts already returns a total that the route discards (recomputes via count_contacts). Reuse it, and fold the type breakdown into fewer round-trips. Minor — SQLite is fast for one user.
