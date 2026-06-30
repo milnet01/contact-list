@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en"{% if settings.theme %} data-theme="{{ settings.theme }}"{% endif %}>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,7 +7,7 @@
     <link rel="icon" href="{{ url_for('static', filename='icon.svg') }}" type="image/svg+xml">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
-<body>
+<body class="density-{{ settings.density }} view-{{ settings.view }}">
     <header>
         <nav>
             <a href="{{ url_for('contacts.contact_list') }}" class="nav-brand">
@@ -15,37 +15,6 @@
                 Contacts
             </a>
             <div style="display:flex;align-items:center;gap:0.5rem">
-                <div class="theme-picker">
-                    <button class="theme-btn" id="theme-toggle" aria-label="Change theme" title="Change theme">
-                        <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M4 2a2 2 0 00-2 2v11a3 3 0 106 0V4a2 2 0 00-2-2H4zm1 14a1 1 0 100-2 1 1 0 000 2zm5-1.757l4.9-4.9a2 2 0 000-2.828L13.485 5.1a2 2 0 00-2.828 0L10 5.757v8.486zM16 18H9.071l6-6H16a2 2 0 012 2v2a2 2 0 01-2 2z" clip-rule="evenodd"/></svg>
-                    </button>
-                    <div class="theme-dropdown" id="theme-dropdown">
-                        <button class="theme-option" data-theme-choice="">
-                            <span class="theme-swatch" style="background:linear-gradient(135deg,#f0f2f5 50%,#1a1d27 50%)"></span> Auto
-                        </button>
-                        <button class="theme-option" data-theme-choice="light">
-                            <span class="theme-swatch" style="background:#f0f2f5"></span> Light
-                        </button>
-                        <button class="theme-option" data-theme-choice="dark">
-                            <span class="theme-swatch" style="background:#1a1d27"></span> Dark
-                        </button>
-                        <button class="theme-option" data-theme-choice="nord">
-                            <span class="theme-swatch" style="background:#2e3440"></span> Nord
-                        </button>
-                        <button class="theme-option" data-theme-choice="solarized">
-                            <span class="theme-swatch" style="background:#fdf6e3"></span> Solarized
-                        </button>
-                        <button class="theme-option" data-theme-choice="dracula">
-                            <span class="theme-swatch" style="background:#282a36"></span> Dracula
-                        </button>
-                        <button class="theme-option" data-theme-choice="rose">
-                            <span class="theme-swatch" style="background:#fff1f2;border-color:#e11d48"></span> Rose
-                        </button>
-                        <button class="theme-option" data-theme-choice="contrast">
-                            <span class="theme-swatch" style="background:#000;border-color:#5cb8ff"></span> High Contrast
-                        </button>
-                    </div>
-                </div>
                 <button class="nav-toggle" aria-label="Toggle menu" aria-expanded="false">
                     <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M3 5a1 1 0 011-1h12a1 1 0 010 2H4a1 1 0 01-1-1zm0 5a1 1 0 011-1h12a1 1 0 010 2H4a1 1 0 01-1-1zm0 5a1 1 0 011-1h12a1 1 0 010 2H4a1 1 0 01-1-1z" clip-rule="evenodd"/></svg>
                 </button>

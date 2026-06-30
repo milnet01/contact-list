@@ -173,3 +173,30 @@ class TestSettingsRoute:
     def test_post_without_csrf_403(self, client):
         resp = client.post('/settings', data={'theme': 'dark'})
         assert resp.status_code == 403
+
+
+class TestThemeRendering:
+    @pytest.fixture()
+    def client(self, app):
+        return app.test_client()
+
+    def _csrf(self, client):
+        client.get('/settings')
+        with client.session_transaction() as sess:
+            return sess.get('_csrf_token', '')
+
+    def test_auto_theme_omits_attribute(self, client):
+        resp = client.get('/contacts')
+        assert b'data-theme=""' not in resp.data
+        assert b'<html lang="en">' in resp.data
+
+    def test_explicit_theme_emits_attribute(self, client, db):
+        settings_mod.update_settings(db, {'theme': 'dark'})
+        resp = client.get('/contacts')
+        assert b'data-theme="dark"' in resp.data
+
+    def test_body_layout_classes(self, client, db):
+        settings_mod.update_settings(db, {'density': 'compact', 'view': 'card'})
+        resp = client.get('/contacts')
+        assert b'density-compact' in resp.data
+        assert b'view-card' in resp.data

@@ -1,62 +1,6 @@
-// Apply saved theme immediately (before IIFE) to prevent flash
-(function () {
-    var saved = localStorage.getItem('contact_list_theme') || '';
-    if (saved) {
-        document.documentElement.setAttribute('data-theme', saved);
-    } else {
-        document.documentElement.removeAttribute('data-theme');
-    }
-})();
-
 // Progressive enhancement — all handlers degrade gracefully without JS
 (function () {
     'use strict';
-
-    // =================================================================
-    // Theme picker
-    // =================================================================
-    var THEME_KEY = 'contact_list_theme';
-    var themeToggle = document.getElementById('theme-toggle');
-    var themeDropdown = document.getElementById('theme-dropdown');
-
-    function applyTheme(name) {
-        if (name) {
-            document.documentElement.setAttribute('data-theme', name);
-        } else {
-            document.documentElement.removeAttribute('data-theme');
-        }
-        try { localStorage.setItem(THEME_KEY, name); } catch (e) {}
-        // Update active state
-        if (themeDropdown) {
-            themeDropdown.querySelectorAll('.theme-option').forEach(function (btn) {
-                btn.classList.toggle('active', btn.getAttribute('data-theme-choice') === name);
-            });
-        }
-    }
-
-    // Mark current theme as active on load
-    var currentTheme = localStorage.getItem(THEME_KEY) || '';
-    if (themeDropdown) {
-        themeDropdown.querySelectorAll('.theme-option').forEach(function (btn) {
-            btn.classList.toggle('active', btn.getAttribute('data-theme-choice') === currentTheme);
-            btn.addEventListener('click', function () {
-                applyTheme(this.getAttribute('data-theme-choice'));
-                themeDropdown.classList.remove('open');
-            });
-        });
-    }
-
-    if (themeToggle && themeDropdown) {
-        themeToggle.addEventListener('click', function (e) {
-            e.stopPropagation();
-            themeDropdown.classList.toggle('open');
-        });
-        document.addEventListener('click', function (e) {
-            if (!themeDropdown.contains(e.target) && e.target !== themeToggle) {
-                themeDropdown.classList.remove('open');
-            }
-        });
-    }
 
     // =================================================================
     // Flash message dismiss + auto-dismiss

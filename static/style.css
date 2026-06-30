@@ -1024,3 +1024,36 @@ input:focus, select:focus, textarea:focus {
     table { box-shadow: none; }
     .badge { border: 1px solid #999; }
 }
+
+/* ---- Layout density (Settings) ---- */
+body.density-compact main { padding-top: 0.5rem; }
+body.density-compact table td,
+body.density-compact table th { padding-top: 0.35rem; padding-bottom: 0.35rem; }
+body.density-compact .toolbar { margin-bottom: 0.5rem; }
+
+/* ---- Card view (Settings) ----
+   Mirrors the existing @media (max-width: 640px) stacked-row treatment
+   above, applied at any width when the user picks card view instead of
+   waiting for a narrow viewport. */
+body.view-card table, body.view-card thead, body.view-card tbody,
+body.view-card th, body.view-card td, body.view-card tr { display: block; }
+body.view-card thead { display: none; }
+body.view-card tbody tr {
+    margin-bottom: 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0.75rem;
+    border-left: 3px solid transparent;
+}
+body.view-card td { border: none; padding: 0.25rem 0; }
+body.view-card td::before {
+    content: attr(data-label);
+    font-weight: 600;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+    display: block;
+}
+body.view-card .td-check, body.view-card .td-icon { display: inline-block; }
+body.view-card .td-check::before, body.view-card .td-icon::before { display: none; }
