@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{% block title %}Contacts{% endblock %}
+
+{% block content %}
+<div class="toolbar">
+    <form method="get" action="{{ url_for('contacts.contact_list') }}" class="search-form" aria-label="Search and filter contacts">
+        <div class="input-icon">
+            <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd"/></svg>
+            <input type="search" name="q" id="search-input" value="{{ search }}" placeholder="Search contacts..." aria-label="Search">
+        </div>
+        <select name="type" aria-label="Filter by type">
+            <option value="">All types</option>
+            <option value="individual" {{ 'selected' if contact_type == 'individual' }}>Individual</option>
+            <option value="company" {{ 'selected' if contact_type == 'company' }}>Company</option>
+        </select>
+        <button type="submit" class="btn btn-small">Search</button>
+        {% if search or contact_type %}
+            <a href="{{ url_for('contacts.contact_list') }}" class="btn btn-small btn-secondary">Clear</a>
+        {% endif %}
+    </form>
+    <div class="toolbar-meta">
+        {{ total }} contact{{ 's' if total != 1 }}
+        {% if type_counts %}
+            <span class="stats-breakdown">
+                {% if type_counts.get('individual') %}<span class="badge badge-individual">{{ type_counts['individual'] }} individual</span>{% endif %}
+                {% if type_counts.get('company') %}<span class="badge badge-company">{{ type_counts['company'] }} company</span>{% endif %}
+            </span>
+        {% endif %}
+        {% if total > 0 %}
+            &middot; <a href="{{ url_for('contacts.export') }}" class="btn btn-small btn-secondary">Export CSV</a>
+        {% endif %}
+    </div>
+</div>
+
+<nav class="alpha-nav" aria-label="Alphabetical navigation">
+    <a href="{{ url_for('contacts.contact_list', type=contact_type, q=search) }}"
+       class="alpha-link {{ 'active' if not letter }}">All</a>
+    {% for l in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' %}
+        {% set count = letter_counts.get(l, 0) %}
+        {% if count %}
+            <a href="{{ url_for('contacts.contact_list', letter=l, type=contact_type, q=search) }}"
+               class="alpha-link {{ 'active' if letter == l }}"
+               title="{{ count }} contact{{ 's' if count != 1 }}">{{ l }}</a>
+        {% else %}
+            <span class="alpha-link disabled">{{ l }}</span>
+        {% endif %}
+    {% endfor %}
+    {% set other_count = letter_counts.get('#', 0) %}
+    {% if other_count %}
+        <a href="{{ url_for('contacts.contact_list', letter='#', type=contact_type, q=search) }}"
+           class="alpha-link {{ 'active' if letter == '#' }}"
+           title="{{ other_count }} contact{{ 's' if other_count != 1 }}">#</a>
+    {% else %}
+        <span class="alpha-link disabled">#</span>
+    {% endif %}
+</nav>
+
+<!-- Recently viewed (populated by JS) -->
+<div id="recently-viewed" class="recently-viewed" hidden></div>
+
+{% if contacts %}
+<form method="post" action="{{ url_for('contacts.bulk_delete') }}" id="bulk-form">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+    <div class="bulk-bar" id="bulk-bar" hidden>
+        <span id="bulk-count">0</span> selected
+        <button type="button" class="btn btn-small btn-danger" id="bulk-delete-btn">Delete selected</button>
+        <button type="button" class="btn btn-small btn-secondary" id="bulk-clear">Clear</button>
+    </div>
+<table>
+    <thead>
+        <tr>
+            <th class="th-check"><input type="checkbox" id="select-all" aria-label="Select all"></th>
+            {% set next_dir = 'desc' if sort == 'name' and sort_dir == 'asc' else 'asc' %}
+            <th><a href="{{ url_for('contacts.contact_list', q=search, type=contact_type, letter=letter, sort='name', dir=next_dir) }}">Name {{ '▲' if sort == 'name' and sort_dir == 'asc' else ('▼' if sort == 'name' else '') }}</a></th>
+            {% set next_dir = 'desc' if sort == 'type' and sort_dir == 'asc' else 'asc' %}
+            <th><a href="{{ url_for('contacts.contact_list', q=search, type=contact_type, letter=letter, sort='type', dir=next_dir) }}">Type {{ '▲' if sort == 'type' and sort_dir == 'asc' else ('▼' if sort == 'type' else '') }}</a></th>
+            <th>Email</th>
+            <th>Phone</th>
+            <th class="th-icon"></th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for c in contacts %}
+        {% set initial = c.name[0]|upper if c.name else '?' %}
+        {% set avatar_class = 'avatar-' ~ initial if initial.isalpha() else 'avatar-other' %}
+        <tr>
+            <td data-label="" class="td-check"><input type="checkbox" name="selected" value="{{ c.id }}" class="row-select" aria-label="Select {{ c.name }}"></td>
+            <td data-label="Name">
+                <div class="name-cell">
+                    <span class="avatar {{ avatar_class }}">{{ initial }}</span>
+                    <a href="{{ url_for('contacts.detail', contact_id=c.id, ref=request.full_path.rstrip('?')) }}">{{ c.name }}</a>
+                </div>
+            </td>
+            <td data-label="Type"><span class="badge badge-{{ c.type }}">{{ c.type }}</span></td>
+            <td data-label="Email">
+                {% if c.email %}
+                <span class="cell-icon">
+                    <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z"/><path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z"/></svg>
+                    {{ c.email }}
+                </span>
+                {% endif %}
+            </td>
+            <td data-label="Phone">
+                {% if c.phone %}
+                <span class="cell-icon">
+                    <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z"/></svg>
+                    {{ c.phone }}
+                </span>
+                {% endif %}
+            </td>
+            <td data-label="" class="td-icon">
+                {% if c.notes %}
+                <span class="notes-indicator" title="Has notes">
+                    <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clip-rule="evenodd"/></svg>
+                </span>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</form>
+
+{% if total_pages > 1 %}
+<nav class="pagination" aria-label="Pages">
+    {% if page > 1 %}
+        <a href="{{ url_for('contacts.contact_list', page=page-1, q=search, type=contact_type, letter=letter, per_page=per_page) }}">&laquo; Prev</a>
+    {% endif %}
+    <span>Page {{ page }} of {{ total_pages }}</span>
+    {% if page < total_pages %}
+        <a href="{{ url_for('contacts.contact_list', page=page+1, q=search, type=contact_type, letter=letter, per_page=per_page) }}">Next &raquo;</a>
+    {% endif %}
+</nav>
+{% endif %}
+
+{% else %}
+<div class="empty-state">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128H5.228A2 2 0 013 17.16v-.003c0-1.113.285-2.16.786-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z"/></svg>
+    {% if search or contact_type or letter %}
+        <p>No contacts match your filters.</p>
+        <a href="{{ url_for('contacts.contact_list') }}" class="btn btn-secondary" style="margin-top:0.75rem">Clear filters</a>
+    {% else %}
+        <p>No contacts yet.</p>
+        <p style="margin-top:0.5rem">
+            <a href="{{ url_for('contacts.new_contact') }}" class="btn" style="margin-right:0.5rem">Add a contact</a>
+            <a href="{{ url_for('sync.sync_page') }}" class="btn btn-secondary">Import from Google</a>
+        </p>
+    {% endif %}
+</div>
+{% endif %}
+{% endblock %}

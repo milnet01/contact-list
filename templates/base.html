@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Contacts{% endblock %}</title>
+    <link rel="icon" href="{{ url_for('static', filename='icon.svg') }}" type="image/svg+xml">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <header>
+        <nav>
+            <a href="{{ url_for('contacts.contact_list') }}" class="nav-brand">
+                <svg viewBox="0 0 128 128" fill="currentColor" role="img" aria-hidden="true"><rect x="24" y="12" width="84" height="104" rx="6" opacity=".8"/><rect x="20" y="12" width="12" height="104" rx="3"/><rect x="36" y="20" width="64" height="88" rx="4" fill="#fff" opacity=".9"/><circle cx="68" cy="48" r="10" opacity=".6"/><path d="M52 78c0-12 8-17 16-17s16 5 16 17z" opacity=".6"/></svg>
+                Contacts
+            </a>
+            <div style="display:flex;align-items:center;gap:0.5rem">
+                <div class="theme-picker">
+                    <button class="theme-btn" id="theme-toggle" aria-label="Change theme" title="Change theme">
+                        <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M4 2a2 2 0 00-2 2v11a3 3 0 106 0V4a2 2 0 00-2-2H4zm1 14a1 1 0 100-2 1 1 0 000 2zm5-1.757l4.9-4.9a2 2 0 000-2.828L13.485 5.1a2 2 0 00-2.828 0L10 5.757v8.486zM16 18H9.071l6-6H16a2 2 0 012 2v2a2 2 0 01-2 2z" clip-rule="evenodd"/></svg>
+                    </button>
+                    <div class="theme-dropdown" id="theme-dropdown">
+                        <button class="theme-option" data-theme-choice="">
+                            <span class="theme-swatch" style="background:linear-gradient(135deg,#f0f2f5 50%,#1a1d27 50%)"></span> Auto
+                        </button>
+                        <button class="theme-option" data-theme-choice="light">
+                            <span class="theme-swatch" style="background:#f0f2f5"></span> Light
+                        </button>
+                        <button class="theme-option" data-theme-choice="dark">
+                            <span class="theme-swatch" style="background:#1a1d27"></span> Dark
+                        </button>
+                        <button class="theme-option" data-theme-choice="nord">
+                            <span class="theme-swatch" style="background:#2e3440"></span> Nord
+                        </button>
+                        <button class="theme-option" data-theme-choice="solarized">
+                            <span class="theme-swatch" style="background:#fdf6e3"></span> Solarized
+                        </button>
+                        <button class="theme-option" data-theme-choice="dracula">
+                            <span class="theme-swatch" style="background:#282a36"></span> Dracula
+                        </button>
+                        <button class="theme-option" data-theme-choice="rose">
+                            <span class="theme-swatch" style="background:#fff1f2;border-color:#e11d48"></span> Rose
+                        </button>
+                        <button class="theme-option" data-theme-choice="contrast">
+                            <span class="theme-swatch" style="background:#000;border-color:#5cb8ff"></span> High Contrast
+                        </button>
+                    </div>
+                </div>
+                <button class="nav-toggle" aria-label="Toggle menu" aria-expanded="false">
+                    <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M3 5a1 1 0 011-1h12a1 1 0 010 2H4a1 1 0 01-1-1zm0 5a1 1 0 011-1h12a1 1 0 010 2H4a1 1 0 01-1-1zm0 5a1 1 0 011-1h12a1 1 0 010 2H4a1 1 0 01-1-1z" clip-rule="evenodd"/></svg>
+                </button>
+            </div>
+            <div class="nav-links">
+                <a href="{{ url_for('contacts.contact_list') }}" {{ 'class=active' if active_nav == '/contacts' }}>All{% if contact_count is defined and contact_count %} <span class="nav-badge">{{ contact_count }}</span>{% endif %}</a>
+                <a href="{{ url_for('contacts.new_contact') }}" {{ 'class=active' if active_nav == '/contacts/new' }}>+ New</a>
+                <a href="{{ url_for('contacts.duplicates') }}" {{ 'class=active' if active_nav == '/contacts/duplicates' }}>Duplicates</a>
+                <a href="{{ url_for('sync.sync_page') }}" {{ 'class=active' if active_nav == '/sync' }}>Google Sync</a>
+            </div>
+        </nav>
+    </header>
+    <main class="fade-in">
+        {% block breadcrumb %}{% endblock %}
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="flash flash-{{ category }}">
+                        {{ message }}
+                        <button class="flash-dismiss" aria-label="Dismiss">&times;</button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+        {% block content %}{% endblock %}
+    </main>
+    <footer>
+        <span>Contact List</span>
+        <span>&middot;</span>
+        <span>{{ contact_count }} contact{{ 's' if contact_count != 1 }}</span>
+    </footer>
+    <!-- Confirmation modal (hidden) -->
+    <div class="modal-overlay" id="confirm-modal" hidden>
+        <div class="modal">
+            <p class="modal-message" id="confirm-message"></p>
+            <div class="modal-actions">
+                <button class="btn btn-danger" id="confirm-yes">Confirm</button>
+                <button class="btn btn-secondary" id="confirm-no">Cancel</button>
+            </div>
+        </div>
+    </div>
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

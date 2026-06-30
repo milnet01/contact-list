@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Google Sync — Contacts{% endblock %}
+
+{% block content %}
+<h1>Google Contacts Sync</h1>
+
+{% if not has_credentials %}
+<div class="card">
+    <h2>Setup Required</h2>
+    <p>To sync with Google Contacts, you need to set up API credentials:</p>
+    <ol>
+        <li>Go to the <a href="https://console.cloud.google.com/apis/dashboard" rel="noopener">Google Cloud Console</a></li>
+        <li>Create a project (or select existing) and enable the <strong>People API</strong></li>
+        <li>Go to <strong>Credentials</strong> &rarr; <strong>Create Credentials</strong> &rarr; <strong>OAuth 2.0 Client ID</strong></li>
+        <li>Set application type to <strong>Desktop app</strong></li>
+        <li>Download the JSON and save it as:<br>
+            <code>~/.config/contact-list/credentials.json</code></li>
+    </ol>
+</div>
+
+{% elif not is_authenticated %}
+<div class="card">
+    <h2>Connect to Google</h2>
+    <p>Click below to authorize access to your Google Contacts (read-only).</p>
+    <form method="post" action="{{ url_for('sync.authorize') }}">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn">
+            <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M4 4a2 2 0 00-2 2v4a2 2 0 002 2V6h10a2 2 0 00-2-2H4zm2 6a2 2 0 012-2h8a2 2 0 012 2v4a2 2 0 01-2 2H8a2 2 0 01-2-2v-4zm6 4a2 2 0 100-4 2 2 0 000 4z" clip-rule="evenodd"/></svg>
+            Connect Google Account
+        </button>
+    </form>
+</div>
+
+{% else %}
+<div class="card">
+    <h2>Connected</h2>
+
+    {% if sync_state %}
+    <p>Last synced: <strong>{{ sync_state.last_synced_at|friendly_date }}</strong></p>
+    {% else %}
+    <p>No sync has been performed yet.</p>
+    {% endif %}
+
+    <div class="actions">
+        <form method="post" action="{{ url_for('sync.start_sync') }}" class="inline-form">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn">
+                <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd"/></svg>
+                Sync Now
+            </button>
+        </form>
+        <form method="post" action="{{ url_for('sync.disconnect') }}" class="inline-form">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-danger" data-confirm="Disconnect from Google?">
+                <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M3 3a1 1 0 00-1 1v12a1 1 0 102 0V4a1 1 0 00-1-1zm10.293 9.293a1 1 0 001.414 1.414l3-3a1 1 0 000-1.414l-3-3a1 1 0 10-1.414 1.414L14.586 9H7a1 1 0 100 2h7.586l-1.293 1.293z" clip-rule="evenodd"/></svg>
+                Disconnect
+            </button>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+<div class="detail-meta" style="margin-top:2rem">
+    <a href="{{ url_for('contacts.contact_list') }}">
+        <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" style="width:0.85rem;height:0.85rem;vertical-align:-2px"><path fill-rule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clip-rule="evenodd"/></svg>
+        Back to contacts
+    </a>
+</div>
+{% endblock %}

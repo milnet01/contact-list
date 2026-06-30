@@ -1,0 +1,21 @@
+__pycache__/
+*.pyc
+*.pyo
+contacts.db
+contacts.db-wal
+contacts.db-shm
+.env
+venv/
+*.egg-info/
+dist/
+build/
+credentials.json
+token.json
+.pytest_cache/
+
+# Local development / tooling artifacts (not part of the app)
+.claude/
+.audit_cache/
+audit_config.yaml
+docs/AUTOMATED_AUDIT_REPORT*
+docs/trend_snapshot_*

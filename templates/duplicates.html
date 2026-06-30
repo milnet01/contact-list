@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+{% block title %}Duplicate Contacts — Contacts{% endblock %}
+
+{% block breadcrumb %}
+<nav class="breadcrumb" aria-label="Breadcrumb">
+    <a href="{{ url_for('contacts.contact_list') }}">Contacts</a>
+    <span aria-hidden="true">/</span>
+    <span>Duplicates</span>
+</nav>
+{% endblock %}
+
+{% block content %}
+<h1>Duplicate Contacts</h1>
+
+{% if total == 0 %}
+<div class="empty-state">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+    <p>No duplicates found. All contacts are unique.</p>
+    <a href="{{ url_for('contacts.contact_list') }}" class="btn btn-secondary" style="margin-top:0.75rem">Back to contacts</a>
+</div>
+{% else %}
+<form method="post" action="{{ url_for('contacts.bulk_delete') }}" id="bulk-form">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="ref" value="/contacts/duplicates">
+
+    <div class="bulk-bar" id="bulk-bar" hidden>
+        <span id="bulk-count">0</span> selected
+        <button type="button" class="btn btn-small btn-danger" id="bulk-delete-btn">Delete selected</button>
+        <button type="button" class="btn btn-small btn-secondary" id="bulk-clear">Clear</button>
+    </div>
+
+    <p class="toolbar-meta" style="margin-bottom:1rem">Found {{ total }} duplicate group{{ 's' if total != 1 }}.</p>
+
+{% if dupes.name %}
+<div class="card">
+    <h2>
+        <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" style="width:1rem;height:1rem;vertical-align:-2px;opacity:0.5"><path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"/></svg>
+        Duplicate Names
+    </h2>
+    {% for group in dupes.name %}
+    <table style="margin-bottom:1rem">
+        <thead>
+            <tr>
+                <th class="th-check"><input type="checkbox" class="group-select" aria-label="Select group"></th>
+                <th>Name</th>
+                <th>Type</th>
+                <th>Email</th>
+                <th>Phone</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for c in group %}
+            {% set initial = c.name[0]|upper if c.name else '?' %}
+            {% set avatar_class = 'avatar-' ~ initial if initial.isalpha() else 'avatar-other' %}
+            <tr>
+                <td data-label="" class="td-check"><input type="checkbox" name="selected" value="{{ c.id }}" class="row-select" aria-label="Select {{ c.name }}"></td>
+                <td data-label="Name">
+                    <div class="name-cell">
+                        <span class="avatar {{ avatar_class }}">{{ initial }}</span>
+                        <a href="{{ url_for('contacts.detail', contact_id=c.id) }}">{{ c.name }}</a>
+                    </div>
+                </td>
+                <td data-label="Type"><span class="badge badge-{{ c.type }}">{{ c.type }}</span></td>
+                <td data-label="Email">{{ c.email or '' }}</td>
+                <td data-label="Phone">{{ c.phone or '' }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endfor %}
+</div>
+{% endif %}
+
+{% if dupes.email %}
+<div class="card">
+    <h2>
+        <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" style="width:1rem;height:1rem;vertical-align:-2px;opacity:0.5"><path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z"/><path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z"/></svg>
+        Duplicate Emails
+    </h2>
+    {% for group in dupes.email %}
+    <table style="margin-bottom:1rem">
+        <thead>
+            <tr>
+                <th class="th-check"><input type="checkbox" class="group-select" aria-label="Select group"></th>
+                <th>Name</th>
+                <th>Type</th>
+                <th>Email</th>
+                <th>Phone</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for c in group %}
+            {% set initial = c.name[0]|upper if c.name else '?' %}
+            {% set avatar_class = 'avatar-' ~ initial if initial.isalpha() else 'avatar-other' %}
+            <tr>
+                <td data-label="" class="td-check"><input type="checkbox" name="selected" value="{{ c.id }}" class="row-select" aria-label="Select {{ c.name }}"></td>
+                <td data-label="Name">
+                    <div class="name-cell">
+                        <span class="avatar {{ avatar_class }}">{{ initial }}</span>
+                        <a href="{{ url_for('contacts.detail', contact_id=c.id) }}">{{ c.name }}</a>
+                    </div>
+                </td>
+                <td data-label="Type"><span class="badge badge-{{ c.type }}">{{ c.type }}</span></td>
+                <td data-label="Email"><strong>{{ c.email }}</strong></td>
+                <td data-label="Phone">{{ c.phone or '' }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endfor %}
+</div>
+{% endif %}
+
+{% if dupes.phone %}
+<div class="card">
+    <h2>
+        <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" style="width:1rem;height:1rem;vertical-align:-2px;opacity:0.5"><path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z"/></svg>
+        Duplicate Phone Numbers
+    </h2>
+    {% for group in dupes.phone %}
+    <table style="margin-bottom:1rem">
+        <thead>
+            <tr>
+                <th class="th-check"><input type="checkbox" class="group-select" aria-label="Select group"></th>
+                <th>Name</th>
+                <th>Type</th>
+                <th>Email</th>
+                <th>Phone</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for c in group %}
+            {% set initial = c.name[0]|upper if c.name else '?' %}
+            {% set avatar_class = 'avatar-' ~ initial if initial.isalpha() else 'avatar-other' %}
+            <tr>
+                <td data-label="" class="td-check"><input type="checkbox" name="selected" value="{{ c.id }}" class="row-select" aria-label="Select {{ c.name }}"></td>
+                <td data-label="Name">
+                    <div class="name-cell">
+                        <span class="avatar {{ avatar_class }}">{{ initial }}</span>
+                        <a href="{{ url_for('contacts.detail', contact_id=c.id) }}">{{ c.name }}</a>
+                    </div>
+                </td>
+                <td data-label="Type"><span class="badge badge-{{ c.type }}">{{ c.type }}</span></td>
+                <td data-label="Email">{{ c.email or '' }}</td>
+                <td data-label="Phone"><strong>{{ c.phone }}</strong></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endfor %}
+</div>
+{% endif %}
+
+</form>
+
+<div class="actions">
+    <a href="{{ url_for('contacts.contact_list') }}" class="btn btn-secondary">
+        <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clip-rule="evenodd"/></svg>
+        Back to contacts
+    </a>
+</div>
+{% endif %}
+{% endblock %}
