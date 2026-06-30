@@ -195,3 +195,34 @@ class TestThemeRendering:
         resp = client.get('/contacts')
         assert b'density-compact' in resp.data
         assert b'view-card' in resp.data
+
+
+class TestDefaultsConsumed:
+    @pytest.fixture()
+    def client(self, app):
+        return app.test_client()
+
+    def _seed(self, client, db, n):
+        # Create n contacts directly via the model for speed.
+        import models
+        for i in range(n):
+            models.create_contact(db, 'individual', f'Person {i:03d}')
+
+    def test_per_page_default_from_settings(self, client, db):
+        settings_mod.update_settings(db, {'per_page': '5'})
+        self._seed(client, db, 8)
+        resp = client.get('/contacts')
+        # With per_page=5 and 8 contacts there must be a second page.
+        assert b'Page 1 of 2' in resp.data
+
+    def test_explicit_query_arg_overrides_setting(self, client, db):
+        settings_mod.update_settings(db, {'per_page': '5'})
+        self._seed(client, db, 8)
+        resp = client.get('/contacts?per_page=50')
+        assert b'Page 1 of 2' not in resp.data  # all on one page
+
+    def test_new_contact_preselects_default_type(self, client, db):
+        settings_mod.update_settings(db, {'default_type': 'company'})
+        resp = client.get('/contacts/new')
+        # the company radio/option is checked/selected
+        assert b'company' in resp.data

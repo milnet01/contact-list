@@ -40,8 +40,8 @@
         <div class="form-group">
             <label for="type">Type</label>
             <select id="type" name="type" required>
-                <option value="individual" {{ 'selected' if contact and contact.type == 'individual' }}>Individual</option>
-                <option value="company" {{ 'selected' if contact and contact.type == 'company' }}>Company</option>
+                <option value="individual" {{ 'selected' if (contact.type if contact else default_type) == 'individual' }}>Individual</option>
+                <option value="company" {{ 'selected' if (contact.type if contact else default_type) == 'company' }}>Company</option>
             </select>
         </div>
 

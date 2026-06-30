@@ -110,16 +110,20 @@ def index():
 
 @bp.route('/contacts')
 def contact_list():
+    s = g.settings
     page = max(request.args.get('page', 1, type=int), 1)
-    per_page = max(request.args.get('per_page', 50, type=int), 1)
-    per_page = min(per_page, 200)
+
+    per_page_arg = request.args.get('per_page', type=int)
+    per_page = per_page_arg if per_page_arg is not None else int(s['per_page'])
+    per_page = max(1, min(per_page, 200))
+
     search = request.args.get('q', '').strip()
     contact_type = request.args.get('type', '').strip()
     letter = request.args.get('letter', '').strip()
 
     db = get_db()
-    sort = request.args.get('sort', 'name').strip()
-    sort_dir = request.args.get('dir', 'asc').strip()
+    sort = request.args.get('sort') or s['sort']
+    sort_dir = request.args.get('dir') or s['sort_dir']
 
     total = count_contacts(db, search or None, contact_type or None, letter or None)
     total_pages = max((total + per_page - 1) // per_page, 1)
@@ -213,7 +217,8 @@ def _safe_ref(ref: str) -> str:
 def new_contact():
     ref = _safe_ref(_get_ref())
     return render_template(
-        'contact_form.html', contact=None, custom_fields=[], editing=False, ref=ref
+        'contact_form.html', contact=None, custom_fields=[], editing=False,
+        ref=ref, default_type=g.settings['default_type'],
     )
 
 
