@@ -45,7 +45,7 @@ flask>=3.1.1,<4.0
 google-api-python-client>=2.0,<3.0
 google-auth-oauthlib>=1.0,<2.0
 google-auth-httplib2>=0.2,<1.0
-phonenumbers>=8.13,<9.0
+phonenumbers>=9.0,<10.0
 ```
 
 ---

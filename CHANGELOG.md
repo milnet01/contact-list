@@ -13,6 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Bump phonenumbers pin to >=9.0,<10.0 to match the current major**
+  The declared pin (>=8.13,<9.0) lagged the installed/current major
+  (9.0.26). The API the app uses (parse, format_number, is_valid_number,
+  NumberParseException, SUPPORTED_REGIONS) is stable across 8.x->9.x, so no
+  caller changes were needed; the full test suite (67 tests) passes on 9.0.26.
+  Updated requirements.txt and the DESIGN.md dependency block in lockstep.
+
 - **Tests use pytest tmp_path for all filesystem paths instead of hardcoded /tmp directories.**
 
 - **Enforce custom-field-name validation (format and case-insensitive duplicates) in the data layer, not only in the route.**
