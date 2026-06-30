@@ -112,3 +112,17 @@ class TestFriendlyDate:
     def test_empty_value(self, app, db):
         out = self._render(app, db, '')
         assert out == ''
+
+
+class TestPhoneUtil:
+    def test_formats_za_number(self):
+        import phoneutil
+        assert phoneutil.format_phone('0821234567', 'ZA') == '+27 82 123 4567'
+
+    def test_formats_us_number(self):
+        import phoneutil
+        assert phoneutil.format_phone('2025550123', 'US') == '+1 202-555-0123'
+
+    def test_unparseable_returns_raw(self):
+        import phoneutil
+        assert phoneutil.format_phone('not a phone', 'ZA') == 'not a phone'

@@ -9,6 +9,7 @@ from flask import (
     Blueprint,
     current_app,
     flash,
+    g,
     redirect,
     render_template,
     url_for,
@@ -73,7 +74,7 @@ def start_sync():
     config = current_app.config
     db = get_db()
 
-    count, error = google_sync.sync_contacts(config, db)
+    count, error = google_sync.sync_contacts(config, db, g.settings['phone_region'])
     if error:
         flash(f'Sync failed: {error}', 'error')
     else:

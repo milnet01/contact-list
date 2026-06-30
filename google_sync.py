@@ -4,24 +4,11 @@ import logging
 import os
 import sqlite3
 
+import phoneutil
+
 log = logging.getLogger(__name__)
 
 SCOPES = ['https://www.googleapis.com/auth/contacts.readonly']
-DEFAULT_REGION = 'ZA'
-
-
-def _format_phone(raw: str | None) -> str | None:
-    """Format a phone number to international format."""
-    if not raw:
-        return None
-    try:
-        import phonenumbers
-        parsed = phonenumbers.parse(raw, DEFAULT_REGION)
-        if phonenumbers.is_valid_number(parsed) or phonenumbers.is_possible_number(parsed):
-            return phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.INTERNATIONAL)
-    except Exception:
-        log.debug('Could not format phone number %r; keeping raw value', raw)
-    return raw
 
 
 # ---------------------------------------------------------------------------
@@ -80,7 +67,7 @@ def revoke_credentials(config: dict) -> None:
 # Contact sync
 # ---------------------------------------------------------------------------
 
-def sync_contacts(config: dict, db: sqlite3.Connection) -> tuple[int, str | None]:
+def sync_contacts(config: dict, db: sqlite3.Connection, region: str) -> tuple[int, str | None]:
     """Import contacts from Google. Returns (count_synced, error_or_none)."""
     creds = _load_credentials(config)
     if not creds:
@@ -139,7 +126,7 @@ def sync_contacts(config: dict, db: sqlite3.Connection) -> tuple[int, str | None
             # all-or-nothing or the contact silently loses its custom fields).
             try:
                 db.execute('SAVEPOINT person')
-                imported = _upsert_person(db, person)
+                imported = _upsert_person(db, person, region)
                 db.execute('RELEASE SAVEPOINT person')
             except Exception:
                 db.execute('ROLLBACK TO SAVEPOINT person')
@@ -171,7 +158,7 @@ def sync_contacts(config: dict, db: sqlite3.Connection) -> tuple[int, str | None
     return synced, None
 
 
-def _upsert_person(db: sqlite3.Connection, person: dict) -> bool:
+def _upsert_person(db: sqlite3.Connection, person: dict, region: str) -> bool:
     """Import one Google person. Returns True if a contact was imported/updated,
     False for a delete tombstone or a record with no usable name."""
     metadata = person.get('metadata', {})
@@ -191,7 +178,8 @@ def _upsert_person(db: sqlite3.Connection, person: dict) -> bool:
     emails = person.get('emailAddresses', [])
     email = emails[0].get('value') if emails else None
     phones = person.get('phoneNumbers', [])
-    phone = _format_phone(phones[0].get('value')) if phones else None
+    value = phones[0].get('value') if phones else None
+    phone = phoneutil.format_phone(value, region) if value else value
     orgs = person.get('organizations', [])
     org_name = orgs[0].get('name', '') if orgs else ''
     contact_type = 'company' if org_name and org_name == name else 'individual'

@@ -6,18 +6,19 @@ import logging
 import re
 from urllib.parse import urlparse
 
-import phonenumbers
 from flask import (
     Blueprint,
     Response,
     abort,
     flash,
+    g,
     redirect,
     render_template,
     request,
     url_for,
 )
 
+import phoneutil
 from db import get_db
 from models import (
     count_contacts,
@@ -38,20 +39,8 @@ log = logging.getLogger(__name__)
 
 bp = Blueprint('contacts', __name__)
 
-DEFAULT_REGION = 'ZA'
 _EMAIL_RE = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
 _PHONE_RE = re.compile(r'^[\d\s\+\-\(\)\.]{3,30}$')
-
-
-def format_phone(raw: str) -> str:
-    """Parse and format a phone number to international format. Returns raw if unparseable."""
-    try:
-        parsed = phonenumbers.parse(raw, DEFAULT_REGION)
-        if phonenumbers.is_valid_number(parsed) or phonenumbers.is_possible_number(parsed):
-            return phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.INTERNATIONAL)
-    except phonenumbers.NumberParseException:
-        pass
-    return raw
 
 
 def _validate_custom_fields(form) -> tuple[list[tuple[str, str]], list[str]]:
@@ -99,7 +88,7 @@ def _validate_form(form) -> tuple[dict, list[tuple[str, str]], list[str]]:
     if phone and not _PHONE_RE.match(phone):
         errors.append('Invalid phone number.')
     elif phone:
-        phone = format_phone(phone)
+        phone = phoneutil.format_phone(phone, g.settings['phone_region'])
 
     custom_fields, cf_errors = _validate_custom_fields(form)
     errors.extend(cf_errors)
