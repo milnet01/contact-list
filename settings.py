@@ -19,6 +19,11 @@ DATE_FORMATS: dict[str, str] = {
     'mdy': '%m/%d/%Y',
 }
 
+# Theme choices in UI display order: auto, light, dark, then the rest.
+# This is the single source of truth — both the validator set below and
+# routes/settings.py's <select> options derive from it.
+THEMES: tuple[str, ...] = ('', 'light', 'dark', 'nord', 'solarized', 'dracula', 'rose', 'contrast')
+
 SETTINGS_DEFAULTS: dict[str, str] = {
     'timezone': 'UTC',
     'date_format': 'dmy_hm',
@@ -34,7 +39,7 @@ SETTINGS_DEFAULTS: dict[str, str] = {
 
 # Literal allowed-value sets for the enum-like keys.
 _ALLOWED: dict[str, set[str]] = {
-    'theme': {'', 'light', 'dark', 'nord', 'solarized', 'dracula', 'rose', 'contrast'},
+    'theme': set(THEMES),
     'density': {'comfortable', 'compact'},
     'view': {'list', 'card'},
     'sort': {'name', 'type', 'created', 'updated'},

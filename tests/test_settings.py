@@ -78,8 +78,7 @@ class TestUpdateSettings:
         )
         assert errors
         s = settings_mod.get_settings(db)
-        assert s['theme'] == 'comfortable' or s['theme'] == ''  # default, NOT 'dark'
-        assert s['theme'] == settings_mod.SETTINGS_DEFAULTS['theme']
+        assert s['theme'] == settings_mod.SETTINGS_DEFAULTS['theme']  # default, NOT 'dark'
 
 
 class TestFriendlyDate:
@@ -224,5 +223,6 @@ class TestDefaultsConsumed:
     def test_new_contact_preselects_default_type(self, client, db):
         settings_mod.update_settings(db, {'default_type': 'company'})
         resp = client.get('/contacts/new')
-        # the company radio/option is checked/selected
-        assert b'company' in resp.data
+        # the company option is selected, the individual option is not
+        assert b'value="company" selected' in resp.data
+        assert b'value="individual" selected' not in resp.data
