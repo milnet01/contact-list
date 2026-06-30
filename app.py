@@ -145,9 +145,11 @@ def create_app(test_config: dict | None = None) -> Flask:
     # ------------------------------------------------------------------
 
     from routes.contacts import bp as contacts_bp
+    from routes.settings import bp as settings_bp
     from routes.sync import bp as sync_bp
 
     app.register_blueprint(contacts_bp)
+    app.register_blueprint(settings_bp)
     app.register_blueprint(sync_bp)
 
     return app

@@ -126,3 +126,50 @@ class TestPhoneUtil:
     def test_unparseable_returns_raw(self):
         import phoneutil
         assert phoneutil.format_phone('not a phone', 'ZA') == 'not a phone'
+
+
+class TestSettingsRoute:
+    @pytest.fixture()
+    def client(self, app):
+        return app.test_client()
+
+    def _csrf(self, client):
+        client.get('/settings')
+        with client.session_transaction() as sess:
+            return sess.get('_csrf_token', '')
+
+    def test_get_renders(self, client):
+        resp = client.get('/settings')
+        assert resp.status_code == 200
+        assert b'Settings' in resp.data
+
+    def test_post_persists_and_redirects(self, client, db):
+        token = self._csrf(client)
+        resp = client.post('/settings', data={
+            '_csrf_token': token,
+            'theme': 'dark',
+            'timezone': 'UTC',
+            'date_format': 'iso',
+            'density': 'compact',
+            'view': 'card',
+            'phone_region': 'US',
+            'per_page': '25',
+            'sort': 'created',
+            'sort_dir': 'desc',
+            'default_type': 'company',
+        })
+        assert resp.status_code == 302
+        assert settings_mod.get_settings(db)['theme'] == 'dark'
+
+    def test_post_invalid_returns_400(self, client):
+        token = self._csrf(client)
+        resp = client.post('/settings', data={
+            '_csrf_token': token,
+            'theme': 'neon',  # invalid
+        })
+        assert resp.status_code == 400
+        assert b'Invalid value' in resp.data
+
+    def test_post_without_csrf_403(self, client):
+        resp = client.post('/settings', data={'theme': 'dark'})
+        assert resp.status_code == 403

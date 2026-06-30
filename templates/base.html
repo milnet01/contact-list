@@ -55,6 +55,7 @@
                 <a href="{{ url_for('contacts.new_contact') }}" {{ 'class=active' if active_nav == '/contacts/new' }}>+ New</a>
                 <a href="{{ url_for('contacts.duplicates') }}" {{ 'class=active' if active_nav == '/contacts/duplicates' }}>Duplicates</a>
                 <a href="{{ url_for('sync.sync_page') }}" {{ 'class=active' if active_nav == '/sync' }}>Google Sync</a>
+                <a href="{{ url_for('settings.settings_page') }}" {{ 'class=active' if active_nav == '/settings' }}>Settings</a>
             </div>
         </nav>
     </header>

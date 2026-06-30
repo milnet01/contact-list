@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}Settings{% endblock %}
+
+{% block content %}
+<h1>Settings</h1>
+
+{% if errors %}
+<div class="flash flash-error">
+    <ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul>
+</div>
+{% endif %}
+
+<form method="post" action="{{ url_for('settings.save_settings') }}" class="settings-form">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+
+    <fieldset>
+        <legend>Appearance</legend>
+        <label>Theme
+            <select name="theme">
+                {% for t in themes %}
+                <option value="{{ t }}" {{ 'selected' if settings.theme == t }}>{{ t or 'Auto' }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label>Density
+            <select name="density">
+                <option value="comfortable" {{ 'selected' if settings.density == 'comfortable' }}>Comfortable</option>
+                <option value="compact" {{ 'selected' if settings.density == 'compact' }}>Compact</option>
+            </select>
+        </label>
+        <label>Contact view
+            <select name="view">
+                <option value="list" {{ 'selected' if settings.view == 'list' }}>List</option>
+                <option value="card" {{ 'selected' if settings.view == 'card' }}>Card</option>
+            </select>
+        </label>
+    </fieldset>
+
+    <fieldset>
+        <legend>Dates &amp; Time</legend>
+        <label>Timezone
+            <select name="timezone">
+                {% for tz in timezones %}
+                <option value="{{ tz }}" {{ 'selected' if settings.timezone == tz }}>{{ tz }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label>Date format
+            <select name="date_format">
+                {% for key, pattern in date_formats.items() %}
+                <option value="{{ key }}" {{ 'selected' if settings.date_format == key }}>{{ key }}</option>
+                {% endfor %}
+            </select>
+        </label>
+    </fieldset>
+
+    <fieldset>
+        <legend>Contacts &amp; Phone</legend>
+        <label>Phone region
+            <select name="phone_region">
+                {% for r in regions %}
+                <option value="{{ r }}" {{ 'selected' if settings.phone_region == r }}>{{ r }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label>Contacts per page
+            <input type="number" name="per_page" min="1" max="200" value="{{ settings.per_page }}">
+        </label>
+        <label>Default sort
+            <select name="sort">
+                {% for s in ['name', 'type', 'created', 'updated'] %}
+                <option value="{{ s }}" {{ 'selected' if settings.sort == s }}>{{ s }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label>Sort direction
+            <select name="sort_dir">
+                <option value="asc" {{ 'selected' if settings.sort_dir == 'asc' }}>Ascending</option>
+                <option value="desc" {{ 'selected' if settings.sort_dir == 'desc' }}>Descending</option>
+            </select>
+        </label>
+        <label>Default new-contact type
+            <select name="default_type">
+                <option value="individual" {{ 'selected' if settings.default_type == 'individual' }}>Individual</option>
+                <option value="company" {{ 'selected' if settings.default_type == 'company' }}>Company</option>
+            </select>
+        </label>
+    </fieldset>
+
+    <button type="submit" class="btn">Save settings</button>
+</form>
+{% endblock %}
