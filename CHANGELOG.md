@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Card view now uses masonry packing (CSS multi-column) with a two-tone alternation so adjacent cards are easier to tell apart.**
+
 - **Card view now flows multiple contacts per row as a responsive grid, instead of one full-width card per row.**
 
 - **Settings page polish: section headings no longer punch through the fieldset border (rendered as full-width header + divider), fields stack one per row, and number inputs pick up the shared full-width input styling.**

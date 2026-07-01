@@ -87,6 +87,12 @@ efficiency / coding standards every item must comply with.
   Kind: feature.
   Source: in-session-2026-07-01.
 
+- 📋 [CL-0033] **Push local contact changes back to Google (two-way sync).**
+  Today google_sync.py is import-only (pull). Two-way sync needs: (1) the read-WRITE scope 'https://www.googleapis.com/auth/contacts' instead of the current 'contacts.readonly' in google_auth.py + google_sync.py -> forces a re-consent; (2) People API writes: createContact / updateContact (updatePersonFields + the stored etag for optimistic concurrency) / deleteContact; (3) conflict handling when both sides changed (etag mismatch) -- last-write-wins vs prompt; (4) tracking which local rows are Google-linked (google_id already exists) vs local-only. Non-trivial and touches auth + data integrity -> needs a spec (cold-eyes) before build."
+  **Layman:** Right now Google Sync only pulls contacts in. This would also send your edits, new contacts, and deletions back up to Google so both stay in step.
+  Kind: feature.
+  Source: in-session-2026-07-01.
+
 ## Audit & Review Follow-ups
 
 Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inline.
