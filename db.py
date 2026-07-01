@@ -72,6 +72,10 @@ def init_db() -> None:
             continue
         log.info('Running migration: %s', filename)
         with open(os.path.join(migrations_dir, filename)) as f:
+            # executescript() issues its own COMMIT, so the migration is durable
+            # before the schema_version row below. A crash in that window re-runs
+            # the file next boot — so every migration must stay idempotent
+            # (IF NOT EXISTS / guarded DELETEs), even with version tracking.
             db.executescript(f.read())
         db.execute('INSERT INTO schema_version (filename) VALUES (?)', [filename])
     db.commit()

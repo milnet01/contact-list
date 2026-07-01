@@ -128,12 +128,14 @@ def sync_contacts(config: dict, db: sqlite3.Connection, region: str) -> tuple[in
         try:
             results = service.people().connections().list(**kwargs).execute()
         except HttpError as exc:
-            if sync_token and _is_expired_sync_token(exc):
+            if sync_token and synced == 0 and _is_expired_sync_token(exc):
                 # Expired sync token: restart a clean full resync from page 1.
                 # Reset the page cursor and count too, or the retry would reuse
-                # a stale pageToken from the delta attempt and miscount. This
-                # fires on the first request (the token is validated up front),
-                # so no page has been committed yet.
+                # a stale pageToken from the delta attempt and miscount. The
+                # `synced == 0` guard enforces in code what the People API
+                # guarantees (the token is validated on the first request): the
+                # reset can only run before any page has been committed, so it
+                # can never discard already-imported pages.
                 sync_token = None
                 next_page_token = None
                 synced = 0
