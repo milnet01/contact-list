@@ -530,11 +530,12 @@ def merge_preview():
             continue
     ids = list(dict.fromkeys(ids))
 
+    back = _safe_ref(request.form.get('ref', '')) or url_for('contacts.contact_list')
     db = get_db()
     contacts = [c for c in (get_contact(db, i) for i in ids) if c]
     if len(contacts) < 2:
         flash('Select at least two contacts to merge.', 'error')
-        return redirect(url_for('contacts.duplicates'))
+        return redirect(back)
 
     survivor_id = min(c['id'] for c in contacts)
     loser_ids = [c['id'] for c in contacts if c['id'] != survivor_id]

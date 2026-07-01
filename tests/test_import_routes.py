@@ -158,6 +158,17 @@ class TestMerge:
             b = models.create_contact(db, 'individual', 'Ann', None, '555-1')
             return a, b
 
+    def test_merge_button_on_contacts_list(self, client, app):
+        self._two_dupes(app)
+        resp = client.get('/contacts')
+        assert b'Merge selected' in resp.data
+        assert b'/contacts/merge' in resp.data
+
+    def test_merge_button_on_duplicates_page(self, client, app):
+        self._two_dupes(app)
+        resp = client.get('/contacts/duplicates')
+        assert b'Merge selected' in resp.data
+
     def test_preview_requires_two(self, client, app):
         a, _ = self._two_dupes(app)
         token = _csrf(client)
