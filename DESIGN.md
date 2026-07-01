@@ -29,7 +29,7 @@ A lightweight, secure contact management application for storing, searching, and
 
 | Layer | Choice | Rationale |
 |-------|--------|-----------|
-| Language | **Python 3.10+** | Pre-installed on most Linux systems, strong Google API support |
+| Language | **Python 3.12+** | Pre-installed on most Linux systems, strong Google API support. 3.12+ specifically: the Google-sync per-record SAVEPOINT/ROLLBACK isolation (`google_sync.sync_contacts`) relies on 3.12+ sqlite3 transaction semantics; on legacy (≤3.11) sqlite3 a SAVEPOINT in autocommit can weaken the rollback (CL-0019). |
 | Web framework | **Flask 3.x** (with Jinja2) | ~1 MB installed, battle-tested, minimal overhead |
 | Database | **SQLite 3** | Zero-server, single-file, ~600 KB memory baseline, ACID-compliant |
 | Frontend | **Vanilla HTML + CSS + JS** | No build step, no node_modules, zero JS framework overhead |
