@@ -46,17 +46,6 @@ def _build_contact_query(
     return query, params
 
 
-def count_contacts(
-    db: sqlite3.Connection,
-    search: str | None = None,
-    contact_type: str | None = None,
-    letter: str | None = None,
-) -> int:
-    """Return the total number of contacts matching the given filters."""
-    query, params = _build_contact_query(search, contact_type, letter)
-    return db.execute(f'SELECT COUNT(*) FROM ({query})', params).fetchone()[0]
-
-
 def list_contacts(
     db: sqlite3.Connection,
     page: int = 1,

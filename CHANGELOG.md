@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Card view now flows multiple contacts per row as a responsive grid, instead of one full-width card per row.**
+
+- **Settings page polish: section headings no longer punch through the fieldset border (rendered as full-width header + divider), fields stack one per row, and number inputs pick up the shared full-width input styling.**
+
 - **Version-tracked, upgrade-safe database migrations**
   Migrations are recorded and run exactly once, and the custom-field uniqueness migration cleans pre-existing duplicates before applying so it can't abort startup on an older database. Invalid contact types now fail with a clear error. Requires Python 3.12+. CL-0008, CL-0015, CL-0019.
 
@@ -47,6 +51,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Tests use pytest tmp_path for all filesystem paths instead of hardcoded /tmp directories.**
 
 - **Enforce custom-field-name validation (format and case-insensitive duplicates) in the data layer, not only in the route.**
+
+### Removed
+
+- **Removed the unused count_contacts() model helper; every caller uses list_contacts's returned total (CL-0017).**
 
 ### Fixed
 

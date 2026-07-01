@@ -243,8 +243,11 @@ class TestCountContacts:
     def test_count(self, db):
         models.create_contact(db, 'individual', 'Alice')
         models.create_contact(db, 'company', 'Acme')
-        assert models.count_contacts(db) == 2
-        assert models.count_contacts(db, contact_type='company') == 1
+        # list_contacts returns (rows, total); the total honours the same
+        # filters the old count_contacts() helper reported (removed as dead
+        # code once every caller moved to list_contacts's total — CL-0017).
+        assert models.list_contacts(db)[1] == 2
+        assert models.list_contacts(db, contact_type='company')[1] == 1
 
 
 class TestContactTypeGuard:

@@ -57,6 +57,36 @@ efficiency / coding standards every item must comply with.
   Source: in-session-2026-06-30 suggested.
   Resolved (2026-07-01): per-page, default sort/dir, and default new-contact type are settings consumed by the contact list & form.
 
+- 📋 [CL-0022] **Import contacts from a CSV file.**
+  Mirror the existing CSV export. Map Name/Type/Email/Phone/Notes columns and reuse create_contact + _validate_form + find_duplicates so imported rows get the same validation and duplicate warnings as manual entry.
+  **Layman:** Let the user bring contacts in from a spreadsheet, not just export them.
+  Kind: feature.
+  Source: in-session-2026-07-01.
+
+- 📋 [CL-0023] **Support vCard (.vcf) import and export.**
+  Add a .vcf export alongside export_contacts, and a .vcf import path. vCard is the universal interchange format for phones/Apple Contacts/Thunderbird.
+  **Layman:** Read and write the standard contact-card format that phones and mail apps use.
+  Kind: feature.
+  Source: in-session-2026-07-01.
+
+- 📋 [CL-0024] **Add a merge action to the duplicates page.**
+  The duplicates page is read-only today. Add a merge: keep one contact, fold in the other's non-empty fields + custom_fields, then delete the loser. Wrap in a transaction.
+  **Layman:** Let the user combine two duplicate contacts into one from the duplicates screen.
+  Kind: feature.
+  Source: in-session-2026-07-01.
+
+- 📋 [CL-0025] **Extend search to cover notes and custom fields.**
+  _build_contact_query searches name/email/phone only. Add notes to the LIKE clause and a subquery/EXISTS against custom_fields so a value stored in a custom field is findable.
+  **Layman:** Make the search box also look inside notes and custom fields, not just name/email/phone.
+  Kind: enhancement.
+  Source: in-session-2026-07-01.
+
+- 📋 [CL-0026] **Support contact photos/avatars.**
+  Google People API returns a Google-hosted photo URL per contact. Options: (a) store the remote URL on sync and widen CSP img-src to the Google host, or (b) download to a private dir and serve locally (keeps CSP tight, works offline). Also allow local upload. Design decision -> needs a short spec (cold-eyes) before implementing.
+  **Layman:** Show a real photo for each contact like your phone does.
+  Kind: feature.
+  Source: in-session-2026-07-01.
+
 ## Audit & Review Follow-ups
 
 Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inline.
@@ -138,6 +168,30 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   Source: indie-review-2026-06-30 loop3.
   Resolved (2026-07-01): dev server binds literal 127.0.0.1 instead of 'localhost'.
 
+- 📋 [CL-0027] **Normalize phone numbers on the duplicates scan page.**
+  find_all_duplicates() groups phones by exact string match, while find_duplicates() normalizes to E.164 (CL-0013). So the scan page and the on-create warning disagree. Group by phoneutil.normalize_e164(phone, region) so both use the same comparison.
+  **Layman:** The duplicates page misses phone numbers that are the same but typed differently — make it catch them like the add-contact warning already does.
+  Kind: fix.
+  Source: in-session-2026-07-01.
+
+- 📋 [CL-0028] **Set SESSION_COOKIE_SAMESITE = 'Lax'.**
+  Not set in config.py (Flask defaults it to None). Defense-in-depth under the existing CSRF token; no downside on a same-origin localhost app. One line in Config.
+  **Layman:** Add a second, browser-enforced guard against cross-site form submissions.
+  Kind: security.
+  Source: in-session-2026-07-01.
+
+- 📋 [CL-0029] **Add a GitHub Actions CI workflow.**
+  No .github/workflows/ exists. Add a workflow running ruff + mypy + pytest on Python 3.12 and 3.13. Public repo -> free Linux runner minutes; guards the 123-test suite on every push.
+  **Layman:** Automatically run the tests and checks every time code is pushed.
+  Kind: chore.
+  Source: in-session-2026-07-01.
+
+- 📋 [CL-0030] **Add a pyproject.toml for tool configuration.**
+  Tool config (ruff line-length 100, mypy strictness, pytest paths) is implicit/local-cache-only today. Codify it so CI and local runs share identical settings.
+  **Layman:** Put the code-style and test settings in one file so they're the same everywhere.
+  Kind: chore.
+  Source: in-session-2026-07-01.
+
 ## Efficiency & Refactoring
 
 Performance and code-health opportunities surfaced during the 2026-06-30 review.
@@ -164,5 +218,17 @@ they reduce duplication and query count.
   Kind: refactor.
   Source: in-session-2026-06-30 suggested.
   Resolved (2026-06-30): extracted _validate_custom_field_names() in models.py during the audit fix-pass; it validates format and rejects case-insensitive duplicates, called by both create_contact and update_contact.
+
+- 📋 [CL-0031] **Avoid the per-request COUNT(*) for the nav badge.**
+  _inject_globals runs SELECT COUNT(*) FROM contacts on every request, including error pages. The contact-list route already computes total; compute the badge count only where it is shown, or cache it per request.
+  **Layman:** Stop recounting every contact on every page load just to fill in the little number badge.
+  Kind: perf.
+  Source: in-session-2026-07-01.
+
+- 💭 [CL-0032] **Consider SQLite FTS5 for full-text search if the contact count grows large.**
+  Search uses LIKE '%term%' (leading wildcard), which cannot use any index and always full-scans; the idx_contacts_email/phone indexes only help exact-match/dedup paths, not substring search. At the current single-user scale (~330 rows) this is sub-millisecond, so this is deferred. If N reaches the thousands, add an FTS5 virtual table (contentless, synced via triggers) over name/email/phone/notes/custom_fields. Pairs with CL-0025 (search notes + custom fields). NOTE: WAL mode, synchronous=NORMAL, 8MB cache, temp_store=MEMORY, busy_timeout, and indexes on all filter/sort/join columns are already in place (db.py + migrations) — the DB is otherwise well-tuned.
+  **Layman:** If the address book ever grows to many thousands of contacts, switch the search to a proper text index so it stays instant.
+  Kind: perf.
+  Source: in-session-2026-07-01.
 
 ## Shipped
