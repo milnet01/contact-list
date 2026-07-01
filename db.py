@@ -47,11 +47,31 @@ def close_db(e: BaseException | None = None) -> None:
 
 def init_db() -> None:
     db = get_db()
+
+    # Track which migration files have been applied so each runs exactly once.
+    # Without this, every *.sql re-ran on every startup and only worked because
+    # each statement was IF NOT EXISTS; a future non-idempotent migration could
+    # not run safely. Existing databases (no schema_version row yet) simply
+    # re-run the current, idempotent migrations once and record them (CL-0008).
+    db.execute(
+        'CREATE TABLE IF NOT EXISTS schema_version ('
+        '    filename    TEXT PRIMARY KEY,'
+        "    applied_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))"
+        ')'
+    )
+    applied = {
+        row['filename'] for row in db.execute('SELECT filename FROM schema_version')
+    }
+
     migrations_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'migrations')
     migration_files = sorted(
         f for f in os.listdir(migrations_dir) if f.endswith('.sql')
     )
     for filename in migration_files:
+        if filename in applied:
+            continue
         log.info('Running migration: %s', filename)
         with open(os.path.join(migrations_dir, filename)) as f:
             db.executescript(f.read())
+        db.execute('INSERT INTO schema_version (filename) VALUES (?)', [filename])
+    db.commit()

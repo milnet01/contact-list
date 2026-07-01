@@ -146,6 +146,78 @@ class TestMidPaginationPreservesPages:
             assert row is not None
 
 
+class TestSchemaVersioning:
+    def test_migrations_recorded(self, app):
+        with app.app_context():
+            conn = get_db()
+            applied = {
+                r['filename']
+                for r in conn.execute('SELECT filename FROM schema_version')
+            }
+        assert '001_initial.sql' in applied
+        assert '002_add_indexes.sql' in applied
+
+    def test_reinit_is_noop(self, app):
+        # Running init_db again must not error or duplicate schema_version rows.
+        import db as db_mod
+        with app.app_context():
+            db_mod.init_db()
+            conn = get_db()
+            count = conn.execute(
+                "SELECT COUNT(*) FROM schema_version WHERE filename = '001_initial.sql'"
+            ).fetchone()[0]
+        assert count == 1
+
+    def test_002_dedups_before_unique_index(self, tmp_path):
+        # Simulate an older database that predates migration 002: it has the
+        # custom_fields table (from 001) with case-variant duplicate field
+        # names and NO unique index. The migration runner must dedup and create
+        # the index without aborting (CL-0008).
+        import sqlite3
+
+        db_path = str(tmp_path / 'legacy.db')
+        seed = sqlite3.connect(db_path)
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(root, 'migrations', '001_initial.sql')) as f:
+            seed.executescript(f.read())
+        seed.execute(
+            "INSERT INTO contacts (type, name) VALUES ('individual', 'Alice')"
+        )
+        cid = seed.execute('SELECT id FROM contacts').fetchone()[0]
+        # Two case-variant duplicates of the same field name.
+        seed.execute(
+            'INSERT INTO custom_fields (contact_id, field_name, field_value) '
+            "VALUES (?, 'Nickname', 'Al')", [cid])
+        seed.execute(
+            'INSERT INTO custom_fields (contact_id, field_name, field_value) '
+            "VALUES (?, 'nickname', 'Ally')", [cid])
+        seed.commit()
+        seed.close()
+
+        # Now run the full app (its init_db) against the seeded legacy DB.
+        app = create_app({
+            'TESTING': True,
+            'DATABASE': db_path,
+            'SECRET_KEY': 'test-secret',
+            'GOOGLE_CREDENTIALS_DIR': str(tmp_path / 'g'),
+            'GOOGLE_CREDENTIALS_FILE': str(tmp_path / 'g' / 'c.json'),
+            'GOOGLE_TOKEN_FILE': str(tmp_path / 'g' / 't.json'),
+        })
+        with app.app_context():
+            conn = get_db()
+            # Exactly one nickname row survived the dedup.
+            n = conn.execute(
+                'SELECT COUNT(*) FROM custom_fields WHERE contact_id = ?', [cid]
+            ).fetchone()[0]
+            assert n == 1
+            # The unique index now exists.
+            idx = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='index' "
+                "AND name='idx_cf_unique'"
+            ).fetchone()
+            assert idx is not None
+
+
 class TestTightenedCSP:
     @pytest.fixture()
     def client(self, app):
