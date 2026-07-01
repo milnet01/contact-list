@@ -78,11 +78,12 @@ efficiency / coding standards every item must comply with.
   Source: in-session-2026-07-01.
   Shipped 2026-07-01. Field-level merge on the Duplicates page (merge_preview/merge_apply), atomic via merge_contacts + _write_contact.
 
-- 📋 [CL-0025] **Extend search to cover notes and custom fields.**
+- ✅ [CL-0025] **Extend search to cover notes and custom fields.**
   _build_contact_query searches name/email/phone only. Add notes to the LIKE clause and a subquery/EXISTS against custom_fields so a value stored in a custom field is findable.
   **Layman:** Make the search box also look inside notes and custom fields, not just name/email/phone.
   Kind: enhancement.
   Source: in-session-2026-07-01.
+  Resolved (2026-07-01): search now covers notes and custom field values via an OR + custom_fields subquery in _build_contact_query. Field values matched, not field names (merge-created "Phone 2"/"Email 2" would otherwise make "phone" match every merged contact). Tests in tests/test_models.py::TestListContacts.
 
 - 📋 [CL-0026] **Support contact photos/avatars.**
   Google People API returns a Google-hosted photo URL per contact. Options: (a) store the remote URL on sync and widen CSP img-src to the Google host, or (b) download to a private dir and serve locally (keeps CSP tight, works offline). Also allow local upload. Design decision -> needs a short spec (cold-eyes) before implementing.

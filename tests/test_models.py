@@ -72,6 +72,39 @@ class TestListContacts:
         assert total == 1
         assert results[0]['name'] == 'Alice Smith'
 
+    def test_search_matches_notes(self, db):
+        # Search should look inside a contact's notes, not just name/email/phone
+        # (CL-0025). "plumber" appears only in the notes here.
+        models.create_contact(db, 'individual', 'Alice Smith', notes='Great plumber')
+        models.create_contact(db, 'individual', 'Bob Jones')
+
+        results, total = models.list_contacts(db, search='plumber')
+        assert total == 1
+        assert results[0]['name'] == 'Alice Smith'
+
+    def test_search_matches_custom_field_value(self, db):
+        # Search should look inside custom field values (CL-0025). "Acme" appears
+        # only in a custom field's value here.
+        models.create_contact(
+            db, 'individual', 'Alice Smith', custom_fields=[('employer', 'Acme Corp')]
+        )
+        models.create_contact(db, 'individual', 'Bob Jones')
+
+        results, total = models.list_contacts(db, search='acme')
+        assert total == 1
+        assert results[0]['name'] == 'Alice Smith'
+
+    def test_search_no_duplicate_rows_across_custom_fields(self, db):
+        # A contact whose search term appears in several custom fields must still
+        # be returned exactly once (CL-0025 — no row fan-out from the join).
+        cid = models.create_contact(
+            db, 'individual', 'Zoe Zed',
+            custom_fields=[('nick', 'Zed'), ('team', 'Zed Squad')],
+        )
+        results, total = models.list_contacts(db, search='zed')
+        assert total == 1
+        assert results[0]['id'] == cid
+
     def test_filter_type(self, db):
         models.create_contact(db, 'individual', 'Alice')
         models.create_contact(db, 'company', 'Acme')

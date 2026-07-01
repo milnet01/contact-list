@@ -25,10 +25,17 @@ def _build_contact_query(
     if search:
         escaped = _escape_like(search)
         term = f'%{escaped}%'
+        # Search the core columns plus notes, and fall through to custom field
+        # values via a subquery (CL-0025). We match field *values*, not field
+        # *names* — merges create fields literally named "Phone 2"/"Email 2",
+        # so matching names would make "phone" hit every merged contact.
         conditions.append(
-            "(name LIKE ? ESCAPE '\\' OR email LIKE ? ESCAPE '\\' OR phone LIKE ? ESCAPE '\\')"
+            "(name LIKE ? ESCAPE '\\' OR email LIKE ? ESCAPE '\\' "
+            "OR phone LIKE ? ESCAPE '\\' OR notes LIKE ? ESCAPE '\\' "
+            "OR id IN (SELECT contact_id FROM custom_fields "
+            "WHERE field_value LIKE ? ESCAPE '\\'))"
         )
-        params.extend([term, term, term])
+        params.extend([term, term, term, term, term])
 
     if contact_type in ('individual', 'company'):
         conditions.append('type = ?')

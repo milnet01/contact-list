@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Search now covers notes and custom field values, not just name/email/phone (CL-0025)**
+  The contact search box now also looks inside each contact's notes and
+  custom field values, so a word that only appears in a note or a custom
+  field will still find the contact. Field values are matched, not field
+  names, so merge-created fields like "Phone 2" don't cause spurious hits.
+
 - **Merge action on the Duplicates page** (CL-0024)
   Select two or more contacts, choose the winning value per field, and
   combine them into one with no data lost.

@@ -7,7 +7,7 @@
     <form method="get" action="{{ url_for('contacts.contact_list') }}" class="search-form" aria-label="Search and filter contacts">
         <div class="input-icon">
             <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd"/></svg>
-            <input type="search" name="q" id="search-input" value="{{ search }}" placeholder="Search contacts..." aria-label="Search">
+            <input type="search" name="q" id="search-input" value="{{ search }}" placeholder="Search name, email, phone, notes, fields..." aria-label="Search">
         </div>
         <select name="type" aria-label="Filter by type">
             <option value="">All types</option>
