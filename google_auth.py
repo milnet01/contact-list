@@ -26,7 +26,13 @@ def main() -> int:
     flow = InstalledAppFlow.from_client_secrets_file(CREDS_FILE, SCOPES)
     creds = flow.run_local_server(port=0, open_browser=True)
 
+    # Lock the config dir to 0700 (defence-in-depth for the token; CL-0011).
+    # Inlined rather than importing config, to keep this auth script standalone.
     os.makedirs(CREDS_DIR, exist_ok=True)
+    try:
+        os.chmod(CREDS_DIR, 0o700)
+    except OSError:
+        pass
     # Create with 0600 from the start so the token is never briefly
     # world-readable between write and chmod.
     fd = os.open(TOKEN_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)

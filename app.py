@@ -157,4 +157,7 @@ def create_app(test_config: dict | None = None) -> Flask:
 
 if __name__ == '__main__':
     app = create_app()
-    app.run(host='localhost', port=app.config['PORT'], debug=False)
+    # Bind the literal loopback address, not 'localhost' — the latter can
+    # resolve to ::1 or, under an unusual /etc/hosts, a broader interface.
+    # Matches the localhost-only contract in DESIGN.md §6.3 (CL-0021).
+    app.run(host='127.0.0.1', port=app.config['PORT'], debug=False)

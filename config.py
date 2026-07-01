@@ -6,6 +6,23 @@ _CONFIG_DIR = os.path.expanduser('~/.config/contact-list')
 _log = logging.getLogger(__name__)
 
 
+def ensure_private_dir(path: str) -> None:
+    """Create ``path`` (and parents) if missing and lock it to 0700.
+
+    ``makedirs``' mode is masked by the umask and never touches an already
+    existing directory, so we ``chmod`` explicitly. This dir holds the Google
+    OAuth token; 0700 keeps it out of reach of other local users (CL-0011).
+    """
+    os.makedirs(path, exist_ok=True)
+    try:
+        os.chmod(path, 0o700)
+    except OSError:
+        # Best-effort — e.g. the dir is owned by another user or on a
+        # filesystem that ignores POSIX modes. The token file itself is still
+        # created 0600, so this is defence-in-depth, not the only guard.
+        _log.warning('Could not tighten permissions on %s to 0700', path)
+
+
 def _load_or_create_secret_key() -> str:
     """Return a stable Flask secret key.
 
@@ -31,7 +48,7 @@ def _load_or_create_secret_key() -> str:
 
     key = secrets.token_hex(32)
     try:
-        os.makedirs(_CONFIG_DIR, exist_ok=True)
+        ensure_private_dir(_CONFIG_DIR)
         fd = os.open(key_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(fd, 'w') as f:
             f.write(key)
