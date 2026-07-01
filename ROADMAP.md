@@ -140,11 +140,12 @@ they reduce duplication and query count.
   Source: in-session-2026-06-30 suggested.
   Resolved (2026-07-01): shared phoneutil.format_phone(raw, region) extracted; duplication in routes/contacts.py and google_sync.py removed.
 
-- 📋 [CL-0017] **Consolidate the contact-list page's aggregate queries.**
+- ✅ [CL-0017] **Consolidate the contact-list page's aggregate queries.**
   contact_list runs count_contacts + list_contacts (which also counts) + get_letter_counts + a type-breakdown query on every load. list_contacts already returns a total that the route discards (recomputes via count_contacts). Reuse it, and fold the type breakdown into fewer round-trips. Minor — SQLite is fast for one user.
   **Layman:** Make the main list page do a little less database work per load.
   Kind: perf.
   Source: in-session-2026-06-30 suggested.
+  Resolved (2026-07-01): contact_list now reuses the total from list_contacts (page-clamp folded into list_contacts) instead of a separate count_contacts call, and the type breakdown moved into a get_type_counts model helper — 5 aggregate queries down to 4 per list load. Letter/type counts left as separate readable queries (UNION micro-opt not worth it on a single-user localhost DB). 101 tests green.
 
 - ✅ [CL-0018] **Extract a custom-field-name validation helper.**
   The field_name validation loop is now duplicated at the top of create_contact and update_contact in models.py. Extract a small _validate_field_names(custom_fields) helper once a third call-site appears (Rule of Three); noted now so it isn't forgotten.

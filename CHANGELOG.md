@@ -22,6 +22,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Contact-list page does one fewer database query per load**
+  The main list page reused the row total it already had instead of counting
+  the same rows twice, and its contact-type tally moved into the data layer
+  alongside the other lookups. Same output, a little less work per page load
+  (CL-0017).
+
 - **Bump phonenumbers pin to >=9.0,<10.0 to match the current major**
   The declared pin (>=8.13,<9.0) lagged the installed/current major
   (9.0.26). The API the app uses (parse, format_number, is_valid_number,

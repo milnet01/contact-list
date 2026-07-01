@@ -21,7 +21,6 @@ from flask import (
 import phoneutil
 from db import get_db
 from models import (
-    count_contacts,
     create_contact,
     delete_contact,
     export_contacts,
@@ -30,6 +29,7 @@ from models import (
     get_contact,
     get_custom_fields,
     get_letter_counts,
+    get_type_counts,
     list_contacts,
     update_contact,
     valid_field_name,
@@ -125,22 +125,16 @@ def contact_list():
     sort = request.args.get('sort') or s['sort']
     sort_dir = request.args.get('dir') or s['sort_dir']
 
-    total = count_contacts(db, search or None, contact_type or None, letter or None)
-    total_pages = max((total + per_page - 1) // per_page, 1)
-    page = min(page, total_pages)
-
-    contacts, _ = list_contacts(
+    contacts, total = list_contacts(
         db, page, per_page, search or None, contact_type or None, letter or None,
         sort=sort, sort_dir=sort_dir,
     )
+    # list_contacts already computed the total and clamped the page internally;
+    # reuse both here instead of issuing a second COUNT (CL-0017).
+    total_pages = max((total + per_page - 1) // per_page, 1)
+    page = min(max(page, 1), total_pages)
     letter_counts = get_letter_counts(db)
-
-    # Type breakdown for stats
-    type_counts = {}
-    for row in db.execute(
-        'SELECT type, COUNT(*) AS cnt FROM contacts GROUP BY type'
-    ).fetchall():
-        type_counts[row['type']] = row['cnt']
+    type_counts = get_type_counts(db)
 
     return render_template(
         'contacts.html',

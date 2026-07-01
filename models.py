@@ -74,6 +74,13 @@ def list_contacts(
     count_query = f'SELECT COUNT(*) FROM ({query})'
     total: int = db.execute(count_query, params).fetchone()[0]
 
+    # Clamp the requested page to the last populated page, so an over-range
+    # ?page= returns the final page's rows rather than an empty result. Folding
+    # this in lets the web route reuse the total we already computed here
+    # instead of issuing a second COUNT (CL-0017).
+    total_pages = max((total + per_page - 1) // per_page, 1)
+    page = min(page, total_pages)
+
     allowed_sorts = {
         'name': 'name COLLATE NOCASE',
         'type': 'type',
@@ -88,6 +95,14 @@ def list_contacts(
 
     contacts = db.execute(query, params).fetchall()
     return contacts, total
+
+
+def get_type_counts(db: sqlite3.Connection) -> dict[str, int]:
+    """Return a dict of contact type -> count for the stats badges."""
+    rows = db.execute(
+        'SELECT type, COUNT(*) AS cnt FROM contacts GROUP BY type'
+    ).fetchall()
+    return {row['type']: row['cnt'] for row in rows}
 
 
 def get_letter_counts(db: sqlite3.Connection) -> dict[str, int]:

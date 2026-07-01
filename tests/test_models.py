@@ -80,6 +80,16 @@ class TestListContacts:
         assert total == 1
         assert results[0]['name'] == 'Acme'
 
+    def test_over_range_page_clamped_to_last(self, db):
+        # An over-range page returns the last populated page's rows (not empty),
+        # so the route can reuse this total instead of a second COUNT (CL-0017).
+        for i in range(10):
+            models.create_contact(db, 'individual', f'Person {i}')
+
+        page99, total = models.list_contacts(db, page=99, per_page=3)
+        assert total == 10
+        assert len(page99) == 1  # last page (4 of 4) holds the 10th contact
+
 
 class TestUpdateContact:
     def test_update_fields(self, db):
@@ -235,6 +245,17 @@ class TestCountContacts:
         models.create_contact(db, 'company', 'Acme')
         assert models.count_contacts(db) == 2
         assert models.count_contacts(db, contact_type='company') == 1
+
+
+class TestTypeCounts:
+    def test_breakdown(self, db):
+        models.create_contact(db, 'individual', 'Alice')
+        models.create_contact(db, 'individual', 'Bob')
+        models.create_contact(db, 'company', 'Acme')
+        assert models.get_type_counts(db) == {'individual': 2, 'company': 1}
+
+    def test_empty(self, db):
+        assert models.get_type_counts(db) == {}
 
 
 class TestEscapeLike:
