@@ -206,6 +206,23 @@ class TestMerge:
             assert models.get_contact(db, a)['phone'] == '555-1'
             assert models.get_contact(db, b) is None
 
+    def test_apply_preserves_non_chosen_phone_as_custom_field(self, client, app):
+        with app.app_context():
+            db = get_db()
+            a = models.create_contact(db, 'individual', 'Zed', None, '111')
+            b = models.create_contact(db, 'individual', 'Zed', None, '222')
+        token = _csrf(client)
+        client.post('/contacts/merge/apply', data={
+            '_csrf_token': token, 'survivor_id': str(a), 'loser_id': [str(b)],
+            'field_type': 'individual', 'field_name': 'Zed',
+            'field_phone': '222', 'cf_count': '0',
+        }, follow_redirects=True)
+        with app.app_context():
+            db = get_db()
+            assert models.get_contact(db, a)['phone'] == '222'   # chosen primary
+            values = {c['field_value'] for c in models.get_custom_fields(db, a)}
+            assert '111' in values   # the non-chosen phone is preserved, not lost
+
     def test_apply_missing_csrf_rejected(self, client, app):
         a, b = self._two_dupes(app)
         resp = client.post('/contacts/merge/apply', data={

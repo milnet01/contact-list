@@ -15,7 +15,9 @@
 <h1>Merge Contacts</h1>
 <p class="toolbar-meta mb-md">
     Merging {{ contacts|length }} contacts. For each field, choose the value to
-    keep. The oldest record is kept and updated; the others are deleted.
+    keep as the main one. The oldest record is kept and updated; the others are
+    deleted. Any email or phone you don't pick is preserved as an extra custom
+    field (e.g. "Phone 2"), so nothing is lost.
 </p>
 
 <form method="post" action="{{ url_for('contacts.merge_apply') }}">

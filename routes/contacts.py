@@ -600,6 +600,30 @@ def merge_apply():
             seen.add(name.lower())
             customs.append((name, value))
 
+    # Preserve non-chosen single-value fields as numbered custom fields so a
+    # merge never silently drops a unique email/phone (matches import's "extras
+    # become custom fields" rule). Gather before merge_contacts deletes losers.
+    involved = [c for c in (get_contact(db, i) for i in [survivor_id, *loser_ids]) if c]
+    used = {n.lower() for n, _ in customs}
+
+    def _preserve_extra(key: str, kind: str, chosen: str | None) -> None:
+        kept = {chosen.strip().lower()} if chosen else set()
+        for c in involved:
+            value = (c[key] or '').strip()
+            if not value or value.lower() in kept:
+                continue
+            kept.add(value.lower())
+            n = 2
+            label = f'{kind} {n}'
+            while label.lower() in used:
+                n += 1
+                label = f'{kind} {n}'
+            used.add(label.lower())
+            customs.append((label, value))
+
+    _preserve_extra('email', 'Email', fields['email'])
+    _preserve_extra('phone', 'Phone', fields['phone'])
+
     try:
         merge_contacts(db, survivor_id, loser_ids, fields, customs)
     except ValueError as exc:
