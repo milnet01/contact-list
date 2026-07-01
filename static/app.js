@@ -503,4 +503,32 @@
             }
         }
     });
+
+    // =================================================================
+    // Sticky filter bar offset + back-to-top button
+    // =================================================================
+    // The filter/search bar (.list-controls) sticks below the sticky header;
+    // publish the header's real height so its `top` matches on every theme /
+    // viewport instead of a hardcoded guess.
+    var pageHeader = document.querySelector('header');
+    function setHeaderHeight() {
+        if (pageHeader) {
+            document.documentElement.style.setProperty(
+                '--header-h', pageHeader.offsetHeight + 'px');
+        }
+    }
+    setHeaderHeight();
+    window.addEventListener('resize', setHeaderHeight);
+
+    var backToTop = document.getElementById('back-to-top');
+    if (backToTop) {
+        var toggleBackToTop = function () {
+            backToTop.hidden = window.pageYOffset < 400;
+        };
+        toggleBackToTop();
+        window.addEventListener('scroll', toggleBackToTop, { passive: true });
+        backToTop.addEventListener('click', function () {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        });
+    }
 })();

@@ -2,6 +2,7 @@
 {% block title %}Contacts{% endblock %}
 
 {% block content %}
+<div class="list-controls">
 <div class="toolbar">
     <form method="get" action="{{ url_for('contacts.contact_list') }}" class="search-form" aria-label="Search and filter contacts">
         <div class="input-icon">
@@ -54,6 +55,7 @@
         <span class="alpha-link disabled">#</span>
     {% endif %}
 </nav>
+</div><!-- /.list-controls -->
 
 <!-- Recently viewed (populated by JS) -->
 <div id="recently-viewed" class="recently-viewed" hidden></div>
