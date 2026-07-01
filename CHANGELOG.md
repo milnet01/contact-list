@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Continuous-integration workflow and shared tool configuration.**
+  A GitHub Actions workflow runs ruff, mypy, and the full test suite on
+  Python 3.12 and 3.13 for every push and pull request, so regressions are
+  caught automatically. A new pyproject.toml centralises the linter,
+  type-checker, and pytest settings so local and CI runs use identical
+  configuration. (CL-0029, CL-0030)
+
 - **Settings page for per-user preferences**
   A new /settings page lets you customise the app and have it remembered
   server-side (in the database) across devices: timezone and date format for

@@ -1,0 +1,35 @@
+# Tool configuration for the Contact List app.
+#
+# This is a self-hosted Flask app launched via ./run.sh, not a distributable
+# package, so there is intentionally no [project] / [build-system] table. This
+# file exists only so linting, type-checking, and test settings are identical
+# between local runs and CI (CL-0030).
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v"
+
+[tool.mypy]
+python_version = "3.12"
+warn_redundant_casts = true
+warn_unused_ignores = true
+files = [
+    "app.py",
+    "config.py",
+    "db.py",
+    "google_auth.py",
+    "google_sync.py",
+    "models.py",
+    "phoneutil.py",
+    "settings.py",
+    "routes",
+]
+
+# The Google client libraries ship no type stubs or py.typed marker.
+[[tool.mypy.overrides]]
+module = ["google_auth_oauthlib.*", "googleapiclient.*"]
+ignore_missing_imports = true

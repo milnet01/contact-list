@@ -283,6 +283,7 @@ def create_contact(
             [contact_type, name, email, phone, notes],
         )
         contact_id = cursor.lastrowid
+        assert contact_id is not None  # lastrowid is always set after an INSERT
         if custom_fields:
             db.executemany(
                 'INSERT INTO custom_fields (contact_id, field_name, field_value) VALUES (?, ?, ?)',

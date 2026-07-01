@@ -188,17 +188,19 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   Source: in-session-2026-07-01.
   Resolved (2026-07-01): Config.SESSION_COOKIE_SAMESITE = 'Lax'. Verified SameSite=Lax on the session Set-Cookie.
 
-- 📋 [CL-0029] **Add a GitHub Actions CI workflow.**
+- ✅ [CL-0029] **Add a GitHub Actions CI workflow.**
   No .github/workflows/ exists. Add a workflow running ruff + mypy + pytest on Python 3.12 and 3.13. Public repo -> free Linux runner minutes; guards the 123-test suite on every push.
   **Layman:** Automatically run the tests and checks every time code is pushed.
   Kind: chore.
   Source: in-session-2026-07-01.
+  Resolved (2026-07-01): added .github/workflows/ci.yml — ruff + mypy + pytest matrix on Python 3.12 and 3.13, runs on push and PR to main. Least-privilege permissions (contents: read), pip cache, actions/checkout@v7 + setup-python@v6.
 
-- 📋 [CL-0030] **Add a pyproject.toml for tool configuration.**
+- ✅ [CL-0030] **Add a pyproject.toml for tool configuration.**
   Tool config (ruff line-length 100, mypy strictness, pytest paths) is implicit/local-cache-only today. Codify it so CI and local runs share identical settings.
   **Layman:** Put the code-style and test settings in one file so they're the same everywhere.
   Kind: chore.
   Source: in-session-2026-07-01.
+  Resolved (2026-07-01): added pyproject.toml centralising ruff (line-length 100, target py312), mypy (py312, scoped stub-ignores for the untyped Google client libs), and pytest (testpaths=tests) config. Verified ruff/mypy/pytest all read config from the file and pass (124 tests green). One latent type bug fixed en route: models.create_contact narrows cursor.lastrowid (int|None) with an assert.
 
 ## Efficiency & Refactoring
 
