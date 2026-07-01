@@ -271,6 +271,60 @@
     }
 
     // =================================================================
+    // Card-view masonry (row-major) + checkerboard
+    // -----------------------------------------------------------------
+    // Deal each card into column (i % columns) so cards read left-to-right
+    // and wrap to the next row, then stack each at its column's running
+    // bottom (via CSS-grid 1px row tracks + a per-card row-span) so columns
+    // still pack tightly. Because each card's (row, column) is known, tint a
+    // true checkerboard that stays consistent at any column count. Degrades
+    // to the plain aligned grid in base.css when JS is absent.
+    // =================================================================
+    var cardMasonryTimer = null;
+
+    function layoutCardMasonry() {
+        if (!document.body.classList.contains('view-card')) return;
+        var form = document.getElementById('bulk-form');
+        var tbody = form && form.querySelector('tbody');
+        if (!tbody) return;
+        var cards = Array.prototype.slice.call(tbody.querySelectorAll('tr'));
+        if (!cards.length) return;
+
+        // Measure natural heights in the plain grid (clear any prior spans
+        // first, so a re-layout on resize re-measures at the new width).
+        tbody.classList.remove('masonry');
+        cards.forEach(function (c) { c.style.gridColumn = ''; c.style.gridRow = ''; });
+        var cs = getComputedStyle(tbody);
+        var columns = cs.gridTemplateColumns.split(' ').length;
+        var gap = parseFloat(cs.rowGap || cs.gap) || 14;
+        var heights = cards.map(function (c) { return c.getBoundingClientRect().height; });
+
+        // Apply row-major masonry + checkerboard tint.
+        tbody.classList.add('masonry');
+        var colEnds = new Array(columns).fill(1);  // 1-based grid row lines
+        cards.forEach(function (card, i) {
+            var col = i % columns;
+            var row = Math.floor(i / columns);
+            var span = Math.ceil(heights[i]) + gap;
+            card.style.gridColumnStart = String(col + 1);
+            card.style.gridRowStart = String(colEnds[col]);
+            card.style.gridRowEnd = String(colEnds[col] + span);
+            colEnds[col] += span;
+            card.classList.toggle('card-alt', (row + col) % 2 === 1);
+        });
+    }
+
+    function scheduleCardMasonry() {
+        clearTimeout(cardMasonryTimer);
+        cardMasonryTimer = setTimeout(layoutCardMasonry, 80);
+    }
+
+    if (document.body.classList.contains('view-card')) {
+        window.addEventListener('resize', scheduleCardMasonry);
+        layoutCardMasonry();
+    }
+
+    // =================================================================
     // Dynamic custom field rows (with drag-and-drop)
     // =================================================================
     var container = document.getElementById('custom-fields');

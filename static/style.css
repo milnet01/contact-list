@@ -990,30 +990,34 @@ body.view-card table {
     border-radius: 0;
     overflow: visible;
 }
-/* Masonry via CSS multi-column: cards flow top-to-bottom then wrap into the
-   next column (phone-book order, which suits the alphabetical list) and pack
-   tightly with no row-alignment gaps. break-inside keeps a card whole. */
+/* Row-major card grid. Base (no JS) is a plain aligned grid: cards flow
+   left-to-right and wrap to the next row, with equal-height rows. app.js
+   upgrades this to row-major masonry by adding .masonry (switching to 1px row
+   tracks) and setting each card's grid-row span from its measured height, so
+   columns pack tightly while still reading left-to-right. Because each card's
+   (row, column) is then known, JS also tints a consistent checkerboard. */
 body.view-card tbody {
-    column-width: 240px;
-    column-gap: 0.85rem;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 0.85rem;
+    align-items: start;
+}
+body.view-card tbody.masonry {
+    grid-auto-rows: 1px;   /* fine row tracks; JS sizes each card via row-span */
+    row-gap: 0;            /* vertical spacing is folded into each card's span */
 }
 body.view-card tbody tr {
-    display: block;
-    width: 100%;
-    margin: 0 0 0.85rem;
-    break-inside: avoid;
-    -webkit-column-break-inside: avoid;
     background: var(--surface);
-    /* A crisp full border (not the faint border-light) gives every card the
-       same clear outline. Per-card colour alternation can't stay consistent
-       under height-balanced masonry — the light/dark boundary drifts between
-       columns — so the outline does the differentiating instead. */
     border: 1px solid var(--border);
     border-left: 3px solid transparent;
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow);
     padding: 1rem;
 }
+body.view-card tbody.masonry tr { align-self: start; }
+/* Consistent checkerboard: JS adds .card-alt to every other logical cell
+   (parity = (row + column) % 2), which stays correct at any column count. */
+body.view-card tbody tr.card-alt { background: var(--surface-hover); }
 body.view-card tbody tr:hover {
     border-left-color: var(--primary);
     box-shadow: var(--shadow-md);
