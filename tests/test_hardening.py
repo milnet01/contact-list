@@ -146,6 +146,42 @@ class TestMidPaginationPreservesPages:
             assert row is not None
 
 
+class TestTightenedCSP:
+    @pytest.fixture()
+    def client(self, app):
+        return app.test_client()
+
+    def test_style_src_has_no_unsafe_inline(self, client):
+        resp = client.get('/contacts')
+        csp = resp.headers.get('Content-Security-Policy', '')
+        assert "style-src 'self'" in csp
+        assert 'unsafe-inline' not in csp
+
+    def test_pages_render_without_inline_styles(self, client):
+        # Every page that used to carry inline style= attributes must still
+        # render 200 and contain no `style="` attribute in the output.
+        client.post('/contacts', data={
+            '_csrf_token': _csrf(client),
+            'type': 'individual', 'name': 'Zoe', 'phone': '+1 202-555-0111',
+        })
+        # a second Zoe to make the duplicates page show a group
+        client.post('/contacts', data={
+            '_csrf_token': _csrf(client),
+            'type': 'individual', 'name': 'Zoe',
+        })
+        for path in ('/contacts', '/contacts/new', '/contacts/duplicates',
+                     '/sync', '/settings'):
+            resp = client.get(path)
+            assert resp.status_code == 200, f'{path} -> {resp.status_code}'
+            assert b'style="' not in resp.data, f'{path} still has an inline style'
+
+
+def _csrf(client) -> str:
+    client.get('/contacts/new')
+    with client.session_transaction() as sess:
+        return sess.get('_csrf_token', '')
+
+
 class TestEnsurePrivateDir:
     def test_creates_dir_0700(self, tmp_path):
         import config

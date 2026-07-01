@@ -182,7 +182,7 @@ These are **mandatory** for all current and future code.
 - **Dependency pinning.** All versions pinned in `requirements.txt`. Audit with `pip-audit` before releases.
 - **Error pages** must not leak stack traces, file paths, or SQL. Use Flask `errorhandler` decorators.
 - **HTTPS only** if ever deployed beyond localhost. v1 runs on `127.0.0.1` only.
-- **Content-Security-Policy** header: `default-src 'self'; style-src 'self' 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'`.
+- **Content-Security-Policy** header: `default-src 'self'; style-src 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'`. Inline `style=` attributes were moved into the stylesheet so `style-src` no longer needs `'unsafe-inline'` (CL-0012).
 
 ---
 

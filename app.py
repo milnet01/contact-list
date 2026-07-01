@@ -108,7 +108,7 @@ def create_app(test_config: dict | None = None) -> Flask:
     def _security_headers(response):
         csp = (
             "default-src 'self'; "
-            "style-src 'self' 'unsafe-inline'; "
+            "style-src 'self'; "
             "form-action 'self'; "
             "frame-ancestors 'none'; "
             "object-src 'none'; "

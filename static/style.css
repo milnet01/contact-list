@@ -999,3 +999,16 @@ body.view-card td::before {
 }
 body.view-card .td-check, body.view-card .td-icon { display: inline-block; }
 body.view-card .td-check::before, body.view-card .td-icon::before { display: none; }
+
+/* ---- Utility classes ----
+   These replace the inline style= attributes that used to live in the
+   templates, so the CSP can drop style-src 'unsafe-inline' (CL-0012). */
+.nav-actions { display: flex; align-items: center; gap: 0.5rem; }
+.mt-sm { margin-top: 0.5rem; }
+.mt-md { margin-top: 0.75rem; }
+.mt-lg { margin-top: 2rem; }
+.mr-sm { margin-right: 0.5rem; }
+.mb-md { margin-bottom: 1rem; }
+.icon-inline { width: 1rem; height: 1rem; vertical-align: -2px; }
+.icon-inline-sm { width: 0.85rem; height: 0.85rem; vertical-align: -2px; }
+.icon-muted { opacity: 0.5; }
