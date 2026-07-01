@@ -990,12 +990,12 @@ body.view-card table {
     border-radius: 0;
     overflow: visible;
 }
-/* Row-major card grid. Base (no JS) is a plain aligned grid: cards flow
-   left-to-right and wrap to the next row, with equal-height rows. app.js
-   upgrades this to row-major masonry by adding .masonry (switching to 1px row
-   tracks) and setting each card's grid-row span from its measured height, so
-   columns pack tightly while still reading left-to-right. Because each card's
-   (row, column) is then known, JS also tints a consistent checkerboard. */
+/* Card view. Base (no JS) is a plain aligned grid: cards flow left-to-right
+   and wrap to the next row. app.js upgrades this to row-major masonry by
+   adding .masonry and absolutely positioning each card (it computes the
+   column width, measures each card's height, and stacks it at its column's
+   running bottom) — cards read left-to-right but still pack tightly. Because
+   each card's (row, column) is then known, JS tints a consistent checkerboard. */
 body.view-card tbody {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
@@ -1003,8 +1003,8 @@ body.view-card tbody {
     align-items: start;
 }
 body.view-card tbody.masonry {
-    grid-auto-rows: 1px;   /* fine row tracks; JS sizes each card via row-span */
-    row-gap: 0;            /* vertical spacing is folded into each card's span */
+    display: block;
+    position: relative;   /* positioning context for the absolute cards */
 }
 body.view-card tbody tr {
     background: var(--surface);
@@ -1014,7 +1014,12 @@ body.view-card tbody tr {
     box-shadow: var(--shadow);
     padding: 1rem;
 }
-body.view-card tbody.masonry tr { align-self: start; }
+body.view-card tbody.masonry tr {
+    position: absolute;
+    top: 0;
+    left: 0;
+    box-sizing: border-box;   /* width set by JS is the outer width */
+}
 /* Consistent checkerboard: JS adds .card-alt to every other logical cell
    (parity = (row + column) % 2), which stays correct at any column count. */
 body.view-card tbody tr.card-alt { background: var(--surface-hover); }

@@ -282,6 +282,9 @@
     // =================================================================
     var cardMasonryTimer = null;
 
+    var CARD_GAP = 14;    // px, ~0.85rem — matches the grid gap in style.css
+    var CARD_MIN = 240;   // px, min card width — matches the grid minmax()
+
     function layoutCardMasonry() {
         if (!document.body.classList.contains('view-card')) return;
         var form = document.getElementById('bulk-form');
@@ -290,28 +293,39 @@
         var cards = Array.prototype.slice.call(tbody.querySelectorAll('tr'));
         if (!cards.length) return;
 
-        // Measure natural heights in the plain grid (clear any prior spans
-        // first, so a re-layout on resize re-measures at the new width).
+        // Drop to natural flow to read the container's true content width.
         tbody.classList.remove('masonry');
-        cards.forEach(function (c) { c.style.gridColumn = ''; c.style.gridRow = ''; });
-        var cs = getComputedStyle(tbody);
-        var columns = cs.gridTemplateColumns.split(' ').length;
-        var gap = parseFloat(cs.rowGap || cs.gap) || 14;
-        var heights = cards.map(function (c) { return c.getBoundingClientRect().height; });
+        cards.forEach(function (c) {
+            c.style.left = c.style.top = c.style.width = '';
+        });
+        tbody.style.height = '';
 
-        // Apply row-major masonry + checkerboard tint.
+        var width = tbody.getBoundingClientRect().width;
+        if (!width) return;
+        var columns = Math.max(1, Math.floor((width + CARD_GAP) / (CARD_MIN + CARD_GAP)));
+        var colWidth = (width - (columns - 1) * CARD_GAP) / columns;
+
+        // Fix each card to its column width first, so height is measured with
+        // the final text-wrap width before we read it back.
         tbody.classList.add('masonry');
-        var colEnds = new Array(columns).fill(1);  // 1-based grid row lines
+        cards.forEach(function (c) { c.style.width = colWidth + 'px'; });
+
+        // Deal cards left-to-right (col = i % columns), stacking each at its
+        // column's running bottom. (row + col) parity gives a consistent
+        // checkerboard that holds at any column count.
+        var colY = new Array(columns).fill(0);
         cards.forEach(function (card, i) {
             var col = i % columns;
             var row = Math.floor(i / columns);
-            var span = Math.ceil(heights[i]) + gap;
-            card.style.gridColumnStart = String(col + 1);
-            card.style.gridRowStart = String(colEnds[col]);
-            card.style.gridRowEnd = String(colEnds[col] + span);
-            colEnds[col] += span;
+            var h = card.getBoundingClientRect().height;
+            card.style.left = (col * (colWidth + CARD_GAP)) + 'px';
+            card.style.top = colY[col] + 'px';
+            colY[col] += h + CARD_GAP;
             card.classList.toggle('card-alt', (row + col) % 2 === 1);
         });
+        // Absolute cards don't contribute height; size the container so the
+        // page and footer flow below the tallest column.
+        tbody.style.height = (Math.max.apply(null, colY) - CARD_GAP) + 'px';
     }
 
     function scheduleCardMasonry() {
