@@ -1070,6 +1070,15 @@ body.view-card .td-check::before, body.view-card .td-icon::before { display: non
     color: var(--text-muted);
 }
 .settings-form fieldset label:last-child { margin-bottom: 0; }
+
+/* Merge screen: each candidate value on its own line, radio aligned to text. */
+.merge-option {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.4rem 0;
+}
+.merge-option input[type="radio"] { flex: none; }
 .settings-form select,
 .settings-form input[type="number"] {
     display: block;
