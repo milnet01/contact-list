@@ -234,7 +234,9 @@ def create():
         ), 400
 
     db = get_db()
-    for warning in find_duplicates(db, fields['name'], fields['phone']):
+    for warning in find_duplicates(
+        db, fields['name'], fields['phone'], g.settings['phone_region']
+    ):
         flash(f'Note: {warning}', 'error')
 
     contact_id = create_contact(

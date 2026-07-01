@@ -3,6 +3,8 @@ from __future__ import annotations
 import re
 import sqlite3
 
+import phoneutil
+
 
 def _escape_like(term: str) -> str:
     """Escape special LIKE characters."""
@@ -31,11 +33,12 @@ def _build_contact_query(
         conditions.append('type = ?')
         params.append(contact_type)
 
-    if letter and len(letter) == 1 and letter.isascii() and letter.isalpha():
-        conditions.append("UPPER(SUBSTR(name, 1, 1)) = ?")
+    if letter == '#':
+        conditions.append('first_letter(name) = ?')
+        params.append('#')
+    elif letter and len(letter) == 1 and letter.isascii() and letter.isalpha():
+        conditions.append('first_letter(name) = ?')
         params.append(letter.upper())
-    elif letter == '#':
-        conditions.append("SUBSTR(name, 1, 1) NOT GLOB '[A-Za-z]*'")
 
     if conditions:
         query += ' WHERE ' + ' AND '.join(conditions)
@@ -106,26 +109,17 @@ def get_type_counts(db: sqlite3.Connection) -> dict[str, int]:
 
 
 def get_letter_counts(db: sqlite3.Connection) -> dict[str, int]:
-    """Return a dict of first-letter -> count for the alpha nav bar."""
+    """Return a dict of first-letter -> count for the alpha nav bar.
+
+    Uses the SQLite first_letter() function (registered in db.py) so accented
+    initials fold onto their base letter ('Élodie' -> 'E') and the buckets
+    match the letter filter's grouping exactly (CL-0014).
+    """
     rows = db.execute(
-        "SELECT UPPER(SUBSTR(name, 1, 1)) AS letter, COUNT(*) AS cnt "
-        "FROM contacts GROUP BY letter ORDER BY letter"
+        'SELECT first_letter(name) AS letter, COUNT(*) AS cnt '
+        'FROM contacts GROUP BY letter'
     ).fetchall()
-    counts: dict[str, int] = {}
-    other = 0
-    for row in rows:
-        ltr = row['letter']
-        # Only ASCII A-Z get their own bucket; SQLite's UPPER() (used by the
-        # letter filter) folds only ASCII, so non-ASCII initials must fall into
-        # the '#' bucket here too or the count and the filter would disagree
-        # (bucket shows a count but clicking it returns nothing).
-        if ltr and ltr.isascii() and ltr.isalpha():
-            counts[ltr] = row['cnt']
-        else:
-            other += row['cnt']
-    if other:
-        counts['#'] = other
-    return counts
+    return {row['letter']: row['cnt'] for row in rows}
 
 
 def export_contacts(db: sqlite3.Connection) -> list[sqlite3.Row]:
@@ -140,6 +134,7 @@ def find_duplicates(
     db: sqlite3.Connection,
     name: str,
     phone: str | None = None,
+    region: str = 'ZA',
     exclude_id: int | None = None,
 ) -> list[str]:
     """Find duplicate contacts by name or phone. Returns list of warning messages."""
@@ -155,13 +150,29 @@ def find_duplicates(
         warnings.append(f'A contact named "{name}" already exists.')
 
     if phone:
-        rows = db.execute(
-            f'SELECT id, name FROM contacts WHERE phone = ? {id_filter}',
-            [phone, *base_params],
-        ).fetchall()
-        if rows:
-            existing = rows[0]['name']
-            warnings.append(f'Phone number already used by "{existing}".')
+        # Compare on the normalized E.164 form so the same number typed
+        # differently ('+1 202-555-0123' vs '2025550123') is still caught
+        # (CL-0013). SQLite has no phone-normalization function, so scan the
+        # (few, single-user) phone-bearing rows and compare in Python. Fall
+        # back to exact string match when a value can't be parsed.
+        target = phoneutil.normalize_e164(phone, region)
+        if target is not None:
+            candidates = db.execute(
+                f'SELECT name, phone FROM contacts '
+                f'WHERE phone IS NOT NULL {id_filter}',
+                base_params,
+            ).fetchall()
+            for c in candidates:
+                if phoneutil.normalize_e164(c['phone'], region) == target:
+                    warnings.append(f'Phone number already used by "{c["name"]}".')
+                    break
+        else:
+            rows = db.execute(
+                f'SELECT id, name FROM contacts WHERE phone = ? {id_filter}',
+                [phone, *base_params],
+            ).fetchall()
+            if rows:
+                warnings.append(f'Phone number already used by "{rows[0]["name"]}".')
 
     return warnings
 
@@ -248,6 +259,16 @@ def _validate_custom_field_names(custom_fields: list[tuple[str, str]] | None) ->
         seen.add(key)
 
 
+VALID_CONTACT_TYPES = ('individual', 'company')
+
+
+def _validate_contact_type(contact_type: str) -> None:
+    """Fail fast on a bad type with a clear error, rather than letting the SQL
+    CHECK constraint surface as a raw IntegrityError 500 (CL-0015)."""
+    if contact_type not in VALID_CONTACT_TYPES:
+        raise ValueError(f'Invalid contact type: {contact_type!r}')
+
+
 def create_contact(
     db: sqlite3.Connection,
     contact_type: str,
@@ -257,6 +278,7 @@ def create_contact(
     notes: str | None = None,
     custom_fields: list[tuple[str, str]] | None = None,
 ) -> int:
+    _validate_contact_type(contact_type)
     _validate_custom_field_names(custom_fields)
 
     # `with db` commits on success and rolls back on any error, so a failed
@@ -287,7 +309,8 @@ def update_contact(
     custom_fields: list[tuple[str, str]] | None = None,
 ) -> None:
     # Validate before any mutation — update deletes the old custom fields below,
-    # so a bad/duplicate name must fail before that delete, not after.
+    # so a bad type or bad/duplicate name must fail before that delete.
+    _validate_contact_type(contact_type)
     _validate_custom_field_names(custom_fields)
 
     # `with db` makes the UPDATE + DELETE + re-insert atomic: if the re-insert

@@ -1,16 +1,35 @@
 import logging
 import os
 import sqlite3
+import unicodedata
 
 from flask import current_app, g
 
 log = logging.getLogger(__name__)
 
 
+def _first_letter(name: str | None) -> str:
+    """Folded, uppercase first letter for the alpha nav.
+
+    Strips accents so 'Élodie' buckets under 'E'; anything whose folded initial
+    isn't an ASCII A–Z (digits, symbols, non-Latin scripts) buckets under '#'.
+    Registered as a SQLite function so get_letter_counts (the counts) and the
+    letter filter (the query) fold identically (CL-0014).
+    """
+    if not name:
+        return '#'
+    ch = name.strip()[:1]
+    if not ch:
+        return '#'
+    base = unicodedata.normalize('NFD', ch)[0].upper()
+    return base if base.isascii() and base.isalpha() else '#'
+
+
 def get_db() -> sqlite3.Connection:
     if 'db' not in g:
         g.db = sqlite3.connect(current_app.config['DATABASE'])
         g.db.row_factory = sqlite3.Row
+        g.db.create_function('first_letter', 1, _first_letter, deterministic=True)
         g.db.execute('PRAGMA journal_mode=WAL')
         g.db.execute('PRAGMA foreign_keys=ON')
         g.db.execute('PRAGMA synchronous=NORMAL')

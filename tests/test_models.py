@@ -247,6 +247,63 @@ class TestCountContacts:
         assert models.count_contacts(db, contact_type='company') == 1
 
 
+class TestContactTypeGuard:
+    def test_create_rejects_bad_type(self, db):
+        import pytest
+        with pytest.raises(ValueError, match='Invalid contact type'):
+            models.create_contact(db, 'alien', 'Bad')
+
+    def test_update_rejects_bad_type(self, db):
+        import pytest
+        cid = models.create_contact(db, 'individual', 'Alice')
+        with pytest.raises(ValueError, match='Invalid contact type'):
+            models.update_contact(db, cid, 'alien', 'Alice')
+
+    def test_valid_types_accepted(self, db):
+        assert models.create_contact(db, 'individual', 'Alice') is not None
+        assert models.create_contact(db, 'company', 'Acme') is not None
+
+
+class TestPhoneNormalizedDuplicates:
+    def test_same_number_different_format_flagged(self, db):
+        models.create_contact(db, 'individual', 'Alice', phone='+1 202-555-0123')
+        # A differently-typed form of the same US number.
+        warnings = models.find_duplicates(db, 'Bob', '2025550123', region='US')
+        assert any('already used by "Alice"' in w for w in warnings)
+
+    def test_different_number_not_flagged(self, db):
+        models.create_contact(db, 'individual', 'Alice', phone='+1 202-555-0123')
+        warnings = models.find_duplicates(db, 'Bob', '+1 202-555-9999', region='US')
+        assert not any('already used' in w for w in warnings)
+
+    def test_unparseable_phone_falls_back_to_exact(self, db):
+        models.create_contact(db, 'individual', 'Alice', phone='ext-12345')
+        warnings = models.find_duplicates(db, 'Bob', 'ext-12345', region='US')
+        assert any('already used by "Alice"' in w for w in warnings)
+
+
+class TestAccentFoldedNav:
+    def test_accented_initial_buckets_under_base_letter(self, db):
+        models.create_contact(db, 'individual', 'Élodie')
+        models.create_contact(db, 'individual', 'Eric')
+        counts = models.get_letter_counts(db)
+        assert counts.get('E') == 2  # both fold to 'E'
+        assert '#' not in counts
+
+    def test_letter_filter_matches_accented(self, db):
+        models.create_contact(db, 'individual', 'Élodie')
+        results, total = models.list_contacts(db, letter='E')
+        assert total == 1
+        assert results[0]['name'] == 'Élodie'
+
+    def test_non_latin_buckets_under_hash(self, db):
+        models.create_contact(db, 'individual', '你好')
+        counts = models.get_letter_counts(db)
+        assert counts.get('#') == 1
+        results, total = models.list_contacts(db, letter='#')
+        assert total == 1
+
+
 class TestTypeCounts:
     def test_breakdown(self, db):
         models.create_contact(db, 'individual', 'Alice')
@@ -314,13 +371,17 @@ class TestUpdateAtomicity:
 
 
 class TestLetterBucketConsistency:
-    def test_non_ascii_initial_is_consistent(self, db):
-        models.create_contact(db, 'individual', 'Élodie')
+    def test_bucket_and_filter_agree(self, db):
+        # Whatever bucket get_letter_counts reports a name under, clicking that
+        # letter must return it. Accented initials fold to their base letter
+        # ('Élodie' -> 'E', CL-0014); non-Latin initials fall under '#'.
+        models.create_contact(db, 'individual', 'Élodie')  # -> 'E'
+        models.create_contact(db, 'individual', '你好')      # -> '#'
         counts = models.get_letter_counts(db)
-        # Counted under '#', not a non-ASCII letter bucket...
-        assert counts.get('#', 0) == 1
+        assert counts.get('E') == 1
+        assert counts.get('#') == 1
         assert 'É' not in counts and 'é' not in counts
-        # ...and the '#' filter actually returns it (count and filter agree).
-        results, total = models.list_contacts(db, letter='#')
-        assert total == 1
-        assert results[0]['name'] == 'Élodie'
+        # count and filter agree for every bucket
+        for bucket, cnt in counts.items():
+            _, total = models.list_contacts(db, letter=bucket)
+            assert total == cnt, f'bucket {bucket!r}: count {cnt} != filter {total}'
