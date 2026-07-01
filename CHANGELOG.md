@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Cache the nav-badge contact count per request; the unfiltered contact-list page no longer runs a second `COUNT(*)`.** (CL-0031)
+
 - **Card view now uses masonry packing (CSS multi-column) with a two-tone alternation so adjacent cards are easier to tell apart.**
 
 - **Card view now flows multiple contacts per row as a responsive grid, instead of one full-width card per row.**
@@ -60,6 +62,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Duplicates scan page now normalizes phone numbers to E.164 before comparing, so the same number typed differently is caught — matching the add-contact warning.** (CL-0027)
+
 - **Recently-viewed widget builds DOM nodes via createElement/textContent instead of innerHTML, removing an XSS surface from contact names.**
 
 - **Alpha index: bucket non-ASCII initials consistently so a letter's count always matches its filtered results.**
@@ -73,6 +77,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Google sync: isolate each contact in its own SAVEPOINT so one malformed record no longer aborts or rolls back the whole import.**
 
 ### Security
+
+- **Set `SESSION_COOKIE_SAMESITE = 'Lax'` as browser-enforced defence-in-depth on top of the CSRF token.** (CL-0028)
 
 - **Tightened local security hardening**
   Locked the Google-credentials folder to 0700, bound the dev server to the literal 127.0.0.1, and removed 'unsafe-inline' from the page security policy's style-src (inline styles moved into the stylesheet). CL-0011, CL-0021, CL-0012.

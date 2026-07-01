@@ -168,6 +168,7 @@ def find_duplicates(
 
 def find_all_duplicates(
     db: sqlite3.Connection,
+    region: str = 'ZA',
 ) -> dict[str, list[list[sqlite3.Row]]]:
     """Scan all contacts for duplicates by name, email, and phone.
 
@@ -203,18 +204,21 @@ def find_all_duplicates(
         ).fetchall()
         result['email'].append(contacts)
 
-    # Duplicate phones (exact match, skip NULLs)
-    phone_groups = db.execute(
-        "SELECT phone FROM contacts WHERE phone IS NOT NULL AND phone != '' "
-        "GROUP BY phone HAVING COUNT(*) > 1"
+    # Duplicate phones: bucket by the normalized E.164 form so the same number
+    # typed differently ('+27 11 555 0001' vs '0115550001') groups together,
+    # matching the on-create warning (find_duplicates, CL-0013/CL-0027). SQLite
+    # has no phone-normalization function, so bucket the (few, single-user)
+    # phone-bearing rows in Python; a value that can't be parsed falls back to
+    # its exact string. Rows are pre-ordered by name so each group stays sorted.
+    phone_rows = db.execute(
+        "SELECT id, type, name, email, phone FROM contacts "
+        "WHERE phone IS NOT NULL AND phone != '' ORDER BY name COLLATE NOCASE"
     ).fetchall()
-    for row in phone_groups:
-        contacts = db.execute(
-            "SELECT id, type, name, email, phone FROM contacts "
-            "WHERE phone = ? ORDER BY name COLLATE NOCASE",
-            [row['phone']],
-        ).fetchall()
-        result['phone'].append(contacts)
+    phone_buckets: dict[str, list[sqlite3.Row]] = {}
+    for row in phone_rows:
+        key = phoneutil.normalize_e164(row['phone'], region) or row['phone']
+        phone_buckets.setdefault(key, []).append(row)
+    result['phone'] = [group for group in phone_buckets.values() if len(group) > 1]
 
     return result
 

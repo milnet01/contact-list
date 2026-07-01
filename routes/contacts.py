@@ -132,6 +132,10 @@ def contact_list():
     # list_contacts already computed the total and clamped the page internally;
     # reuse both here instead of issuing a second COUNT (CL-0017).
     total_pages = max((total + per_page - 1) // per_page, 1)
+    # When the list is unfiltered, `total` is the full contact count — seed the
+    # nav-badge cache so the context processor skips its own COUNT (CL-0031).
+    if not (search or contact_type or letter):
+        g.contact_count = total
     page = min(max(page, 1), total_pages)
     letter_counts = get_letter_counts(db)
     type_counts = get_type_counts(db)
@@ -179,7 +183,7 @@ def export():
 def duplicates():
     """Scan all contacts and show duplicate names, emails, and phone numbers."""
     db = get_db()
-    dupes = find_all_duplicates(db)
+    dupes = find_all_duplicates(db, g.settings['phone_region'])
     total = sum(len(groups) for groups in dupes.values())
     return render_template('duplicates.html', dupes=dupes, total=total)
 

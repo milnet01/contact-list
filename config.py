@@ -79,3 +79,8 @@ class Config:
     PORT = int(os.environ.get('CONTACT_LIST_PORT', 5002))
     CONTACTS_PER_PAGE = 50
     MAX_CONTACTS_PER_PAGE = 200
+    # Browser-enforced defence-in-depth on top of the signed CSRF token: the
+    # session cookie is not sent on cross-site form POSTs. 'Lax' (not 'Strict')
+    # so following a normal link into the app still carries the session
+    # (CL-0028). No downside on this same-origin localhost app.
+    SESSION_COOKIE_SAMESITE = 'Lax'

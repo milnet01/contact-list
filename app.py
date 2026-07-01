@@ -67,19 +67,31 @@ def create_app(test_config: dict | None = None) -> Flask:
             if not token or not expected or not hmac.compare_digest(token, expected):
                 abort(403)
 
+    def contact_count() -> int:
+        """Total contacts for the nav badge, cached on ``g`` for the request.
+
+        The badge renders on every page (base.html), so the count is needed
+        widely — but the contacts-list route already computes the same total.
+        Caching it on ``g`` lets that route pre-seed the value and skip the
+        second COUNT, and dedups the query if several templates render in one
+        request (CL-0031)."""
+        count = getattr(g, 'contact_count', None)
+        if count is None:
+            from db import get_db
+            try:
+                count = get_db().execute('SELECT COUNT(*) FROM contacts').fetchone()[0]
+            except Exception:
+                count = 0
+            g.contact_count = count
+        return count
+
     @app.context_processor
     def _inject_globals() -> dict:
-        from db import get_db
-        try:
-            db = get_db()
-            total = db.execute('SELECT COUNT(*) FROM contacts').fetchone()[0]
-        except Exception:
-            total = 0
         import settings as settings_mod
         return {
             'csrf_token': csrf_token,
             'active_nav': request.path,
-            'contact_count': total,
+            'contact_count': contact_count(),
             'settings': getattr(g, 'settings', None) or settings_mod.SETTINGS_DEFAULTS,
         }
 

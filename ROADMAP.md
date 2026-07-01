@@ -174,17 +174,19 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   Source: indie-review-2026-06-30 loop3.
   Resolved (2026-07-01): dev server binds literal 127.0.0.1 instead of 'localhost'.
 
-- 📋 [CL-0027] **Normalize phone numbers on the duplicates scan page.**
+- ✅ [CL-0027] **Normalize phone numbers on the duplicates scan page.**
   find_all_duplicates() groups phones by exact string match, while find_duplicates() normalizes to E.164 (CL-0013). So the scan page and the on-create warning disagree. Group by phoneutil.normalize_e164(phone, region) so both use the same comparison.
   **Layman:** The duplicates page misses phone numbers that are the same but typed differently — make it catch them like the add-contact warning already does.
   Kind: fix.
   Source: in-session-2026-07-01.
+  Resolved (2026-07-01): find_all_duplicates now buckets phones by phoneutil.normalize_e164(phone, region); route passes g.settings['phone_region']. New test test_duplicate_phones_normalized. Scan page now agrees with the on-create warning.
 
-- 📋 [CL-0028] **Set SESSION_COOKIE_SAMESITE = 'Lax'.**
+- ✅ [CL-0028] **Set SESSION_COOKIE_SAMESITE = 'Lax'.**
   Not set in config.py (Flask defaults it to None). Defense-in-depth under the existing CSRF token; no downside on a same-origin localhost app. One line in Config.
   **Layman:** Add a second, browser-enforced guard against cross-site form submissions.
   Kind: security.
   Source: in-session-2026-07-01.
+  Resolved (2026-07-01): Config.SESSION_COOKIE_SAMESITE = 'Lax'. Verified SameSite=Lax on the session Set-Cookie.
 
 - 📋 [CL-0029] **Add a GitHub Actions CI workflow.**
   No .github/workflows/ exists. Add a workflow running ruff + mypy + pytest on Python 3.12 and 3.13. Public repo -> free Linux runner minutes; guards the 123-test suite on every push.
@@ -225,11 +227,12 @@ they reduce duplication and query count.
   Source: in-session-2026-06-30 suggested.
   Resolved (2026-06-30): extracted _validate_custom_field_names() in models.py during the audit fix-pass; it validates format and rejects case-insensitive duplicates, called by both create_contact and update_contact.
 
-- 📋 [CL-0031] **Avoid the per-request COUNT(*) for the nav badge.**
+- ✅ [CL-0031] **Avoid the per-request COUNT(*) for the nav badge.**
   _inject_globals runs SELECT COUNT(*) FROM contacts on every request, including error pages. The contact-list route already computes total; compute the badge count only where it is shown, or cache it per request.
   **Layman:** Stop recounting every contact on every page load just to fill in the little number badge.
   Kind: perf.
   Source: in-session-2026-07-01.
+  Resolved (2026-07-01): nav-badge count cached on g via contact_count(); unfiltered list route pre-seeds g.contact_count = total, so the list page no longer issues a second COUNT(*). Badge still shows the full count on filtered pages.
 
 - 💭 [CL-0032] **Consider SQLite FTS5 for full-text search if the contact count grows large.**
   Search uses LIKE '%term%' (leading wildcard), which cannot use any index and always full-scans; the idx_contacts_email/phone indexes only help exact-match/dedup paths, not substring search. At the current single-user scale (~330 rows) this is sub-millisecond, so this is deferred. If N reaches the thousands, add an FTS5 virtual table (contentless, synced via triggers) over name/email/phone/notes/custom_fields. Pairs with CL-0025 (search notes + custom fields). NOTE: WAL mode, synchronous=NORMAL, 8MB cache, temp_store=MEMORY, busy_timeout, and indexes on all filter/sort/join columns are already in place (db.py + migrations) — the DB is otherwise well-tuned.

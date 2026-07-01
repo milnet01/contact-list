@@ -227,6 +227,15 @@ class TestFindAllDuplicates:
         assert dupes['email'] == []
         assert dupes['phone'] == []
 
+    def test_duplicate_phones_normalized(self, db):
+        # Same ZA number typed two different ways must land in one group, the
+        # same way the on-create warning normalizes (find_duplicates) — CL-0027.
+        models.create_contact(db, 'individual', 'Alice', phone='+27 11 555 0001')
+        models.create_contact(db, 'individual', 'Bob', phone='0115550001')
+        dupes = models.find_all_duplicates(db, region='ZA')
+        assert len(dupes['phone']) == 1
+        assert len(dupes['phone'][0]) == 2
+
 
 class TestExportContacts:
     def test_export(self, db):
