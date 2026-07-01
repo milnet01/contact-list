@@ -340,7 +340,7 @@ All routes are server-rendered HTML. No REST/JSON API in v1 (add in v2 if needed
 | Version | Scope |
 |---------|-------|
 | **v1.0** | Local CRUD, custom fields, Google import, search, pagination |
-| v1.1 | vCard import/export |
+| v1.1 | CSV import, vCard import/export, merge duplicates |
 | v2.0 | Bidirectional Google sync, REST JSON API |
 | v2.1 | Contact groups/tags |
 | v3.0 | CardDAV server (sync with phone contacts apps) |
@@ -351,12 +351,17 @@ All routes are server-rendered HTML. No REST/JSON API in v1 (add in v2 if needed
 
 | Component | Max Size |
 |-----------|----------|
-| Python source (all `.py`) | < 50 KB total |
+| Python source — shipped app `.py` (excludes `tests/`) | < 80 KB total (soft) |
 | CSS | < 15 KB |
 | JavaScript | < 10 KB |
 | HTML templates (all) | < 30 KB total |
 | SQLite DB (empty) | < 20 KB |
 | Total pip install | < 20 MB |
+
+The Python-source figure is a **soft target** — guidance, not a hard gate — and
+counts shipped application modules only, not `tests/`. It was raised from the
+original < 50 KB when import/export/merge (CL-0022/0023/0024) landed; see
+`docs/specs/2026-07-01-import-export-merge-design.md` §7.
 
 ---
 
