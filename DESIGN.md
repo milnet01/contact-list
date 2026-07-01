@@ -41,12 +41,21 @@ A lightweight, secure contact management application for storing, searching, and
 Total pip dependencies must stay under **8 packages** (direct). No C-extension dependencies beyond what ships with Python. Every new dependency requires justification in a PR description.
 
 ```
+# Runtime
 flask>=3.1.1,<4.0
 google-api-python-client>=2.0,<3.0
+google-auth>=2.0,<3.0
 google-auth-oauthlib>=1.0,<2.0
 google-auth-httplib2>=0.2,<1.0
 phonenumbers>=9.0,<10.0
+# Test-only (not counted against the runtime footprint)
+pytest>=9.0,<10.0
 ```
+
+Six runtime packages (under the 8-direct budget); `google-auth` is listed
+explicitly because the sync code imports it directly (`google.oauth2` /
+`google.auth`) rather than relying on it transitively. `pytest` is a test-only
+dependency and does not affect the running app.
 
 ---
 
