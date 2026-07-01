@@ -22,6 +22,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Version-tracked, upgrade-safe database migrations**
+  Migrations are recorded and run exactly once, and the custom-field uniqueness migration cleans pre-existing duplicates before applying so it can't abort startup on an older database. Invalid contact types now fail with a clear error. Requires Python 3.12+. CL-0008, CL-0015, CL-0019.
+
+- **Smarter duplicate detection and alphabetical navigation**
+  Duplicate detection matches phone numbers regardless of how they're formatted, and the A-Z navigation folds accented initials onto their base letter (e.g. Élodie under E). CL-0013, CL-0014.
+
+- **More reliable Google Contacts sync**
+  Expired sync tokens are detected by error status rather than message text; contacts with an organization and no personal name import as companies; and if a sync fails partway, the contacts already imported are kept instead of discarded. CL-0009, CL-0010, CL-0020.
+
 - **Contact-list page does one fewer database query per load**
   The main list page reused the row total it already had instead of counting
   the same rows twice, and its contact-type tally moved into the data layer
@@ -54,6 +63,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Google sync: isolate each contact in its own SAVEPOINT so one malformed record no longer aborts or rolls back the whole import.**
 
 ### Security
+
+- **Tightened local security hardening**
+  Locked the Google-credentials folder to 0700, bound the dev server to the literal 127.0.0.1, and removed 'unsafe-inline' from the page security policy's style-src (inline styles moved into the stylesheet). CL-0011, CL-0021, CL-0012.
 
 - **Stop surfacing raw Google API error text to the user on sync failure; log it server-side and show a generic message.**
 

@@ -61,71 +61,82 @@ efficiency / coding standards every item must comply with.
 
 Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inline.
 
-- 📋 [CL-0008] **Add schema-version tracking and make migrations upgrade-safe.**
+- ✅ [CL-0008] **Add schema-version tracking and make migrations upgrade-safe.**
   init_db re-runs every .sql file each start (idempotent only because of IF NOT EXISTS); there is no version tracking, so a non-idempotent future migration can't run. Also migration 002's UNIQUE INDEX on custom_fields aborts startup on any pre-existing DB that already holds case-variant duplicate field names. Add a schema_version table and guard/clean before the unique index. No current bug on fresh installs.
   **Layman:** Make future database upgrades safe and repeatable.
   Kind: refactor.
   Source: indie-review-2026-06-30 data-layer.
+  Resolved (2026-07-01): schema_version table tracks applied migrations (each runs once); migration 002 dedups case-variant custom-field names before its UNIQUE INDEX.
 
-- 📋 [CL-0009] **Detect an expired Google sync token via HttpError status, not a message substring.**
+- ✅ [CL-0009] **Detect an expired Google sync token via HttpError status, not a message substring.**
   google_sync.sync_contacts currently matches 'sync token' in the error text (case-insensitive). Match on googleapiclient.errors.HttpError status 400 + the EXPIRED_SYNC_TOKEN reason so a wording change in Google's message can't break self-healing.
   **Layman:** Make the Google re-sync recovery more reliable.
   Kind: enhancement.
   Source: indie-review-2026-06-30 google-sync.
+  Resolved (2026-07-01): expired sync token detected via HttpError 400 + EXPIRED_SYNC_TOKEN reason (_is_expired_sync_token), not a message substring.
 
-- 📋 [CL-0010] **Improve company-vs-individual detection in Google import.**
+- ✅ [CL-0010] **Improve company-vs-individual detection in Google import.**
   _upsert_person flags 'company' only when the organization name exactly equals the display name, so most company contacts import as 'individual'. Use a better signal (presence of an organization with no personal name, contact group membership, etc.).
   **Layman:** Better guess whether an imported Google contact is a person or a company.
   Kind: enhancement.
   Source: indie-review-2026-06-30 google-sync.
+  Resolved (2026-07-01): a Google contact with an organization but no given/family name classifies as company.
 
-- 📋 [CL-0011] **Harden the credentials directory permissions to 0700.**
+- ✅ [CL-0011] **Harden the credentials directory permissions to 0700.**
   The token file is created 0600, but ~/.config/contact-list is created with the default umask (often 0755), leaving it traversable by other local users. Create/chmod the dir 0700. Token bytes are already protected; this is defence-in-depth.
   **Layman:** Lock down the folder that holds your Google login token.
   Kind: security.
   Source: indie-review-2026-06-30 google-sync.
+  Resolved (2026-07-01): config.ensure_private_dir() makedirs+chmod 0700 at all three creation points.
 
-- 📋 [CL-0012] **Tighten the CSP by removing style-src 'unsafe-inline'.**
+- ✅ [CL-0012] **Tighten the CSP by removing style-src 'unsafe-inline'.**
   Current CSP (matching DESIGN) allows inline style attributes. Move the handful of inline style= attributes (base.html, contacts.html, duplicates.html) into the stylesheet, then drop 'unsafe-inline' from style-src.
   **Layman:** Make the page's security policy a little stricter.
   Kind: security.
   Source: indie-review-2026-06-30 routes.
+  Resolved (2026-07-01): inline style= moved to CSS utility classes; style-src 'unsafe-inline' dropped from the CSP; DESIGN.md §6.3 updated.
 
-- 📋 [CL-0013] **Normalize phone numbers in duplicate detection.**
+- ✅ [CL-0013] **Normalize phone numbers in duplicate detection.**
   find_duplicates matches phone with exact string equality, so '+1 555-1234' and '5551234' aren't flagged as the same. Compare on a normalized (E.164) form. Mitigated today because input is normalized via format_phone, but imported/legacy data can differ.
   **Layman:** Catch duplicate contacts even when the same number is typed differently.
   Kind: enhancement.
   Source: indie-review-2026-06-30 data-layer.
+  Resolved (2026-07-01): find_duplicates compares phones on normalized E.164 (phoneutil.normalize_e164), region from settings, exact-match fallback.
 
-- 📋 [CL-0014] **Fold accented initials onto their base letter in the alpha nav.**
+- ✅ [CL-0014] **Fold accented initials onto their base letter in the alpha nav.**
   Non-ASCII initials are now consistently bucketed under '#' (count and filter agree). A nicer UX would fold 'É'->'E' (unicodedata) so accented-initial names appear under their base letter. Requires consistent folding in both get_letter_counts and the letter filter.
   **Layman:** Show names like 'Élodie' under 'E' instead of the '#' bucket.
   Kind: enhancement.
   Source: indie-review-2026-06-30 data-layer.
+  Resolved (2026-07-01): first_letter() SQLite function folds accented initials to the base letter, used by both the counts and the letter filter.
 
-- 📋 [CL-0015] **Add a data-layer contact_type guard (defense-in-depth).**
+- ✅ [CL-0015] **Add a data-layer contact_type guard (defense-in-depth).**
   create_contact relies on the SQL CHECK(type IN ('individual','company')) constraint; the route validates too. Add an explicit guard in the data layer for a clean error instead of a raw IntegrityError 500, mirroring the field_name validation now in place.
   **Layman:** Extra safety check so an invalid contact type fails cleanly.
   Kind: enhancement.
   Source: indie-review-2026-06-30 data-layer.
+  Resolved (2026-07-01): create/update_contact raise ValueError on a bad contact_type instead of a raw IntegrityError 500.
 
-- 📋 [CL-0019] **Make Google-sync per-record isolation robust on Python 3.10/3.11.**
+- ✅ [CL-0019] **Make Google-sync per-record isolation robust on Python 3.10/3.11.**
   The per-contact SAVEPOINT/ROLLBACK isolation in google_sync.sync_contacts is verified correct on Python 3.12+ (this system runs 3.13). On legacy sqlite3 (Python <=3.11, isolation_level='') a SAVEPOINT issued in autocommit can make ROLLBACK TO SAVEPOINT a no-op, silently weakening the isolation. DESIGN.md targets Python 3.10+. Either require 3.12+ (note in DESIGN/requirements) or add an explicit BEGIN / sys.version_info guard.
   **Layman:** Make sure the import safety net works on older Python versions too.
   Kind: fix.
   Source: indie-review-2026-06-30 loop3.
+  Resolved (2026-07-01): documented Python 3.12+ requirement for the SAVEPOINT isolation (DESIGN.md §3 + requirements.txt) and flagged it at the SAVEPOINT.
 
-- 📋 [CL-0020] **Make a mid-pagination Google-sync error preserve already-imported pages.**
+- ✅ [CL-0020] **Make a mid-pagination Google-sync error preserve already-imported pages.**
   A non-token exception from people().list() mid-pagination returns (0, error) and the whole transaction rolls back, discarding successfully-imported earlier pages and reporting 0 synced. Since import is idempotent on google_id, commit completed pages (or persist a resume cursor) so a transient API hiccup on page 2 doesn't throw away page 1.
   **Layman:** If a sync fails halfway, keep the contacts already imported instead of discarding them.
   Kind: enhancement.
   Source: indie-review-2026-06-30 loop3.
+  Resolved (2026-07-01): sync commits each page and returns the count synced so far, so a mid-pagination error keeps earlier imports (guarded reset).
 
-- 📋 [CL-0021] **Bind the dev server to 127.0.0.1 literally instead of 'localhost'.**
+- ✅ [CL-0021] **Bind the dev server to 127.0.0.1 literally instead of 'localhost'.**
   app.py uses app.run(host='localhost'); DESIGN.md §6.3 specifies 127.0.0.1. 'localhost' can resolve to ::1 or, under an unusual /etc/hosts, a broader interface. Use the literal 127.0.0.1 to match the contract. Only affects the built-in dev server, not a gunicorn/uwsgi deployment.
   **Layman:** Tiny networking nitpick so the app matches its stated localhost-only rule exactly.
   Kind: security.
   Source: indie-review-2026-06-30 loop3.
+  Resolved (2026-07-01): dev server binds literal 127.0.0.1 instead of 'localhost'.
 
 ## Efficiency & Refactoring
 
