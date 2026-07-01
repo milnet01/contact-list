@@ -978,7 +978,7 @@ body.density-compact .toolbar { margin-bottom: 0.5rem; }
    Mirrors the existing @media (max-width: 640px) stacked-row treatment
    above, applied at any width when the user picks card view instead of
    waiting for a narrow viewport. */
-body.view-card table, body.view-card thead,
+body.view-card table, body.view-card thead, body.view-card tbody,
 body.view-card th, body.view-card td, body.view-card tr { display: block; }
 body.view-card thead { display: none; }
 /* The table itself is just a layout host in card view; drop its surface so the
