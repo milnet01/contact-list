@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Merge Contacts — Contacts{% endblock %}
+
+{% block breadcrumb %}
+<nav class="breadcrumb" aria-label="Breadcrumb">
+    <a href="{{ url_for('contacts.contact_list') }}">Contacts</a>
+    <span aria-hidden="true">/</span>
+    <a href="{{ url_for('contacts.duplicates') }}">Duplicates</a>
+    <span aria-hidden="true">/</span>
+    <span>Merge</span>
+</nav>
+{% endblock %}
+
+{% block content %}
+<h1>Merge Contacts</h1>
+<p class="toolbar-meta mb-md">
+    Merging {{ contacts|length }} contacts. For each field, choose the value to
+    keep. The oldest record is kept and updated; the others are deleted.
+</p>
+
+<form method="post" action="{{ url_for('contacts.merge_apply') }}">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="survivor_id" value="{{ survivor_id }}">
+    {% for lid in loser_ids %}<input type="hidden" name="loser_id" value="{{ lid }}">{% endfor %}
+
+    {% for field in ['name', 'type', 'email', 'phone', 'notes'] %}
+    <div class="card">
+        <h2>{{ field|capitalize }}</h2>
+        {% set opts = core[field] %}
+        {% if opts %}
+            {% for v in opts %}
+            <label class="merge-option">
+                <input type="radio" name="field_{{ field }}" value="{{ v }}" {{ 'checked' if loop.first }}>
+                {{ v }}
+            </label>
+            {% endfor %}
+        {% else %}
+            <input type="hidden" name="field_{{ field }}" value="">
+            <em class="toolbar-meta">(none)</em>
+        {% endif %}
+    </div>
+    {% endfor %}
+
+    {% if customs %}
+    <div class="card">
+        <h2>Custom fields</h2>
+        <input type="hidden" name="cf_count" value="{{ customs|length }}">
+        {% for cf in customs %}
+            {% set i = loop.index0 %}
+            <input type="hidden" name="cf_name_{{ i }}" value="{{ cf.name }}">
+            <p><strong>{{ cf.name }}</strong>:
+            {% if cf['values']|length > 1 %}
+                {% for v in cf['values'] %}
+                <label class="merge-option">
+                    <input type="radio" name="cf_value_{{ i }}" value="{{ v }}" {{ 'checked' if loop.first }}>
+                    {{ v }}
+                </label>
+                {% endfor %}
+            {% else %}
+                <input type="hidden" name="cf_value_{{ i }}" value="{{ cf['values'][0] }}">{{ cf['values'][0] }}
+            {% endif %}
+            </p>
+        {% endfor %}
+    </div>
+    {% else %}
+    <input type="hidden" name="cf_count" value="0">
+    {% endif %}
+
+    <div class="actions">
+        <button type="submit" class="btn">Merge</button>
+        <a href="{{ url_for('contacts.duplicates') }}" class="btn btn-secondary">Cancel</a>
+    </div>
+</form>
+{% endblock %}

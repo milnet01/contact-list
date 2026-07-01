@@ -57,23 +57,26 @@ efficiency / coding standards every item must comply with.
   Source: in-session-2026-06-30 suggested.
   Resolved (2026-07-01): per-page, default sort/dir, and default new-contact type are settings consumed by the contact list & form.
 
-- 📋 [CL-0022] **Import contacts from a CSV file.**
+- ✅ [CL-0022] **Import contacts from a CSV file.**
   Mirror the existing CSV export. Map Name/Type/Email/Phone/Notes columns and reuse create_contact + _validate_form + find_duplicates so imported rows get the same validation and duplicate warnings as manual entry.
   **Layman:** Let the user bring contacts in from a spreadsheet, not just export them.
   Kind: feature.
   Source: in-session-2026-07-01.
+  Shipped 2026-07-01. CSV import with column-mapping + learned profiles (import_profiles), additive dedupe. Spec: docs/specs/2026-07-01-import-export-merge-design.md.
 
-- 📋 [CL-0023] **Support vCard (.vcf) import and export.**
+- ✅ [CL-0023] **Support vCard (.vcf) import and export.**
   Add a .vcf export alongside export_contacts, and a .vcf import path. vCard is the universal interchange format for phones/Apple Contacts/Thunderbird.
   **Layman:** Read and write the standard contact-card format that phones and mail apps use.
   Kind: feature.
   Source: in-session-2026-07-01.
+  Shipped 2026-07-01. Hand-rolled vcard.py (3.0/4.0 parse, 3.0 emit), X-CL custom-field round-trip, no new dependency.
 
-- 📋 [CL-0024] **Add a merge action to the duplicates page.**
+- ✅ [CL-0024] **Add a merge action to the duplicates page.**
   The duplicates page is read-only today. Add a merge: keep one contact, fold in the other's non-empty fields + custom_fields, then delete the loser. Wrap in a transaction.
   **Layman:** Let the user combine two duplicate contacts into one from the duplicates screen.
   Kind: feature.
   Source: in-session-2026-07-01.
+  Shipped 2026-07-01. Field-level merge on the Duplicates page (merge_preview/merge_apply), atomic via merge_contacts + _write_contact.
 
 - 📋 [CL-0025] **Extend search to cover notes and custom fields.**
   _build_contact_query searches name/email/phone only. Add notes to the LIKE clause and a subquery/EXISTS against custom_fields so a value stored in a custom field is findable.

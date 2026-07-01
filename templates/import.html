@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}Import Contacts — Contacts{% endblock %}
+
+{% block breadcrumb %}
+<nav class="breadcrumb" aria-label="Breadcrumb">
+    <a href="{{ url_for('contacts.contact_list') }}">Contacts</a>
+    <span aria-hidden="true">/</span>
+    <span>Import</span>
+</nav>
+{% endblock %}
+
+{% block content %}
+<h1>Import Contacts</h1>
+
+{% if stage == 'upload' %}
+<div class="card">
+    <p>Upload a <strong>CSV</strong> or <strong>vCard (.vcf)</strong> file.</p>
+    <form method="post" action="{{ url_for('contacts.import_view') }}" enctype="multipart/form-data">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+        <input type="file" name="file" accept=".csv,.vcf,text/csv,text/vcard" required>
+        <button type="submit" class="btn mt-md">Upload</button>
+    </form>
+</div>
+<div class="card">
+    <p class="toolbar-meta">Or export what you already have:</p>
+    <a class="btn btn-secondary" href="{{ url_for('contacts.export') }}">Export CSV</a>
+    <a class="btn btn-secondary" href="{{ url_for('contacts.export_vcard') }}">Export vCard</a>
+</div>
+
+{% elif stage == 'map' %}
+<div class="card">
+    <p>Match each column in your file to a contact field. We pre-filled the ones
+       we recognised (and remembered your last choices for this layout).</p>
+    <form method="post" action="{{ url_for('contacts.import_apply') }}">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+        <textarea name="csv_text" hidden>{{ csv_text }}</textarea>
+        <table class="mb-md">
+            <thead><tr><th>Column</th><th>Maps to</th><th>Sample</th></tr></thead>
+            <tbody>
+            {% for h in headers %}
+                {% set col = loop.index0 %}
+                <tr>
+                    <td data-label="Column"><strong>{{ h }}</strong></td>
+                    <td data-label="Maps to">
+                        <select name="map_{{ col }}">
+                            {% for t in targets %}
+                            <option value="{{ t }}" {{ 'selected' if mapping[col] == t }}>{{ t|capitalize }}</option>
+                            {% endfor %}
+                        </select>
+                    </td>
+                    <td data-label="Sample">{{ preview[0][col] if preview and preview[0]|length > col else '' }}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        <p>
+            Default type for rows without one:
+            <select name="default_type">
+                <option value="individual" {{ 'selected' if default_type == 'individual' }}>Individual</option>
+                <option value="company" {{ 'selected' if default_type == 'company' }}>Company</option>
+            </select>
+        </p>
+        <button type="submit" class="btn">Import</button>
+        <a href="{{ url_for('contacts.import_view') }}" class="btn btn-secondary">Cancel</a>
+    </form>
+</div>
+
+{% elif stage == 'summary' %}
+<div class="card">
+    <p><strong>Import complete.</strong></p>
+    <ul>
+        <li>Created: {{ created }}</li>
+        <li>Updated: {{ updated }}{% if updated_names %} — added missing details to: {{ updated_names|join(', ') }}{% endif %}</li>
+        {% if skipped %}<li>Skipped (blank rows): {{ skipped }}</li>{% endif %}
+    </ul>
+    {% if warnings %}
+    <p class="toolbar-meta">Some rows had issues:</p>
+    <ul>{% for w in warnings %}<li>{{ w }}</li>{% endfor %}</ul>
+    {% endif %}
+    <a href="{{ url_for('contacts.contact_list') }}" class="btn">View contacts</a>
+    <a href="{{ url_for('contacts.import_view') }}" class="btn btn-secondary">Import another</a>
+</div>
+{% endif %}
+{% endblock %}

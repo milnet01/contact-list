@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Merge action on the Duplicates page** (CL-0024)
+  Select two or more contacts, choose the winning value per field, and
+  combine them into one with no data lost.
+
+- **vCard (.vcf) import and export** (CL-0023)
+  Reads vCard 3.0/4.0 files and exports all contacts as one .vcf. Custom
+  fields round-trip losslessly; no new dependency (hand-rolled parser).
+
+- **CSV import with a column-mapping screen that remembers your choices** (CL-0022)
+  Upload a CSV, match its columns to contact fields (auto-guessed and
+  remembered per header layout), and import. Existing contacts are filled
+  in additively — blank fields only, never overwritten; extra emails/phones
+  become custom fields.
+
 - **Continuous-integration workflow and shared tool configuration.**
   A GitHub Actions workflow runs ruff, mypy, and the full test suite on
   Python 3.12 and 3.13 for every push and pull request, so regressions are

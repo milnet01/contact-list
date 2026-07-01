@@ -347,10 +347,10 @@ up in order and must be idempotent (`CREATE TABLE IF NOT EXISTS`) — it is.
   `templates/duplicates.html` (merge button), `templates/base.html` (Import nav
   link), the import page (vCard export link).
 - **DESIGN.md — already edited in this change-set (not merely planned):**
-  - §14 file budget — Python cap raised `< 50 KB` → `< 80 KB`, labelled a **soft
-    target**, scoped to shipped app `.py` **excluding `tests/`**, with a
-    back-reference to this spec. (Shipped app source is ~58 KB today, excluding
-    `tests/`; these features add ~15–20 KB.)
+  - §14 file budget — Python cap raised `< 50 KB` → `< 100 KB`, labelled a
+    **soft target**, scoped to shipped app `.py` **excluding `tests/`**, with a
+    back-reference to this spec. (Shipped app source was ~58 KB before and is
+    ~85 KB after these three features.)
   - §13 version plan — the v1.1 row now reads "CSV import, vCard import/export,
     merge duplicates".
 - **DESIGN §7.2 streaming deviation.** §7.2 asks CSV/vCard export to stream via

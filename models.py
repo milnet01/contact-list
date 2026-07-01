@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 import sqlite3
 
@@ -292,6 +293,39 @@ def create_contact(
     return contact_id
 
 
+def _write_contact(
+    db: sqlite3.Connection,
+    contact_id: int,
+    contact_type: str,
+    name: str,
+    email: str | None = None,
+    phone: str | None = None,
+    notes: str | None = None,
+    custom_fields: list[tuple[str, str]] | None = None,
+) -> None:
+    """Validate, UPDATE a contact, and replace its custom fields — WITHOUT a
+    transaction of its own, so a caller can compose it into a larger atomic
+    block. `update_contact` wraps this in `with db:`; `merge_contacts` runs it
+    alongside the loser deletes in one transaction. Validating here means every
+    caller enforces the same contract (INV-4)."""
+    _validate_contact_type(contact_type)
+    _validate_custom_field_names(custom_fields)
+
+    db.execute(
+        """UPDATE contacts
+           SET type=?, name=?, email=?, phone=?, notes=?,
+               updated_at=strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+           WHERE id=?""",
+        [contact_type, name, email, phone, notes, contact_id],
+    )
+    db.execute('DELETE FROM custom_fields WHERE contact_id = ?', [contact_id])
+    if custom_fields:
+        db.executemany(
+            'INSERT INTO custom_fields (contact_id, field_name, field_value) VALUES (?, ?, ?)',
+            [(contact_id, fn, fv) for fn, fv in custom_fields],
+        )
+
+
 def update_contact(
     db: sqlite3.Connection,
     contact_id: int,
@@ -302,29 +336,13 @@ def update_contact(
     notes: str | None = None,
     custom_fields: list[tuple[str, str]] | None = None,
 ) -> None:
-    # Validate before any mutation — update deletes the old custom fields below,
-    # so a bad type or bad/duplicate name must fail before that delete.
-    _validate_contact_type(contact_type)
-    _validate_custom_field_names(custom_fields)
-
     # `with db` makes the UPDATE + DELETE + re-insert atomic: if the re-insert
     # fails, the delete of the old custom fields is rolled back too, so a failed
     # update can't silently wipe a contact's existing custom fields.
     with db:
-        db.execute(
-            """UPDATE contacts
-               SET type=?, name=?, email=?, phone=?, notes=?,
-                   updated_at=strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-               WHERE id=?""",
-            [contact_type, name, email, phone, notes, contact_id],
+        _write_contact(
+            db, contact_id, contact_type, name, email, phone, notes, custom_fields
         )
-        # Replace custom fields: delete all, re-insert
-        db.execute('DELETE FROM custom_fields WHERE contact_id = ?', [contact_id])
-        if custom_fields:
-            db.executemany(
-                'INSERT INTO custom_fields (contact_id, field_name, field_value) VALUES (?, ?, ?)',
-                [(contact_id, fn, fv) for fn, fv in custom_fields],
-            )
 
 
 def delete_contact(db: sqlite3.Connection, contact_id: int) -> None:
@@ -333,7 +351,173 @@ def delete_contact(db: sqlite3.Connection, contact_id: int) -> None:
 
 
 _FIELD_NAME_RE = re.compile(r'^[a-zA-Z0-9_ ]{1,64}$')
+_FIELD_NAME_STRIP_RE = re.compile(r'[^a-zA-Z0-9_ ]+')
 
 
 def valid_field_name(name: str) -> bool:
     return bool(_FIELD_NAME_RE.match(name))
+
+
+def sanitize_field_name(raw: str) -> str:
+    """Coerce an arbitrary label (a CSV header, a vCard TYPE) into a name that
+    passes `valid_field_name`: drop any char outside [a-zA-Z0-9_ ], collapse
+    whitespace, trim, cap at 64. Returns '' if nothing survives — the caller
+    then falls back to a generated name (e.g. 'Field 2')."""
+    cleaned = _FIELD_NAME_STRIP_RE.sub(' ', raw)
+    return ' '.join(cleaned.split())[:64]
+
+
+def import_contact(
+    db: sqlite3.Connection,
+    fields: dict,
+    custom_fields: list[tuple[str, str]] | None = None,
+) -> tuple[int, str]:
+    """Create a contact, or additively update an existing match, from one parsed
+    import row. Matches an existing contact by email (case-insensitive) else by
+    name; on a match, fills only blank core fields and adds only
+    not-yet-present custom-field names — never overwrites (INV-1). Returns
+    (contact_id, 'created' | 'updated'). Takes a parsed dict because the
+    importer builds fields dynamically from the column mapping."""
+    contact_type = (fields.get('type') or '').strip() or 'individual'
+    _validate_contact_type(contact_type)
+    name = (fields.get('name') or '').strip()
+    email = (fields.get('email') or '').strip() or None
+    phone = (fields.get('phone') or '').strip() or None
+    notes = (fields.get('notes') or '').strip() or None
+    custom_fields = custom_fields or []
+    _validate_custom_field_names(custom_fields)
+
+    match_id: int | None = None
+    if email:
+        row = db.execute(
+            "SELECT id FROM contacts "
+            "WHERE email IS NOT NULL AND email != '' AND LOWER(email) = LOWER(?) "
+            "ORDER BY id LIMIT 1",
+            [email],
+        ).fetchone()
+        if row:
+            match_id = row['id']
+    if match_id is None and name:
+        row = db.execute(
+            'SELECT id FROM contacts WHERE name = ? COLLATE NOCASE ORDER BY id LIMIT 1',
+            [name],
+        ).fetchone()
+        if row:
+            match_id = row['id']
+
+    with db:
+        if match_id is None:
+            cursor = db.execute(
+                'INSERT INTO contacts (type, name, email, phone, notes) VALUES (?, ?, ?, ?, ?)',
+                [contact_type, name, email, phone, notes],
+            )
+            new_id = cursor.lastrowid
+            assert new_id is not None
+            if custom_fields:
+                db.executemany(
+                    'INSERT INTO custom_fields (contact_id, field_name, field_value) '
+                    'VALUES (?, ?, ?)',
+                    [(new_id, fn, fv) for fn, fv in custom_fields],
+                )
+            return new_id, 'created'
+
+        # Additive update: fill a core field only when the existing value is
+        # blank; keep the existing value otherwise (never overwrite).
+        existing = db.execute(
+            'SELECT email, phone, notes FROM contacts WHERE id = ?', [match_id]
+        ).fetchone()
+        def _fill(new: str | None, old: str | None) -> str | None:
+            return new if (new and not (old or '').strip()) else old
+
+        new_email = _fill(email, existing['email'])
+        new_phone = _fill(phone, existing['phone'])
+        new_notes = _fill(notes, existing['notes'])
+        current = (existing['email'], existing['phone'], existing['notes'])
+        if (new_email, new_phone, new_notes) != current:
+            db.execute(
+                "UPDATE contacts SET email=?, phone=?, notes=?, "
+                "updated_at=strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id=?",
+                [new_email, new_phone, new_notes, match_id],
+            )
+        # Add only custom-field names the contact doesn't already have
+        # (case-insensitive, matching idx_cf_unique).
+        existing_names = {
+            r['field_name'].lower()
+            for r in db.execute(
+                'SELECT field_name FROM custom_fields WHERE contact_id = ?', [match_id]
+            )
+        }
+        to_add = [
+            (match_id, fn, fv) for fn, fv in custom_fields if fn.lower() not in existing_names
+        ]
+        if to_add:
+            db.executemany(
+                'INSERT INTO custom_fields (contact_id, field_name, field_value) '
+                'VALUES (?, ?, ?)',
+                to_add,
+            )
+        return match_id, 'updated'
+
+
+def merge_contacts(
+    db: sqlite3.Connection,
+    survivor_id: int,
+    loser_ids: list[int],
+    fields: dict,
+    custom_fields: list[tuple[str, str]] | None = None,
+) -> None:
+    """Merge `loser_ids` into `survivor_id`: overwrite the survivor with the
+    chosen `fields` + `custom_fields`, then delete the losers (their custom
+    fields cascade via the FK). One `with db:` block makes it atomic (INV-3);
+    `_write_contact` carries the validation (INV-4)."""
+    losers = list(dict.fromkeys(loser_ids))  # de-dupe, preserve order
+    if not losers:
+        raise ValueError('merge needs at least one other contact')
+    if survivor_id in losers:
+        raise ValueError('survivor cannot also be a loser')
+    ids = [survivor_id, *losers]
+    placeholders = ','.join('?' * len(ids))
+    found = {
+        r['id']
+        for r in db.execute(
+            f'SELECT id FROM contacts WHERE id IN ({placeholders})', ids
+        )
+    }
+    missing = [i for i in ids if i not in found]
+    if missing:
+        raise ValueError(f'contact id(s) not found: {missing}')
+
+    with db:
+        _write_contact(
+            db, survivor_id, fields['type'], fields['name'],
+            fields.get('email'), fields.get('phone'), fields.get('notes'),
+            custom_fields,
+        )
+        for lid in losers:
+            db.execute('DELETE FROM contacts WHERE id = ?', [lid])
+
+
+def get_import_profile(db: sqlite3.Connection, header_signature: str) -> dict | None:
+    """Return a saved CSV column-mapping profile for this header layout, or None."""
+    row = db.execute(
+        'SELECT mapping, default_type FROM import_profiles WHERE header_signature = ?',
+        [header_signature],
+    ).fetchone()
+    if row is None:
+        return None
+    return {'mapping': json.loads(row['mapping']), 'default_type': row['default_type']}
+
+
+def save_import_profile(
+    db: sqlite3.Connection, header_signature: str, mapping: dict, default_type: str
+) -> None:
+    """Upsert the chosen column mapping for this header layout (CL-0022)."""
+    with db:
+        db.execute(
+            'INSERT INTO import_profiles (header_signature, mapping, default_type) '
+            'VALUES (?, ?, ?) '
+            'ON CONFLICT(header_signature) DO UPDATE SET '
+            "mapping=excluded.mapping, default_type=excluded.default_type, "
+            "updated_at=strftime('%Y-%m-%dT%H:%M:%SZ', 'now')",
+            [header_signature, json.dumps(mapping), default_type],
+        )

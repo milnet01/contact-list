@@ -10,6 +10,7 @@ from flask import (
     Blueprint,
     Response,
     abort,
+    current_app,
     flash,
     g,
     redirect,
@@ -18,7 +19,9 @@ from flask import (
     url_for,
 )
 
+import importer
 import phoneutil
+import vcard
 from db import get_db
 from models import (
     create_contact,
@@ -28,9 +31,14 @@ from models import (
     find_duplicates,
     get_contact,
     get_custom_fields,
+    get_import_profile,
     get_letter_counts,
     get_type_counts,
+    import_contact,
     list_contacts,
+    merge_contacts,
+    sanitize_field_name,
+    save_import_profile,
     update_contact,
     valid_field_name,
 )
@@ -348,3 +356,254 @@ def delete(contact_id: int):
     if ref:
         return redirect(ref)
     return redirect(url_for('contacts.contact_list'))
+
+
+# --- Import / export / merge (CL-0022, CL-0023, CL-0024) --------------------
+
+
+def _import_vcard_text(text: str):
+    """Import a vCard document immediately (no mapping needed) and show the
+    summary. Additive import (import_contact) is non-destructive, so there is
+    nothing to preview-gate."""
+    cards = vcard.parse(text)
+    if not cards:
+        flash('No contacts found in the file.', 'error')
+        return redirect(url_for('contacts.import_view'))
+    db = get_db()
+    created = updated = 0
+    updated_names: list[str] = []
+    for card in cards:
+        # Sanitise externally-supplied custom-field names and drop within-card
+        # duplicates so one odd label can't fail the whole contact's import.
+        seen: set[str] = set()
+        cfs: list[tuple[str, str]] = []
+        for name, value in card['custom_fields']:
+            clean = sanitize_field_name(name)
+            if not clean or not value or clean.lower() in seen:
+                continue
+            seen.add(clean.lower())
+            cfs.append((clean, value))
+        fields = {
+            'type': card['type'], 'name': card['name'], 'email': card['email'],
+            'phone': card['phone'], 'notes': card['notes'],
+        }
+        try:
+            _cid, action = import_contact(db, fields, cfs)
+        except ValueError:
+            continue
+        if action == 'created':
+            created += 1
+        else:
+            updated += 1
+            updated_names.append(card['name'])
+    return render_template(
+        'import.html', stage='summary', created=created, updated=updated,
+        updated_names=updated_names, skipped=0, warnings=[],
+    )
+
+
+@bp.route('/contacts/import', methods=['GET', 'POST'])
+def import_view():
+    if request.method == 'GET':
+        return render_template('import.html', stage='upload')
+
+    file = request.files.get('file')
+    if file is None or not file.filename:
+        flash('No file selected.', 'error')
+        return redirect(url_for('contacts.import_view'))
+
+    raw = file.read()
+    if len(raw) > current_app.config.get('MAX_IMPORT_BYTES', 1024 * 1024):
+        flash('That file is too large to import (limit 1 MB).', 'error')
+        return redirect(url_for('contacts.import_view'))
+    try:
+        text = raw.decode('utf-8-sig')
+    except UnicodeDecodeError:
+        flash('Could not read file — please save it as UTF-8.', 'error')
+        return redirect(url_for('contacts.import_view'))
+
+    if file.filename.lower().endswith('.vcf') or text.lstrip().upper().startswith('BEGIN:VCARD'):
+        return _import_vcard_text(text)
+
+    try:
+        headers, rows = importer.parse_csv(text)
+    except csv.Error:
+        flash('Could not parse that CSV file.', 'error')
+        return redirect(url_for('contacts.import_view'))
+    if not headers:
+        flash('That file has no columns to import.', 'error')
+        return redirect(url_for('contacts.import_view'))
+
+    mapping = importer.guess_mapping(headers)
+    db = get_db()
+    profile = get_import_profile(db, importer.header_signature(headers))
+    if profile:
+        for i, h in enumerate(headers):
+            if h in profile['mapping']:
+                mapping[i] = profile['mapping'][h]
+        default_type = profile['default_type']
+    else:
+        default_type = g.settings['default_type']
+
+    return render_template(
+        'import.html', stage='map', headers=headers, mapping=mapping,
+        preview=rows[:5], csv_text=text, targets=importer.TARGETS,
+        default_type=default_type,
+    )
+
+
+@bp.route('/contacts/import/apply', methods=['POST'])
+def import_apply():
+    csv_text = request.form.get('csv_text', '')
+    default_type = request.form.get('default_type', 'individual')
+    if default_type not in ('individual', 'company'):
+        default_type = 'individual'
+    try:
+        headers, rows = importer.parse_csv(csv_text)
+    except csv.Error:
+        flash('Could not parse the CSV.', 'error')
+        return redirect(url_for('contacts.import_view'))
+    if not headers:
+        flash('Nothing to import.', 'error')
+        return redirect(url_for('contacts.import_view'))
+
+    mapping: dict[int, str] = {}
+    for i in range(len(headers)):
+        target = request.form.get(f'map_{i}', 'ignore')
+        mapping[i] = target if target in importer.TARGETS else 'ignore'
+
+    built, skipped = importer.apply_mapping(headers, rows, mapping, default_type)
+    db = get_db()
+    created = updated = 0
+    updated_names: list[str] = []
+    warnings: list[str] = []
+    for fields, cfs in built:
+        try:
+            _cid, action = import_contact(db, fields, cfs)
+        except ValueError as exc:
+            warnings.append(str(exc))
+            continue
+        if action == 'created':
+            created += 1
+        else:
+            updated += 1
+            updated_names.append(fields['name'])
+
+    save_import_profile(
+        db, importer.header_signature(headers),
+        {headers[i]: mapping[i] for i in range(len(headers))}, default_type,
+    )
+    return render_template(
+        'import.html', stage='summary', created=created, updated=updated,
+        updated_names=updated_names, skipped=skipped, warnings=warnings,
+    )
+
+
+@bp.route('/contacts/export/vcard')
+def export_vcard():
+    """Export all contacts (with their custom fields) as a vCard download."""
+    db = get_db()
+    contacts = []
+    for r in export_contacts(db):
+        contacts.append({
+            'type': r['type'], 'name': r['name'], 'email': r['email'],
+            'phone': r['phone'], 'notes': r['notes'],
+            'custom_fields': [
+                (cf['field_name'], cf['field_value'])
+                for cf in get_custom_fields(db, r['id'])
+            ],
+        })
+    return Response(
+        vcard.emit(contacts),
+        mimetype='text/vcard',
+        headers={'Content-Disposition': 'attachment; filename=contacts.vcf'},
+    )
+
+
+@bp.route('/contacts/merge', methods=['POST'])
+def merge_preview():
+    ids: list[int] = []
+    for s in request.form.getlist('selected'):
+        try:
+            ids.append(int(s))
+        except ValueError:
+            continue
+    ids = list(dict.fromkeys(ids))
+
+    db = get_db()
+    contacts = [c for c in (get_contact(db, i) for i in ids) if c]
+    if len(contacts) < 2:
+        flash('Select at least two contacts to merge.', 'error')
+        return redirect(url_for('contacts.duplicates'))
+
+    survivor_id = min(c['id'] for c in contacts)
+    loser_ids = [c['id'] for c in contacts if c['id'] != survivor_id]
+
+    def distinct(key: str) -> list[str]:
+        seen: list[str] = []
+        for c in contacts:
+            v = c[key]
+            if v and v not in seen:
+                seen.append(v)
+        return seen
+
+    core = {k: distinct(k) for k in ('name', 'type', 'email', 'phone', 'notes')}
+
+    union: dict[str, dict] = {}
+    for c in contacts:
+        for cf in get_custom_fields(db, c['id']):
+            entry = union.setdefault(
+                cf['field_name'].lower(), {'name': cf['field_name'], 'values': []}
+            )
+            if cf['field_value'] not in entry['values']:
+                entry['values'].append(cf['field_value'])
+
+    return render_template(
+        'merge.html', contacts=contacts, survivor_id=survivor_id,
+        loser_ids=loser_ids, core=core, customs=list(union.values()),
+    )
+
+
+@bp.route('/contacts/merge/apply', methods=['POST'])
+def merge_apply():
+    db = get_db()
+    try:
+        survivor_id = int(request.form['survivor_id'])
+        loser_ids = [int(x) for x in request.form.getlist('loser_id')]
+    except (KeyError, ValueError):
+        flash('Invalid merge request.', 'error')
+        return redirect(url_for('contacts.duplicates'))
+
+    ctype = request.form.get('field_type')
+    fields = {
+        'type': ctype if ctype in ('individual', 'company') else 'individual',
+        'name': (request.form.get('field_name') or '').strip(),
+        'email': (request.form.get('field_email') or '').strip() or None,
+        'phone': (request.form.get('field_phone') or '').strip() or None,
+        'notes': (request.form.get('field_notes') or '').strip() or None,
+    }
+    if not fields['name']:
+        flash('The merged contact needs a name.', 'error')
+        return redirect(url_for('contacts.duplicates'))
+
+    try:
+        cf_count = int(request.form.get('cf_count', 0))
+    except ValueError:
+        cf_count = 0
+    customs: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for i in range(cf_count):
+        name = (request.form.get(f'cf_name_{i}') or '').strip()
+        value = (request.form.get(f'cf_value_{i}') or '').strip()
+        if name and value and name.lower() not in seen:
+            seen.add(name.lower())
+            customs.append((name, value))
+
+    try:
+        merge_contacts(db, survivor_id, loser_ids, fields, customs)
+    except ValueError as exc:
+        flash(f'Could not merge: {exc}', 'error')
+        return redirect(url_for('contacts.duplicates'))
+
+    flash(f'Merged {len(loser_ids) + 1} contacts into one.', 'success')
+    return redirect(url_for('contacts.detail', contact_id=survivor_id))

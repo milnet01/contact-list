@@ -23,6 +23,7 @@
                 <a href="{{ url_for('contacts.contact_list') }}" {{ 'class=active' if active_nav == '/contacts' }}>All{% if contact_count is defined and contact_count %} <span class="nav-badge">{{ contact_count }}</span>{% endif %}</a>
                 <a href="{{ url_for('contacts.new_contact') }}" {{ 'class=active' if active_nav == '/contacts/new' }}>+ New</a>
                 <a href="{{ url_for('contacts.duplicates') }}" {{ 'class=active' if active_nav == '/contacts/duplicates' }}>Duplicates</a>
+                <a href="{{ url_for('contacts.import_view') }}" {{ 'class=active' if active_nav == '/contacts/import' }}>Import</a>
                 <a href="{{ url_for('sync.sync_page') }}" {{ 'class=active' if active_nav == '/sync' }}>Google Sync</a>
                 <a href="{{ url_for('settings.settings_page') }}" {{ 'class=active' if active_nav == '/settings' }}>Settings</a>
             </div>

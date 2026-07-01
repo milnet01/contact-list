@@ -351,7 +351,7 @@ All routes are server-rendered HTML. No REST/JSON API in v1 (add in v2 if needed
 
 | Component | Max Size |
 |-----------|----------|
-| Python source — shipped app `.py` (excludes `tests/`) | < 80 KB total (soft) |
+| Python source — shipped app `.py` (excludes `tests/`) | < 100 KB total (soft) |
 | CSS | < 15 KB |
 | JavaScript | < 10 KB |
 | HTML templates (all) | < 30 KB total |
@@ -360,7 +360,8 @@ All routes are server-rendered HTML. No REST/JSON API in v1 (add in v2 if needed
 
 The Python-source figure is a **soft target** — guidance, not a hard gate — and
 counts shipped application modules only, not `tests/`. It was raised from the
-original < 50 KB when import/export/merge (CL-0022/0023/0024) landed; see
+original < 50 KB when import/export/merge (CL-0022/0023/0024) landed (shipped
+app source is ~85 KB after those features); see
 `docs/specs/2026-07-01-import-export-merge-design.md` §7.
 
 ---

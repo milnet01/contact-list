@@ -25,6 +25,7 @@
 
     <div class="bulk-bar" id="bulk-bar" hidden>
         <span id="bulk-count">0</span> selected
+        <button type="submit" class="btn btn-small" formaction="{{ url_for('contacts.merge_preview') }}">Merge selected</button>
         <button type="button" class="btn btn-small btn-danger" id="bulk-delete-btn">Delete selected</button>
         <button type="button" class="btn btn-small btn-secondary" id="bulk-clear">Clear</button>
     </div>

@@ -79,6 +79,12 @@ class Config:
     PORT = int(os.environ.get('CONTACT_LIST_PORT', 5002))
     CONTACTS_PER_PAGE = 50
     MAX_CONTACTS_PER_PAGE = 200
+    # Hard ceiling on any request body (Flask returns 413 past it). Bounds both
+    # an uploaded import file and the carried-CSV re-post on the mapping screen
+    # (CL-0022). Import files are tiny for a single-user list; the handler
+    # additionally rejects a decoded body over 1 MiB with a friendly message.
+    MAX_CONTENT_LENGTH = 5 * 1024 * 1024
+    MAX_IMPORT_BYTES = 1 * 1024 * 1024
     # Browser-enforced defence-in-depth on top of the signed CSRF token: the
     # session cookie is not sent on cross-site form POSTs. 'Lax' (not 'Strict')
     # so following a normal link into the app still carries the session
