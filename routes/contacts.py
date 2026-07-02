@@ -35,6 +35,7 @@ from models import (
     get_contact,
     get_contact_photo_ext,
     get_custom_fields,
+    get_edited_at,
     get_import_profile,
     get_letter_counts,
     get_type_counts,
@@ -343,6 +344,7 @@ def detail(contact_id: int):
     return render_template(
         'contact_detail.html', contact=contact, custom_fields=cfs,
         ref=ref, list_url=list_url, photo_ext=photo_ext,
+        edited_at=get_edited_at(db, contact_id),
     )
 
 

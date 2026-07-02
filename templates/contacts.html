@@ -97,6 +97,7 @@
                     <span class="avatar {{ avatar_class }}">{{ initial }}</span>
                     {% endif %}
                     <a href="{{ url_for('contacts.detail', contact_id=c.id, ref=request.full_path.rstrip('?')) }}">{{ c.name }}</a>
+                    {% if c.edited_at %}<span class="edited-hint">edited {{ c.edited_at|friendly_date }}</span>{% endif %}
                 </div>
             </td>
             <td data-label="Type"><span class="badge badge-{{ c.type }}">{{ c.type }}</span></td>

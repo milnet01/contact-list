@@ -587,3 +587,53 @@ class TestUpcomingBirthdaysView:
         resp = client.get('/contacts/birthdays')
         assert resp.status_code == 200
         assert b'No upcoming birthdays' in resp.data
+
+
+# --- Honest last-edited + last-synced display (CL-0033) ---------------------
+
+class TestEditedDisplay:
+    def test_footer_shows_last_synced(self, client):
+        resp = client.get('/contacts')
+        assert b'Last synced' in resp.data  # "Never" when sync_state empty
+
+    def test_detail_hides_last_edited_for_pulled_contact(self, client):
+        # A pull-imported contact has no contact_edits row -> no "Last edited".
+        import google_sync
+        with client.application.app_context():
+            from db import get_db
+            db = get_db()
+            google_sync._upsert_person(
+                db, {'resourceName': 'people/x1',
+                     'names': [{'displayName': 'Synced Sam'}]},
+                'US', client.application.config)
+            db.commit()
+            cid = db.execute(
+                "SELECT id FROM contacts WHERE name='Synced Sam'").fetchone()['id']
+        resp = client.get(f'/contacts/{cid}')
+        assert resp.status_code == 200
+        assert b'Created:' in resp.data
+        assert b'Last edited' not in resp.data
+
+    def test_detail_shows_last_edited_after_user_edit(self, client):
+        token = _get_csrf(client)
+        client.post('/contacts', data={
+            '_csrf_token': token, 'type': 'individual', 'name': 'Editable Ed'})
+        with client.application.app_context():
+            from db import get_db
+            db = get_db()
+            cid = db.execute(
+                "SELECT id FROM contacts WHERE name='Editable Ed'").fetchone()['id']
+            # Force edited_at clearly after created_at so the != guard fires.
+            db.execute(
+                "UPDATE contact_edits SET edited_at='2099-01-01T00:00:00Z' "
+                "WHERE contact_id=?", [cid])
+            db.commit()
+        resp = client.get(f'/contacts/{cid}')
+        assert b'Last edited' in resp.data
+
+    def test_list_shows_edited_hint(self, client):
+        token = _get_csrf(client)
+        client.post('/contacts', data={
+            '_csrf_token': token, 'type': 'individual', 'name': 'Listed Liz'})
+        resp = client.get('/contacts')
+        assert b'edited-hint' in resp.data

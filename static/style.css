@@ -1151,3 +1151,11 @@ body.view-card .td-check::before, body.view-card .td-icon::before { display: non
 .icon-inline { width: 1rem; height: 1rem; vertical-align: -2px; }
 .icon-inline-sm { width: 0.85rem; height: 0.85rem; vertical-align: -2px; }
 .icon-muted { opacity: 0.5; }
+
+/* CL-0033: muted "edited …" hint in the contact list */
+.edited-hint {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--text-faint);
+    margin-top: 2px;
+}

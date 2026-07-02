@@ -25,7 +25,9 @@ def _build_contact_query(
     query = (
         'SELECT id, type, name, email, phone, notes, created_at, updated_at, '
         'EXISTS (SELECT 1 FROM contact_photos p WHERE p.contact_id = contacts.id) '
-        'AS has_photo FROM contacts'
+        'AS has_photo, '
+        '(SELECT edited_at FROM contact_edits e WHERE e.contact_id = contacts.id) '
+        'AS edited_at FROM contacts'
     )
     params: list[str | int] = []
     conditions: list[str] = []
@@ -252,6 +254,30 @@ def get_custom_fields(db: sqlite3.Connection, contact_id: int) -> list[sqlite3.R
     ).fetchall()
 
 
+def _mark_edited(db: sqlite3.Connection, contact_id: int) -> None:
+    """Record a genuine user edit's timestamp in contact_edits (CL-0033).
+
+    Called only by the user-facing writers (create_contact, _write_contact,
+    import_contact) — never by the Google-sync pull — so edited_at stays an
+    honest "last edited by you" signal, immune to a sync refreshing the row.
+    Runs inside the caller's transaction (no commit of its own)."""
+    db.execute(
+        "INSERT INTO contact_edits (contact_id, edited_at) "
+        "VALUES (?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now')) "
+        "ON CONFLICT(contact_id) DO UPDATE SET "
+        "edited_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')",
+        [contact_id],
+    )
+
+
+def get_edited_at(db: sqlite3.Connection, contact_id: int) -> str | None:
+    """The contact's last user-edit timestamp, or None if never user-edited."""
+    row = db.execute(
+        'SELECT edited_at FROM contact_edits WHERE contact_id = ?', [contact_id]
+    ).fetchone()
+    return row['edited_at'] if row else None
+
+
 # Birthdays are stored as a 'birthday' custom field, either 'YYYY-MM-DD' or the
 # year-less 'MM-DD' (see google_sync._upsert_person and DESIGN.md § data model).
 _BIRTHDAY_RE = re.compile(r'^(?:(\d{4})-)?(\d{2})-(\d{2})$')
@@ -408,6 +434,7 @@ def create_contact(
                 'INSERT INTO custom_fields (contact_id, field_name, field_value) VALUES (?, ?, ?)',
                 [(contact_id, fn, fv) for fn, fv in custom_fields],
             )
+        _mark_edited(db, contact_id)
     return contact_id
 
 
@@ -442,6 +469,10 @@ def _write_contact(
             'INSERT INTO custom_fields (contact_id, field_name, field_value) VALUES (?, ?, ?)',
             [(contact_id, fn, fv) for fn, fv in custom_fields],
         )
+    # _write_contact backs update_contact AND merge_contacts (survivor); both are
+    # genuine user edits, so mark the row edited (CL-0033). create_contact and
+    # import_contact INSERT directly (not via here), so they mark separately.
+    _mark_edited(db, contact_id)
 
 
 def update_contact(
@@ -537,6 +568,7 @@ def import_contact(
                     'VALUES (?, ?, ?)',
                     [(new_id, fn, fv) for fn, fv in custom_fields],
                 )
+            _mark_edited(db, new_id)
             return new_id, 'created'
 
         # Additive update: fill a core field only when the existing value is
@@ -551,7 +583,8 @@ def import_contact(
         new_phone = _fill(phone, existing['phone'])
         new_notes = _fill(notes, existing['notes'])
         current = (existing['email'], existing['phone'], existing['notes'])
-        if (new_email, new_phone, new_notes) != current:
+        core_changed = (new_email, new_phone, new_notes) != current
+        if core_changed:
             db.execute(
                 "UPDATE contacts SET email=?, phone=?, notes=?, "
                 "updated_at=strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id=?",
@@ -574,6 +607,10 @@ def import_contact(
                 'VALUES (?, ?, ?)',
                 to_add,
             )
+        # Mark edited only when the import actually changed data — a pure no-op
+        # match must not move edited_at (CL-0033).
+        if core_changed or to_add:
+            _mark_edited(db, match_id)
         return match_id, 'updated'
 
 

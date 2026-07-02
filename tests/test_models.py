@@ -553,3 +553,76 @@ class TestUpcomingBirthdays:
         today = datetime.date(2026, 3, 10)
         models.create_contact(db, 'individual', 'NoBday')
         assert models.upcoming_birthdays(db, within_days=30, today=today) == []
+
+
+class TestEditedAt:
+    """CL-0033: honest 'last edited by you' timestamp in contact_edits."""
+
+    def test_create_sets_edited_at(self, db):
+        cid = models.create_contact(db, 'individual', 'Alice')
+        assert models.get_edited_at(db, cid) is not None
+
+    def test_update_sets_edited_at(self, db):
+        cid = models.create_contact(db, 'individual', 'Alice')
+        models.update_contact(db, cid, 'individual', 'Alice Updated')
+        assert models.get_edited_at(db, cid) is not None
+
+    def test_merge_marks_survivor_edited(self, db):
+        keep = models.create_contact(db, 'individual', 'Alice', 'a@x.com')
+        loser = models.create_contact(db, 'individual', 'Alice', 'a2@x.com')
+        # Clear both edited rows to isolate what merge does.
+        db.execute('DELETE FROM contact_edits')
+        db.commit()
+        models.merge_contacts(
+            db, keep, [loser],
+            {'type': 'individual', 'name': 'Alice', 'email': 'a@x.com'},
+        )
+        assert models.get_edited_at(db, keep) is not None
+
+    def test_pull_does_not_set_edited_at(self, app, db):
+        import google_sync
+        person = {'resourceName': 'people/c1',
+                  'names': [{'displayName': 'Pulled Person'}]}
+        google_sync._upsert_person(db, person, 'US', app.config)
+        cid = db.execute(
+            "SELECT id FROM contacts WHERE name = 'Pulled Person'"
+        ).fetchone()['id']
+        assert models.get_edited_at(db, cid) is None
+
+    def test_import_create_sets_edited_at(self, db):
+        cid, action = models.import_contact(db, {'name': 'Imported', 'type': 'individual'})
+        assert action == 'created'
+        assert models.get_edited_at(db, cid) is not None
+
+    def test_import_noop_does_not_set_edited_at(self, app, db):
+        # A Google-imported contact (no edited_at). Importing identical data must
+        # not mark it edited (nothing changed).
+        import google_sync
+        person = {'resourceName': 'people/c2', 'names': [{'displayName': 'Nora'}],
+                  'emailAddresses': [{'value': 'nora@x.com'}]}
+        google_sync._upsert_person(db, person, 'US', app.config)
+        cid, action = models.import_contact(
+            db, {'name': 'Nora', 'email': 'nora@x.com', 'type': 'individual'})
+        assert action == 'updated'
+        assert models.get_edited_at(db, cid) is None
+
+    def test_import_additive_change_sets_edited_at(self, app, db):
+        import google_sync
+        person = {'resourceName': 'people/c3', 'names': [{'displayName': 'Omar'}]}
+        google_sync._upsert_person(db, person, 'US', app.config)
+        cid, action = models.import_contact(
+            db, {'name': 'Omar', 'phone': '+1 202-555-0111', 'type': 'individual'})
+        assert action == 'updated'
+        assert models.get_edited_at(db, cid) is not None
+
+    def test_list_exposes_edited_at(self, db):
+        cid = models.create_contact(db, 'individual', 'Alice')
+        rows, _ = models.list_contacts(db)
+        row = next(r for r in rows if r['id'] == cid)
+        assert row['edited_at'] is not None
+
+    def test_edited_at_does_not_inflate_total(self, db):
+        models.create_contact(db, 'individual', 'Alice')
+        models.create_contact(db, 'individual', 'Bob')
+        _, total = models.list_contacts(db)
+        assert total == 2

@@ -65,8 +65,8 @@
 
     <div class="detail-meta">
         <small>Created: {{ contact.created_at|friendly_date }}</small>
-        {% if contact.updated_at != contact.created_at %}
-            <small>Updated: {{ contact.updated_at|friendly_date }}</small>
+        {% if edited_at and edited_at != contact.created_at %}
+            <small>Last edited: {{ edited_at|friendly_date }}</small>
         {% endif %}
     </div>
 </div>
