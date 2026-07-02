@@ -18,7 +18,14 @@ def _build_contact_query(
     letter: str | None = None,
 ) -> tuple[str, list[str | int]]:
     """Build WHERE clause for contact listing. Returns (query_fragment, params)."""
-    query = 'SELECT id, type, name, email, phone, notes, created_at, updated_at FROM contacts'
+    # has_photo is a scalar EXISTS column spliced into the static SELECT prefix,
+    # not a JOIN — a JOIN would fan out rows and inflate the COUNT(*)-over-subquery
+    # total (the same constraint as CL-0025). No bound param, no effect on ordering.
+    query = (
+        'SELECT id, type, name, email, phone, notes, created_at, updated_at, '
+        'EXISTS (SELECT 1 FROM contact_photos p WHERE p.contact_id = contacts.id) '
+        'AS has_photo FROM contacts'
+    )
     params: list[str | int] = []
     conditions: list[str] = []
 
@@ -242,6 +249,35 @@ def get_custom_fields(db: sqlite3.Connection, contact_id: int) -> list[sqlite3.R
         'SELECT * FROM custom_fields WHERE contact_id = ? ORDER BY field_name COLLATE NOCASE',
         [contact_id],
     ).fetchall()
+
+
+def set_contact_photo(db: sqlite3.Connection, contact_id: int, ext: str) -> None:
+    """Record (upsert) the stored photo extension for a contact (CL-0026)."""
+    db.execute(
+        "INSERT INTO contact_photos (contact_id, ext) VALUES (?, ?) "
+        "ON CONFLICT(contact_id) DO UPDATE SET "
+        "ext = excluded.ext, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')",
+        [contact_id, ext],
+    )
+    db.commit()
+
+
+def get_contact_photo_ext(db: sqlite3.Connection, contact_id: int) -> str | None:
+    """Return the stored photo extension for a contact, or None if it has none."""
+    row = db.execute(
+        'SELECT ext FROM contact_photos WHERE contact_id = ?', [contact_id]
+    ).fetchone()
+    return row['ext'] if row else None
+
+
+def clear_contact_photo(db: sqlite3.Connection, contact_id: int) -> str | None:
+    """Delete the photo row for a contact. Return the old ext (for the caller to
+    unlink the file), or None if there was no photo."""
+    old_ext = get_contact_photo_ext(db, contact_id)
+    if old_ext is not None:
+        db.execute('DELETE FROM contact_photos WHERE contact_id = ?', [contact_id])
+        db.commit()
+    return old_ext
 
 
 def _validate_custom_field_names(custom_fields: list[tuple[str, str]] | None) -> None:

@@ -173,7 +173,7 @@ These are **mandatory** for all current and future code.
 | XSS prevention | Jinja2 autoescaping enabled globally (`autoescape=True`, Flask default). Manual `| e` filter on any `Markup()` usage. |
 | CSRF protection | Signed token in every state-changing form. Validate on POST/PUT/DELETE. |
 | Input validation | Whitelist validation: `type` must be `individual` or `company`. `field_name` must match `^[a-zA-Z0-9_ ]{1,64}$`. Phone/email validated with regex, not sanitized. |
-| File uploads | **None allowed** in v1. |
+| File uploads | CSV/vCard import (v1.1) and contact photos (v1.2, CL-0026). Photos are validated by magic bytes (JPEG/PNG/GIF/WebP allow-list; SVG rejected) and a 4 MiB cap, stored on disk under `PHOTOS_DIR` (never blobs in the DB), and served same-origin with `nosniff` — see `photos.py`. |
 
 ### 6.2 Google OAuth
 
@@ -222,7 +222,10 @@ These are **mandatory** for all current and future code.
 
 - ORMs (SQLAlchemy adds ~15 MB RSS overhead).
 - JS frameworks (React/Vue/Svelte add build complexity and bundle size).
-- Image/avatar storage (link to URLs if needed, don't store blobs).
+- Image/avatar storage as **DB blobs** — still avoided. Contact photos (v1.2,
+  CL-0026) are stored as **files** under `PHOTOS_DIR` with only the extension in
+  the DB, and served locally (not hot-linked) to keep the CSP strict and work
+  offline.
 - WebSocket connections (unnecessary for this use case).
 - Caching layers (SQLite is fast enough for local single-user).
 
@@ -278,6 +281,7 @@ All routes are server-rendered HTML. No REST/JSON API in v1 (add in v2 if needed
 | GET | `/contacts/<id>/edit` | Edit contact form |
 | POST | `/contacts/<id>` | Update contact |
 | POST | `/contacts/<id>/delete` | Delete contact |
+| GET | `/contacts/<id>/photo` | Stream the contact's stored photo (CL-0026) |
 | GET | `/contacts/export` | CSV export of all contacts |
 | GET | `/contacts/duplicates` | Scan and display duplicate contacts |
 | GET | `/sync` | Google sync status page |
@@ -341,6 +345,7 @@ All routes are server-rendered HTML. No REST/JSON API in v1 (add in v2 if needed
 |---------|-------|
 | **v1.0** | Local CRUD, custom fields, Google import, search, pagination |
 | v1.1 | CSV import, vCard import/export, merge duplicates |
+| v1.2 | Contact photos/avatars (Google-synced + manual upload, CL-0026) |
 | v2.0 | Bidirectional Google sync, REST JSON API |
 | v2.1 | Contact groups/tags |
 | v3.0 | CardDAV server (sync with phone contacts apps) |

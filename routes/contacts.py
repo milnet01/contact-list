@@ -16,20 +16,24 @@ from flask import (
     redirect,
     render_template,
     request,
+    send_from_directory,
     url_for,
 )
 
 import importer
 import phoneutil
+import photos
 import vcard
 from db import get_db
 from models import (
+    clear_contact_photo,
     create_contact,
     delete_contact,
     export_contacts,
     find_all_duplicates,
     find_duplicates,
     get_contact,
+    get_contact_photo_ext,
     get_custom_fields,
     get_import_profile,
     get_letter_counts,
@@ -39,6 +43,7 @@ from models import (
     merge_contacts,
     sanitize_field_name,
     save_import_profile,
+    set_contact_photo,
     update_contact,
     valid_field_name,
 )
@@ -228,6 +233,47 @@ def new_contact():
     )
 
 
+def _apply_photo(db, contact_id: int) -> None:
+    """Apply a photo upload or removal from the current request to a contact.
+
+    Upload wins over remove: if a new file is present it is stored (ignoring
+    remove_photo); otherwise a ticked remove_photo clears the photo. A bad
+    upload flashes a friendly error but never blocks saving the contact.
+    """
+    file = request.files.get('photo')
+    if file and file.filename:
+        old_ext = get_contact_photo_ext(db, contact_id)
+        # Read one byte past the cap so an oversize body is detectable without
+        # buffering the whole stream; save_photo rejects len > MAX_PHOTO_BYTES.
+        data = file.read(photos.MAX_PHOTO_BYTES + 1)
+        try:
+            ext = photos.save_photo(
+                current_app.config, contact_id, data, old_ext=old_ext
+            )
+        except ValueError:
+            flash('Photo must be a JPEG, PNG, GIF or WebP under 4 MB.', 'error')
+        else:
+            set_contact_photo(db, contact_id, ext)
+    elif request.form.get('remove_photo'):
+        old_ext = clear_contact_photo(db, contact_id)
+        photos.delete_photo(current_app.config, contact_id, old_ext)
+
+
+@bp.route('/contacts/<int:contact_id>/photo')
+def photo(contact_id: int):
+    db = get_db()
+    ext = get_contact_photo_ext(db, contact_id)
+    if not ext:
+        abort(404)
+    # Filename is int id + our own allow-listed ext (no request string), and
+    # send_from_directory rejects any escaping path and 404s a missing file.
+    return send_from_directory(
+        current_app.config['PHOTOS_DIR'],
+        f'{contact_id}.{ext}',
+        mimetype=photos.mime_for_ext(ext),
+    )
+
+
 @bp.route('/contacts', methods=['POST'])
 def create():
     ref = _safe_ref(_get_ref())
@@ -256,6 +302,7 @@ def create():
         fields['email'], fields['phone'], fields['notes'],
         custom_fields,
     )
+    _apply_photo(db, contact_id)
     return redirect(url_for('contacts.detail', contact_id=contact_id, ref=ref))
 
 
@@ -274,9 +321,10 @@ def detail(contact_id: int):
         if parsed.path == '/contacts' and parsed.query:
             ref = f'{parsed.path}?{parsed.query}'
     list_url = ref or url_for('contacts.contact_list')
+    photo_ext = get_contact_photo_ext(db, contact_id)
     return render_template(
         'contact_detail.html', contact=contact, custom_fields=cfs,
-        ref=ref, list_url=list_url,
+        ref=ref, list_url=list_url, photo_ext=photo_ext,
     )
 
 
@@ -288,8 +336,10 @@ def edit(contact_id: int):
         abort(404)
     cfs = get_custom_fields(db, contact_id)
     ref = _safe_ref(_get_ref())
+    photo_ext = get_contact_photo_ext(db, contact_id)
     return render_template(
-        'contact_form.html', contact=contact, custom_fields=cfs, editing=True, ref=ref
+        'contact_form.html', contact=contact, custom_fields=cfs, editing=True,
+        ref=ref, photo_ext=photo_ext,
     )
 
 
@@ -320,6 +370,7 @@ def update(contact_id: int):
         fields['email'], fields['phone'], fields['notes'],
         custom_fields,
     )
+    _apply_photo(db, contact_id)
     return redirect(url_for('contacts.detail', contact_id=contact_id, ref=ref))
 
 
@@ -339,7 +390,9 @@ def bulk_delete():
         except ValueError:
             continue
         if get_contact(db, cid_int):
+            old_ext = get_contact_photo_ext(db, cid_int)
             delete_contact(db, cid_int)
+            photos.delete_photo(current_app.config, cid_int, old_ext)
             count += 1
     flash(f'Deleted {count} contact{"s" if count != 1 else ""}.', 'success')
     return redirect(redirect_to)
@@ -351,7 +404,9 @@ def delete(contact_id: int):
     contact = get_contact(db, contact_id)
     if not contact:
         abort(404)
+    old_ext = get_contact_photo_ext(db, contact_id)
     delete_contact(db, contact_id)
+    photos.delete_photo(current_app.config, contact_id, old_ext)
     ref = _safe_ref(_get_ref())
     if ref:
         return redirect(ref)
@@ -624,11 +679,18 @@ def merge_apply():
     _preserve_extra('email', 'Email', fields['email'])
     _preserve_extra('phone', 'Phone', fields['phone'])
 
+    # Read loser photo exts before the merge deletes their rows, so we can
+    # unlink the orphaned files afterwards (the survivor keeps its own photo).
+    loser_photo_exts = {lid: get_contact_photo_ext(db, lid) for lid in loser_ids}
+
     try:
         merge_contacts(db, survivor_id, loser_ids, fields, customs)
     except ValueError as exc:
         flash(f'Could not merge: {exc}', 'error')
         return redirect(url_for('contacts.duplicates'))
+
+    for lid, lext in loser_photo_exts.items():
+        photos.delete_photo(current_app.config, lid, lext)
 
     flash(f'Merged {len(loser_ids) + 1} contacts into one.', 'success')
     return redirect(url_for('contacts.detail', contact_id=survivor_id))

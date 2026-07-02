@@ -74,7 +74,7 @@ class TestCompanyDetection:
             'names': [{'displayName': 'Acme Inc'}],
             'organizations': [{'name': 'Acme Inc'}],
         }
-        google_sync._upsert_person(db, person, 'US')
+        google_sync._upsert_person(db, person, 'US', {})
         row = db.execute("SELECT type FROM contacts WHERE name = 'Acme Inc'").fetchone()
         assert row['type'] == 'company'
 
@@ -86,7 +86,7 @@ class TestCompanyDetection:
                        'familyName': 'Smith'}],
             'organizations': [{'name': 'Acme Inc'}],  # employer, but a person
         }
-        google_sync._upsert_person(db, person, 'US')
+        google_sync._upsert_person(db, person, 'US', {})
         row = db.execute("SELECT type FROM contacts WHERE name = 'Bob Smith'").fetchone()
         assert row['type'] == 'individual'
 
@@ -270,3 +270,61 @@ class TestEnsurePrivateDir:
         config.ensure_private_dir(str(target))
         mode = stat.S_IMODE(os.stat(target).st_mode)
         assert mode == 0o700, f'expected 0700, got {oct(mode)}'
+
+
+class TestSyncPhotos:
+    """Google-sync photo download + storage (CL-0026)."""
+
+    _PNG = b'\x89PNG\r\n\x1a\n' + b'\x00' * 40
+
+    def _person(self, url, default=False):
+        return {
+            'resourceName': 'people/p1',
+            'names': [{'displayName': 'Photo Person', 'givenName': 'Photo'}],
+            'photos': [{'url': url, 'default': default}],
+        }
+
+    def _cid(self, db):
+        return db.execute(
+            "SELECT id FROM contacts WHERE name = 'Photo Person'"
+        ).fetchone()['id']
+
+    def test_real_photo_stored(self, app, db, monkeypatch):
+        import google_sync
+        import models
+        monkeypatch.setattr(google_sync, '_fetch_photo_bytes', lambda url: self._PNG)
+        person = self._person('https://lh3.googleusercontent.com/abc')
+        google_sync._upsert_person(db, person, 'US', app.config)
+        cid = self._cid(db)
+        assert models.get_contact_photo_ext(db, cid) == 'png'
+        assert os.path.exists(os.path.join(app.config['PHOTOS_DIR'], f'{cid}.png'))
+
+    def test_default_photo_not_stored(self, app, db, monkeypatch):
+        import google_sync
+        import models
+        monkeypatch.setattr(google_sync, '_fetch_photo_bytes', lambda url: self._PNG)
+        person = self._person('https://lh3.googleusercontent.com/abc', default=True)
+        google_sync._upsert_person(db, person, 'US', app.config)
+        assert models.get_contact_photo_ext(db, self._cid(db)) is None
+
+    def test_non_google_host_skipped(self, app, db, monkeypatch):
+        import google_sync
+        import models
+        # Even if the fetch would succeed, a non-googleusercontent host is skipped.
+        monkeypatch.setattr(google_sync, '_fetch_photo_bytes', lambda url: self._PNG)
+        person = self._person('https://evil.example.com/abc.png')
+        google_sync._upsert_person(db, person, 'US', app.config)
+        assert models.get_contact_photo_ext(db, self._cid(db)) is None
+
+    def test_download_error_leaves_contact_photoless(self, app, db, monkeypatch):
+        import google_sync
+        import models
+
+        def boom(url):
+            raise OSError('network down')
+
+        monkeypatch.setattr(google_sync, '_fetch_photo_bytes', boom)
+        person = self._person('https://lh3.googleusercontent.com/abc')
+        # Import must still succeed; the contact is stored without a photo.
+        assert google_sync._upsert_person(db, person, 'US', app.config) is True
+        assert models.get_contact_photo_ext(db, self._cid(db)) is None

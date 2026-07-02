@@ -76,6 +76,9 @@ class Config:
     GOOGLE_CREDENTIALS_DIR = _CONFIG_DIR
     GOOGLE_CREDENTIALS_FILE = os.path.join(GOOGLE_CREDENTIALS_DIR, 'credentials.json')
     GOOGLE_TOKEN_FILE = os.path.join(GOOGLE_CREDENTIALS_DIR, 'token.json')
+    # Contact photos are stored as files here (not blobs in the DB), 0700 like
+    # the token dir. Only the file extension is recorded in the DB (CL-0026).
+    PHOTOS_DIR = os.path.join(_CONFIG_DIR, 'photos')
     PORT = int(os.environ.get('CONTACT_LIST_PORT', 5002))
     CONTACTS_PER_PAGE = 50
     MAX_CONTACTS_PER_PAGE = 200

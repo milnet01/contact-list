@@ -1,3 +1,5 @@
+import io
+
 import pytest
 
 from app import create_app
@@ -444,3 +446,93 @@ class TestOpenRedirect:
         })
         assert resp.status_code == 302
         assert '/contacts?page=3&letter=B' in resp.headers['Location']
+
+
+# --- Contact photos (CL-0026) ----------------------------------------------
+
+_PNG = b'\x89PNG\r\n\x1a\n' + b'\x00' * 40
+
+
+def _create_contact(client, token, name='Photo Person', photo=None):
+    """POST create; return the new contact id parsed from the redirect."""
+    data = {'_csrf_token': token, 'type': 'individual', 'name': name}
+    if photo is not None:
+        data['photo'] = (io.BytesIO(photo), 'a.png')
+    resp = client.post('/contacts', data=data, content_type='multipart/form-data')
+    assert resp.status_code == 302
+    loc = resp.headers['Location']
+    return int(loc.split('/contacts/')[1].split('?')[0])
+
+
+class TestContactPhotos:
+    def test_serve_404_without_photo(self, client):
+        token = _get_csrf(client)
+        cid = _create_contact(client, token)
+        assert client.get(f'/contacts/{cid}/photo').status_code == 404
+
+    def test_upload_and_serve(self, client):
+        token = _get_csrf(client)
+        cid = _create_contact(client, token, photo=_PNG)
+        resp = client.get(f'/contacts/{cid}/photo')
+        assert resp.status_code == 200
+        assert resp.mimetype == 'image/png'
+        assert resp.data == _PNG
+
+    def test_detail_shows_img_when_photo(self, client):
+        token = _get_csrf(client)
+        cid = _create_contact(client, token, photo=_PNG)
+        resp = client.get(f'/contacts/{cid}')
+        assert f'/contacts/{cid}/photo'.encode() in resp.data
+
+    def test_list_shows_img_when_photo(self, client):
+        token = _get_csrf(client)
+        cid = _create_contact(client, token, photo=_PNG)
+        resp = client.get('/contacts')
+        assert f'/contacts/{cid}/photo'.encode() in resp.data
+
+    def test_upload_non_image_rejected_but_contact_saved(self, client):
+        token = _get_csrf(client)
+        data = {
+            '_csrf_token': token, 'type': 'individual', 'name': 'No Photo',
+            'photo': (io.BytesIO(b'this is not an image'), 'x.png'),
+        }
+        resp = client.post('/contacts', data=data,
+                           content_type='multipart/form-data', follow_redirects=True)
+        assert resp.status_code == 200
+        assert b'No Photo' in resp.data           # contact still saved
+        assert b'Photo must be' in resp.data      # friendly flash shown
+
+    def test_remove_photo(self, client):
+        token = _get_csrf(client)
+        cid = _create_contact(client, token, photo=_PNG)
+        assert client.get(f'/contacts/{cid}/photo').status_code == 200
+        client.post(f'/contacts/{cid}', data={
+            '_csrf_token': token, 'type': 'individual', 'name': 'Photo Person',
+            'remove_photo': '1',
+        }, content_type='multipart/form-data')
+        assert client.get(f'/contacts/{cid}/photo').status_code == 404
+
+    def test_delete_unlinks_file(self, client):
+        import os
+        token = _get_csrf(client)
+        cid = _create_contact(client, token, photo=_PNG)
+        photos_dir = client.application.config['PHOTOS_DIR']
+        assert os.path.exists(os.path.join(photos_dir, f'{cid}.png'))
+        client.post(f'/contacts/{cid}/delete', data={'_csrf_token': token})
+        assert not os.path.exists(os.path.join(photos_dir, f'{cid}.png'))
+
+    def test_merge_unlinks_loser_file(self, client):
+        import os
+        token = _get_csrf(client)
+        survivor = _create_contact(client, token, name='Survivor')
+        loser = _create_contact(client, token, name='Loser', photo=_PNG)
+        photos_dir = client.application.config['PHOTOS_DIR']
+        assert os.path.exists(os.path.join(photos_dir, f'{loser}.png'))
+        client.post('/contacts/merge/apply', data={
+            '_csrf_token': token,
+            'survivor_id': str(survivor),
+            'loser_id': str(loser),
+            'field_type': 'individual',
+            'field_name': 'Survivor',
+        })
+        assert not os.path.exists(os.path.join(photos_dir, f'{loser}.png'))

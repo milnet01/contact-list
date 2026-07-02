@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import hmac
 import logging
+import os
 import secrets
 from datetime import datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from flask import Flask, abort, g, render_template, request, session
 
-from config import Config
+from config import Config, ensure_private_dir
 from db import close_db, init_db
 
 
@@ -32,6 +33,18 @@ def create_app(test_config: dict | None = None) -> Flask:
 
     with app.app_context():
         init_db()
+
+    # Contact photos dir (CL-0026). Default it from the credentials dir when a
+    # test_config didn't set it explicitly (test_config uses update(), not
+    # from_object, so Config.PHOTOS_DIR isn't present), then create it 0700.
+    app.config.setdefault(
+        'PHOTOS_DIR',
+        os.path.join(
+            app.config.get('GOOGLE_CREDENTIALS_DIR', Config.GOOGLE_CREDENTIALS_DIR),
+            'photos',
+        ),
+    )
+    ensure_private_dir(app.config['PHOTOS_DIR'])
 
     log.info('App initialized — database: %s', app.config['DATABASE'])
 

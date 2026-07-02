@@ -3,8 +3,12 @@ from __future__ import annotations
 import logging
 import os
 import sqlite3
+import urllib.parse
+import urllib.request
 
+import models
 import phoneutil
+import photos
 
 log = logging.getLogger(__name__)
 
@@ -116,7 +120,7 @@ def sync_contacts(config: dict, db: sqlite3.Connection, region: str) -> tuple[in
             'pageSize': 1000,
             'personFields': (
                 'names,emailAddresses,phoneNumbers,'
-                'organizations,biographies,birthdays,addresses'
+                'organizations,biographies,birthdays,addresses,photos'
             ),
             'requestSyncToken': True,
         }
@@ -161,7 +165,7 @@ def sync_contacts(config: dict, db: sqlite3.Connection, region: str) -> tuple[in
             # (<=3.11) sqlite3 a SAVEPOINT in autocommit can weaken the rollback.
             try:
                 db.execute('SAVEPOINT person')
-                imported = _upsert_person(db, person, region)
+                imported = _upsert_person(db, person, region, config)
                 db.execute('RELEASE SAVEPOINT person')
             except Exception:
                 db.execute('ROLLBACK TO SAVEPOINT person')
@@ -198,7 +202,45 @@ def sync_contacts(config: dict, db: sqlite3.Connection, region: str) -> tuple[in
     return synced, None
 
 
-def _upsert_person(db: sqlite3.Connection, person: dict, region: str) -> bool:
+def _fetch_photo_bytes(url: str) -> bytes:
+    """Download at most MAX_PHOTO_BYTES + 1 bytes from a photo URL (stdlib only).
+
+    The +1 lets the size check detect an oversize body without buffering the
+    whole stream. Wrapped by the caller in try/except so a failure is non-fatal.
+    """
+    with urllib.request.urlopen(url, timeout=10) as resp:  # noqa: S310 (host is validated by caller)
+        return resp.read(photos.MAX_PHOTO_BYTES + 1)
+
+
+def _store_person_photo(config, db: sqlite3.Connection, contact_id: int, person: dict) -> None:
+    """Download and store the first real (non-default) Google photo, if any.
+
+    Non-fatal: any network/validation error is logged and swallowed so it never
+    aborts the contact import (INV-5). Only https ``*.googleusercontent.com``
+    URLs are fetched (SSRF guard, INV-6)."""
+    for entry in person.get('photos', []):
+        if entry.get('default'):
+            continue  # Google's generated silhouette — worse than our initials
+        url = entry.get('url')
+        if not url:
+            continue
+        host = urllib.parse.urlparse(url).hostname or ''
+        if urllib.parse.urlparse(url).scheme != 'https' or not (
+            host == 'googleusercontent.com' or host.endswith('.googleusercontent.com')
+        ):
+            continue
+        try:
+            data = _fetch_photo_bytes(url)
+            old_ext = models.get_contact_photo_ext(db, contact_id)
+            ext = photos.save_photo(config, contact_id, data, old_ext=old_ext)
+        except Exception:
+            log.warning('Skipping photo for contact %s (download/validation failed)', contact_id)
+            return
+        models.set_contact_photo(db, contact_id, ext)
+        return  # first usable photo only
+
+
+def _upsert_person(db: sqlite3.Connection, person: dict, region: str, config) -> bool:
     """Import one Google person. Returns True if a contact was imported/updated,
     False for a delete tombstone or a record with no usable name."""
     metadata = person.get('metadata', {})
@@ -290,5 +332,7 @@ def _upsert_person(db: sqlite3.Connection, person: dict, region: str) -> bool:
             'VALUES (?, ?, ?)',
             cf,
         )
+
+    _store_person_photo(config, db, contact_id, person)
 
     return True

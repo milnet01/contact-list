@@ -14,7 +14,11 @@
 {% set avatar_class = 'avatar-' ~ initial if initial.isalpha() else 'avatar-other' %}
 
 <div class="detail-header">
+    {% if photo_ext %}
+    <img class="avatar avatar-lg" src="{{ url_for('contacts.photo', contact_id=contact.id) }}" alt="Photo of {{ contact.name }}">
+    {% else %}
     <span class="avatar avatar-lg {{ avatar_class }}">{{ initial }}</span>
+    {% endif %}
     <div>
         <h1>{{ contact.name }}</h1>
         <span class="badge badge-{{ contact.type }}">{{ contact.type }}</span>

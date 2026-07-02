@@ -414,6 +414,24 @@ h2 { font-size: 1.2rem; font-weight: 600; margin-bottom: 0.75rem; }
     --avatar-size: 3.5rem;
     font-size: 1.3rem;
 }
+/* Photo avatars (CL-0026): the fixed .avatar box means the image occupies a
+   known size immediately, so a lazy load never shifts the JS masonry layout. */
+img.avatar {
+    object-fit: cover;
+    background: var(--surface-2, #e5e7eb);
+}
+.photo-edit {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 0.5rem;
+}
+.photo-remove {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-weight: 400;
+}
 
 /* Deterministic avatar colors based on first letter */
 .avatar-A,.avatar-N { background: #6366f1; }

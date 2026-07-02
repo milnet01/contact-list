@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Contact photos/avatars (CL-0026)**
+  Contacts can now have a real photo instead of the coloured initial. Photos are pulled from Google on sync (real photos only, not the grey placeholder) and can be uploaded by hand on the Add/Edit page. They're stored privately on your machine and served by the app itself, so the strict security policy is unchanged and photos work offline. Uploads are checked to be genuine JPEG/PNG/GIF/WebP images under 4 MB.
+
 - **Search now covers notes and custom field values, not just name/email/phone (CL-0025)**
   The contact search box now also looks inside each contact's notes and
   custom field values, so a word that only appears in a note or a custom

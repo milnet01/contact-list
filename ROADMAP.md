@@ -85,11 +85,12 @@ efficiency / coding standards every item must comply with.
   Source: in-session-2026-07-01.
   Resolved (2026-07-01): search now covers notes and custom field values via an OR + custom_fields subquery in _build_contact_query. Field values matched, not field names (merge-created "Phone 2"/"Email 2" would otherwise make "phone" match every merged contact). Tests in tests/test_models.py::TestListContacts.
 
-- 📋 [CL-0026] **Support contact photos/avatars.**
+- ✅ [CL-0026] **Support contact photos/avatars.**
   Google People API returns a Google-hosted photo URL per contact. Options: (a) store the remote URL on sync and widen CSP img-src to the Google host, or (b) download to a private dir and serve locally (keeps CSP tight, works offline). Also allow local upload. Design decision -> needs a short spec (cold-eyes) before implementing.
   **Layman:** Show a real photo for each contact like your phone does.
   Kind: feature.
   Source: in-session-2026-07-01.
+  Resolved (2026-07-02): local photo storage + Google-sync download + manual upload. Files under PHOTOS_DIR (0700), only ext in DB (contact_photos table); magic-byte validation (JPEG/PNG/GIF/WebP, SVG rejected), 4 MiB cap under the 5 MiB request ceiling; served same-origin so CSP is unchanged. Spec docs/specs/2026-07-01-contact-photos-design.md passed 5-loop /cold-eyes. 228 tests pass (+34).
 
 - 📋 [CL-0033] **Push local contact changes back to Google (two-way sync).**
   Today google_sync.py is import-only (pull). Two-way sync needs: (1) the read-WRITE scope 'https://www.googleapis.com/auth/contacts' instead of the current 'contacts.readonly' in google_auth.py + google_sync.py -> forces a re-consent; (2) People API writes: createContact / updateContact (updatePersonFields + the stored etag for optimistic concurrency) / deleteContact; (3) conflict handling when both sides changed (etag mismatch) -- last-write-wins vs prompt; (4) tracking which local rows are Google-linked (google_id already exists) vs local-only. Non-trivial and touches auth + data integrity -> needs a spec (cold-eyes) before build."

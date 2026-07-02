@@ -430,3 +430,47 @@ class TestLetterBucketConsistency:
         for bucket, cnt in counts.items():
             _, total = models.list_contacts(db, letter=bucket)
             assert total == cnt, f'bucket {bucket!r}: count {cnt} != filter {total}'
+
+
+class TestContactPhotos:
+    def test_set_and_get_ext(self, db):
+        cid = models.create_contact(db, 'individual', 'Alice')
+        models.set_contact_photo(db, cid, 'png')
+        assert models.get_contact_photo_ext(db, cid) == 'png'
+
+    def test_set_is_upsert(self, db):
+        cid = models.create_contact(db, 'individual', 'Alice')
+        models.set_contact_photo(db, cid, 'png')
+        models.set_contact_photo(db, cid, 'jpg')
+        assert models.get_contact_photo_ext(db, cid) == 'jpg'
+
+    def test_get_none_when_absent(self, db):
+        cid = models.create_contact(db, 'individual', 'Alice')
+        assert models.get_contact_photo_ext(db, cid) is None
+
+    def test_clear_returns_old_ext_and_removes_row(self, db):
+        cid = models.create_contact(db, 'individual', 'Alice')
+        models.set_contact_photo(db, cid, 'gif')
+        assert models.clear_contact_photo(db, cid) == 'gif'
+        assert models.get_contact_photo_ext(db, cid) is None
+
+    def test_clear_when_absent_returns_none(self, db):
+        cid = models.create_contact(db, 'individual', 'Alice')
+        assert models.clear_contact_photo(db, cid) is None
+
+    def test_cascade_on_contact_delete(self, db):
+        cid = models.create_contact(db, 'individual', 'Alice')
+        models.set_contact_photo(db, cid, 'png')
+        models.delete_contact(db, cid)
+        assert models.get_contact_photo_ext(db, cid) is None
+
+    def test_list_contacts_has_photo_flag(self, db):
+        with_photo = models.create_contact(db, 'individual', 'Alice')
+        models.create_contact(db, 'individual', 'Bob')
+        models.set_contact_photo(db, with_photo, 'png')
+        results, total = models.list_contacts(db)
+        # has_photo is 1 only for the contact with a photo row; total not inflated.
+        assert total == 2
+        by_id = {r['id']: r['has_photo'] for r in results}
+        assert by_id[with_photo] == 1
+        assert all(v == 0 for k, v in by_id.items() if k != with_photo)

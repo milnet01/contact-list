@@ -91,7 +91,11 @@
             <td data-label="" class="td-check"><input type="checkbox" name="selected" value="{{ c.id }}" class="row-select" aria-label="Select {{ c.name }}"></td>
             <td data-label="Name">
                 <div class="name-cell">
+                    {% if c.has_photo %}
+                    <img class="avatar" src="{{ url_for('contacts.photo', contact_id=c.id) }}" alt="" loading="lazy">
+                    {% else %}
                     <span class="avatar {{ avatar_class }}">{{ initial }}</span>
+                    {% endif %}
                     <a href="{{ url_for('contacts.detail', contact_id=c.id, ref=request.full_path.rstrip('?')) }}">{{ c.name }}</a>
                 </div>
             </td>
