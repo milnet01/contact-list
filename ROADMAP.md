@@ -128,6 +128,12 @@ efficiency / coding standards every item must comply with.
   Kind: feature.
   Source: in-session-2026-07-02 (steal-from-Monica).
 
+- 💭 [CL-0042] **Make the web app phone-friendly (responsive + PWA).**
+  Lightweight alternative to a native mobile app: responsive CSS for small screens + a web app manifest and a minimal service worker so Android/iOS can install it to the home screen. Kept as considered — only worth doing once the CRM-style features (CL-0037 tags, CL-0038 birthdays, CL-0040 interaction log) land and mobile access to them becomes valuable; the phone's native Contacts app + Google sync already covers plain contact data. No new backend dependency (manifest + JS only). CSP note: a service worker is same-origin so the existing default-src 'self' policy covers it.
+  **Layman:** Make the existing website work nicely on a phone screen and let Android 'Add to Home Screen' so it opens like an app — no separate mobile app needed.
+  Kind: feature.
+  Source: in-session-2026-07-02.
+
 ## Audit & Review Follow-ups
 
 Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inline.
