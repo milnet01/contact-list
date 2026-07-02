@@ -112,12 +112,30 @@ CREATE TABLE sync_state (
 );
 ```
 
-### 4.4 Schema Conventions (for future iterations)
+### 4.4 `contact_edits` Table (CL-0033)
+
+```sql
+CREATE TABLE contact_edits (
+    contact_id INTEGER PRIMARY KEY REFERENCES contacts(id) ON DELETE CASCADE,
+    edited_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+);
+```
+
+A companion table (like `contact_photos`) recording the last **user** edit of a
+contact, written only by the model writers — never by the Google-sync pull — so it
+stays an honest "last edited by you" signal, immune to a sync refreshing the row.
+No row exists until the user genuinely edits a contact (no backfill). Powers the
+two-way-sync dirty detection and the "Last edited"/list/footer display.
+
+### 4.5 Schema Conventions (for future iterations)
 
 - All timestamps are ISO 8601 UTC strings.
 - All text columns use UTF-8.
 - Foreign keys always use `ON DELETE CASCADE`.
-- New tables must include `created_at` and `updated_at`.
+- New tables should include `created_at` and `updated_at` — **except** a table
+  whose sole purpose is a single domain timestamp, which may name that column
+  instead (e.g. `contact_edits.edited_at`, `contact_photos.updated_at`). (This
+  convention is aspirational: no existing table carries both.)
 - Migrations are sequential numbered SQL files in `migrations/`.
 
 ---
@@ -180,7 +198,7 @@ These are **mandatory** for all current and future code.
 | Rule | Implementation |
 |------|---------------|
 | Token storage | Tokens stored in `~/.config/contact-list/token.json` with `0600` permissions. Never in the database or repo. |
-| Scopes | Request only `https://www.googleapis.com/auth/contacts.readonly` for import. Upgrade to `.contacts` only if write-sync is added. |
+| Scopes | Request `https://www.googleapis.com/auth/contacts` (read-write) — the minimum for two-way sync (CL-0033). `SCOPES` is defined once in `google_sync.py` and imported by `google_auth.py` so they cannot diverge. A legacy read-only token is rejected and prompts a reconnect. |
 | Client secret | Stored in `~/.config/contact-list/credentials.json`, never committed. `.gitignore` enforced. |
 | Token refresh | Use `google-auth` automatic refresh. Revoke and re-auth on persistent `RefreshError`. |
 
@@ -243,8 +261,12 @@ These are **mandatory** for all current and future code.
 
 ### 8.2 Sync Strategy
 
-- **Import direction (v1):** Google -> Local only.
-- **Conflict resolution:** Google is source of truth for imported contacts. Local-only contacts are never pushed.
+- **Sync direction (v2.0):** bidirectional — pull all changed Google contacts, then
+  push local-only contacts (create) and locally-edited linked contacts (update).
+  Deletions are **not** pushed (CL-0033).
+- **Conflict resolution:** automatic last-write-wins by Google `updateTime` vs the
+  local `edited_at` (newest edit wins; tie → Google), with a fresh-etag write-time
+  backstop. Local-only contacts **are** pushed as new Google contacts.
 - **Matching:** Contacts matched by `google_id` (People API `resourceName`).
 - **Incremental:** Use `syncToken` from People API. First sync is full, subsequent syncs are delta.
 - **Field mapping:**
@@ -259,11 +281,18 @@ These are **mandatory** for all current and future code.
 | `birthdays[0].date` | custom field: `birthday` |
 | `addresses[0].formattedValue` | custom field: `address` |
 
-### 8.3 Future: Bidirectional Sync (v2+)
+### 8.3 Bidirectional Sync (v2.0 — CL-0033, shipped)
 
-- Requires `contacts` scope (not `contacts.readonly`).
-- Track `updated_at` locally and compare with Google `etag`.
-- Last-write-wins with user confirmation on conflicts.
+- Requires the `contacts` (read-write) scope, not `contacts.readonly`. A legacy
+  read-only token is detected (via the token file's own scopes) and prompts a
+  reconnect. `SCOPES` is a single literal in `google_sync.py`, imported by
+  `google_auth.py`.
+- Tracks a dedicated `edited_at` (`contact_edits`, §4.4) and compares Google
+  `updateTime` timestamps; the `etag` is the write-time precondition backstop, not
+  the conflict signal.
+- Automatic last-write-wins by timestamp (no per-conflict prompt), with a post-sync
+  report. Multi-valued Google fields (email/phone) are read-modify-written to
+  preserve secondary entries. Spec: `docs/specs/2026-07-02-two-way-google-sync.md`.
 
 ---
 
@@ -285,7 +314,7 @@ All routes are server-rendered HTML. No REST/JSON API in v1 (add in v2 if needed
 | GET | `/contacts/export` | CSV export of all contacts |
 | GET | `/contacts/duplicates` | Scan and display duplicate contacts |
 | GET | `/sync` | Google sync status page |
-| POST | `/sync/start` | Trigger Google import |
+| POST | `/sync/start` | Trigger Google sync (import and export) |
 | POST | `/sync/authorize` | Start OAuth flow (Desktop client) |
 | POST | `/sync/disconnect` | Revoke Google credentials |
 
@@ -346,8 +375,9 @@ All routes are server-rendered HTML. No REST/JSON API in v1 (add in v2 if needed
 | **v1.0** | Local CRUD, custom fields, Google import, search, pagination |
 | v1.1 | CSV import, vCard import/export, merge duplicates |
 | v1.2 | Contact photos/avatars (Google-synced + manual upload, CL-0026) |
-| v2.0 | Bidirectional Google sync, REST JSON API |
+| v2.0 | Bidirectional Google sync (CL-0033) + honest last-edited timestamp |
 | v2.1 | Contact groups/tags |
+| v2.2 | REST JSON API |
 | v3.0 | CardDAV server (sync with phone contacts apps) |
 
 ---

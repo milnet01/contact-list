@@ -1,7 +1,14 @@
 # Two-Way Google Sync — Design (CL-0033)
 
-Status: Draft — pending `/cold-eyes` (loop until zero verified findings before
-any implementation, per the project rule and this item's ROADMAP note).
+Status: **Implemented (v2.0).** Passed `/cold-eyes` — 4 loops, 16 independent cold
+reviews, zero Critical throughout; findings decayed from real contract bugs
+(loop 1: scope-detection tautology, under-specified dirty-defer) → design gaps
+(loop 2: dishonest backfill, NULL-prev_sync edge, multi-value ambiguity) →
+correctness details (loop 3: last_synced_at gating, RFC3339 parsing) → wording
+consistency (loop 4). Implemented test-first in 4 commits; 31 tests added, full
+suite 276 green. One external-API assumption (People `get` returns a CONTACT-source
+`updateTime` without requesting it) is confirmed at runtime with a safe Google-wins
+fallback.
 Date: 2026-07-02
 Target release: **v2.0** (DESIGN.md §13 already lists v2.0 as "Bidirectional
 Google sync").

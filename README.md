@@ -1,11 +1,11 @@
 # Contact List
 
 A lightweight, self-hosted contact manager. Store, search, and organise people and
-companies on your own machine — with optional one-way import from your Google Contacts.
+companies on your own machine — with optional two-way sync with your Google Contacts.
 
 It runs as a small local web app (open `http://localhost:5002` in your browser). Your
 data lives in a single SQLite file on your computer; nothing is sent anywhere except the
-Google import you explicitly trigger.
+Google sync you explicitly trigger.
 
 ## Features
 
@@ -16,7 +16,8 @@ Google import you explicitly trigger.
   sort, and paginate.
 - **Duplicate detection** — scan for and review likely duplicate contacts.
 - **CSV export** — download all your contacts.
-- **Google Contacts import** — pull your Google contacts in (one-way, read-only).
+- **Two-way Google sync** — pull your Google contacts in, and push your local edits
+  and new contacts back (newest edit wins on conflicts). Deletions are not pushed.
 - **Security-first** — parameterized SQL, CSRF protection, autoescaped templates, and a
   strict Content-Security-Policy. Runs on `localhost` only.
 - **Light footprint** — Flask + SQLite, vanilla HTML/CSS/JS, no build step, no ORM, no
@@ -60,22 +61,27 @@ All settings are read from environment variables (with sensible defaults):
 The database file (`contacts.db`) is created automatically on first run and is **not**
 committed to the repository.
 
-## Google Contacts import (optional)
+## Google Contacts sync (optional)
 
-Importing from Google needs your own Google Cloud OAuth credentials — the app never
+Syncing with Google needs your own Google Cloud OAuth credentials — the app never
 ships with any:
 
 1. In the [Google Cloud Console](https://console.cloud.google.com/), create a project and
    enable the **People API**.
 2. Create **OAuth 2.0 client credentials** of type **Desktop app** and download the JSON.
 3. Save it to `~/.config/contact-list/credentials.json`.
-4. Open the app's **Sync** page and start the import — a browser window will ask you to
+4. Open the app's **Sync** page and connect — a browser window will ask you to
    authorise access.
 
 Your access token is stored at `~/.config/contact-list/token.json` with `0600`
-permissions, never in the database or the repository. The import requests read-only
-scope (`contacts.readonly`) and only ever pulls data in — it never modifies your Google
-contacts.
+permissions, never in the database or the repository.
+
+**Two-way sync.** The app requests the read-**write** scope (`contacts`) so it can send
+your changes back: local edits to synced contacts, and brand-new local contacts (which
+become new Google contacts). When both sides changed the same contact since the last
+sync, the **newest edit wins**. Deletions are **not** pushed — deleting a contact here
+leaves it on Google. If you previously connected with the old read-only permission, the
+Sync page will ask you to reconnect to grant read-write access.
 
 ## Running the tests
 

@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- ****Honest “Last edited” timestamp.** A per-contact last-edit time that only moves when you edit a contact (never when a Google sync refreshes it), shown on the contact page and as a hint in the list; the footer shows the last Google sync time on every page.** (CL-0033)
+
+- ****Two-way Google sync (CL-0033).** Google Sync now also pushes your changes back: local edits to synced contacts, and brand-new local contacts become new Google contacts. Conflicts (both sides changed since the last sync) resolve by newest edit, with a fresh-etag safety check; multi-valued emails/phones on Google are preserved. Deletions are not pushed. Requires the read-write `contacts` scope — a previously-connected read-only account is detected and prompted to reconnect.** (CL-0033)
+
 - ****Upcoming Birthdays view** — a new page listing contacts whose birthday falls within the next N days (default 30, `?days=` to widen), month-aware with leap-day handling and the age they'll turn.** (CL-0038)
 
 - **Contact photos/avatars (CL-0026)**
