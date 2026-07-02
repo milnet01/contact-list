@@ -97,6 +97,7 @@ efficiency / coding standards every item must comply with.
   **Layman:** Right now Google Sync only pulls contacts in. This would also send your edits, new contacts, and deletions back up to Google so both stay in step.
   Kind: feature.
   Source: in-session-2026-07-01.
+  Scope refined (2026-07-02): spec docs/specs/2026-07-02-two-way-google-sync.md narrows v2.0 to edits + new contacts (push-create local-only, push-update locally-edited linked contacts) with automatic last-write-wins by Google updateTime timestamp. Deletions are NOT pushed in v2.0 (deferred; a locally-deleted linked contact stays on Google and reappears only on a full re-sync) — supersedes this bullet's original 'deletions' / deleteContact wording. Also folds in an honest 'last edited by you' timestamp (contact_edits table) surfaced on the contact list + footer last-synced. Spec passed /cold-eyes before implementation.
 
 - 📋 [CL-0037] **Add tags/labels to contacts with filter-by-tag.**
   New tags table + contact_tags join table (many-to-many). UI: tag chips on the contact form and detail page; a tag filter on the contact list (reuse the existing list query filters). Highest-value 'steal' from Monica; fits the SQLite model cleanly with no new dependency.
