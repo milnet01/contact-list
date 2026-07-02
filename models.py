@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime
 import json
 import re
 import sqlite3
@@ -249,6 +250,80 @@ def get_custom_fields(db: sqlite3.Connection, contact_id: int) -> list[sqlite3.R
         'SELECT * FROM custom_fields WHERE contact_id = ? ORDER BY field_name COLLATE NOCASE',
         [contact_id],
     ).fetchall()
+
+
+# Birthdays are stored as a 'birthday' custom field, either 'YYYY-MM-DD' or the
+# year-less 'MM-DD' (see google_sync._upsert_person and DESIGN.md § data model).
+_BIRTHDAY_RE = re.compile(r'^(?:(\d{4})-)?(\d{2})-(\d{2})$')
+
+
+def _next_birthday(month: int, day: int, today: datetime.date) -> datetime.date:
+    """Next occurrence of month/day on or after ``today``.
+
+    Feb 29 is celebrated on Feb 28 in non-leap years so the birthday never
+    silently disappears from the list.
+    """
+    def _make(year: int) -> datetime.date:
+        try:
+            return datetime.date(year, month, day)
+        except ValueError:
+            if month == 2 and day == 29:
+                return datetime.date(year, 2, 28)
+            raise
+
+    candidate = _make(today.year)
+    if candidate < today:
+        candidate = _make(today.year + 1)
+    return candidate
+
+
+def upcoming_birthdays(
+    db: sqlite3.Connection,
+    within_days: int = 30,
+    *,
+    today: datetime.date | None = None,
+) -> list[dict]:
+    """Contacts whose 'birthday' custom field falls within the next N days.
+
+    Returns dicts sorted by ``days_until`` ascending (ties broken by name).
+    ``age`` is the age the contact will turn on that birthday, or None when no
+    birth year was recorded. No schema change — reads existing custom_fields
+    rows (CL-0038).
+    """
+    if today is None:
+        today = datetime.date.today()
+    rows = db.execute(
+        "SELECT c.id, c.name, c.type, cf.field_value AS bday "
+        "FROM custom_fields cf JOIN contacts c ON c.id = cf.contact_id "
+        "WHERE cf.field_name = 'birthday' COLLATE NOCASE"
+    ).fetchall()
+
+    result: list[dict] = []
+    for row in rows:
+        match = _BIRTHDAY_RE.match((row['bday'] or '').strip())
+        if not match:
+            continue
+        year, month, day = match.group(1), int(match.group(2)), int(match.group(3))
+        try:
+            next_date = _next_birthday(month, day, today)
+        except ValueError:
+            continue  # impossible calendar date (e.g. 13-40)
+        days_until = (next_date - today).days
+        if days_until > within_days:
+            continue
+        result.append({
+            'id': row['id'],
+            'name': row['name'],
+            'type': row['type'],
+            'month': month,
+            'day': day,
+            'next_date': next_date,
+            'days_until': days_until,
+            'age': next_date.year - int(year) if year else None,
+        })
+
+    result.sort(key=lambda r: (r['days_until'], r['name'].casefold()))
+    return result
 
 
 def set_contact_photo(db: sqlite3.Connection, contact_id: int, ext: str) -> None:

@@ -104,11 +104,12 @@ efficiency / coding standards every item must comply with.
   Kind: feature.
   Source: in-session-2026-07-02 (steal-from-Monica).
 
-- 📋 [CL-0038] **Add an 'upcoming birthdays' view.**
+- ✅ [CL-0038] **Add an 'upcoming birthdays' view.**
   Birthdays are already captured as a 'birthday' custom field (stored MM-DD or YYYY-MM-DD). Add a view/section that surfaces contacts whose birthday falls in the next N days, month-aware. No schema change needed; query the existing custom_fields rows.
   **Layman:** A little 'birthdays this week/month' list so you never miss one. The birthday data is already stored.
   Kind: feature.
   Source: in-session-2026-07-02 (steal-from-Monica).
+  Resolved (2026-07-02): models.upcoming_birthdays() reads existing 'birthday' custom fields (MM-DD or YYYY-MM-DD), month-aware with Feb-29->Feb-28 fallback and age computation; new /contacts/birthdays route + birthdays.html + nav link. 15 tests added, no schema change.
 
 - 📋 [CL-0039] **Add favourite/pinned contacts.**
   Add a boolean 'favourite' column to contacts (idempotent migration note: use a new table or a guarded migration since ADD COLUMN IF NOT EXISTS is unavailable in SQLite — see the CL-0026 pattern). Sort favourites first on the list; a star toggle on detail/list.
@@ -284,11 +285,12 @@ they reduce duplication and query count.
   Source: in-session-2026-07-01.
   Promoted considered->planned (2026-07-02): though the maintainer's own contact count is small, other users may have thousands of contacts where the current LIKE-based search degrades. Worth implementing for general users. FTS5 is bundled with SQLite (no new dependency).
 
-- 📋 [CL-0034] **Add cache headers to the contact-photo route so browsers cache avatars.**
+- ✅ [CL-0034] **Add cache headers to the contact-photo route so browsers cache avatars.**
   send_from_directory in routes/contacts.py photo() sets no max_age, so browsers revalidate each avatar on every navigation. Pass max_age (e.g. 1 day) and rely on the existing ETag/Last-Modified for conditional revalidation. Small, self-contained perf win on photo-heavy list pages.
   **Layman:** Right now the browser re-downloads every contact photo on each page. Telling it to keep photos cached makes list pages load instantly after the first visit.
   Kind: perf.
   Source: in-session-2026-07-02.
+  Resolved (2026-07-02): photo() passes max_age=86400 to send_from_directory; ETag/Last-Modified still enable conditional revalidation. Test test_photo_response_is_cacheable asserts max-age=86400.
 
 - 📋 [CL-0035] **Generate downscaled photo thumbnails instead of serving full-size uploads.**
   List/detail avatars display at ~40-96px but the full upload is served. Generate a thumbnail (e.g. 128px) on save and serve that for list/detail; keep the original for download. User has lifted the no-C-extension dependency ban for this: Pillow may be added. NOTE: requires updating DESIGN.md §3 dependency budget (currently bans non-stdlib C-extension deps and caps at <8 direct pip packages) and CLAUDE.md convention. Spec/cold-eyes before implementing.

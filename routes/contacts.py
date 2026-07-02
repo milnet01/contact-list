@@ -45,6 +45,7 @@ from models import (
     save_import_profile,
     set_contact_photo,
     update_contact,
+    upcoming_birthdays,
     valid_field_name,
 )
 
@@ -201,6 +202,19 @@ def duplicates():
     return render_template('duplicates.html', dupes=dupes, total=total)
 
 
+@bp.route('/contacts/birthdays')
+def birthdays():
+    """Contacts whose 'birthday' custom field falls within the next N days (CL-0038)."""
+    db = get_db()
+    try:
+        days = int(request.args.get('days', 30))
+    except (TypeError, ValueError):
+        days = 30
+    days = min(max(days, 1), 366)
+    upcoming = upcoming_birthdays(db, within_days=days)
+    return render_template('birthdays.html', upcoming=upcoming, days=days)
+
+
 def _get_ref() -> str:
     """Get the list page URL carried through the navigation chain."""
     return request.args.get('ref', '') or request.form.get('ref', '')
@@ -267,10 +281,14 @@ def photo(contact_id: int):
         abort(404)
     # Filename is int id + our own allow-listed ext (no request string), and
     # send_from_directory rejects any escaping path and 404s a missing file.
+    # max_age lets browsers cache avatars for a day instead of revalidating on
+    # every navigation; the ETag/Last-Modified send_file sets still allow
+    # conditional revalidation once the cache entry expires.
     return send_from_directory(
         current_app.config['PHOTOS_DIR'],
         f'{contact_id}.{ext}',
         mimetype=photos.mime_for_ext(ext),
+        max_age=86400,
     )
 
 

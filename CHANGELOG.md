@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- ****Upcoming Birthdays view** — a new page listing contacts whose birthday falls within the next N days (default 30, `?days=` to widen), month-aware with leap-day handling and the age they'll turn.** (CL-0038)
+
 - **Contact photos/avatars (CL-0026)**
   Contacts can now have a real photo instead of the coloured initial. Photos are pulled from Google on sync (real photos only, not the grey placeholder) and can be uploaded by hand on the Add/Edit page. They're stored privately on your machine and served by the app itself, so the strict security policy is unchanged and photos work offline. Uploads are checked to be genuine JPEG/PNG/GIF/WebP images under 4 MB.
 
@@ -51,6 +53,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Project docs and tooling: README, ROADMAP, CHANGELOG, a project-level CLAUDE.md, an MIT LICENSE, and an Ants .ants/project.json layout declaration.**
 
 ### Changed
+
+- ****Contact photos are now browser-cacheable** — the avatar route sends a one-day `Cache-Control` max-age (ETag/Last-Modified still allow revalidation), so list pages no longer re-download every photo on each navigation.** (CL-0034)
 
 - **Cache the nav-badge contact count per request; the unfiltered contact-list page no longer runs a second `COUNT(*)`.** (CL-0031)
 

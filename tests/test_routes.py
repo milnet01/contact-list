@@ -1,3 +1,4 @@
+import datetime
 import io
 
 import pytest
@@ -478,6 +479,15 @@ class TestContactPhotos:
         assert resp.mimetype == 'image/png'
         assert resp.data == _PNG
 
+    def test_photo_response_is_cacheable(self, client):
+        # CL-0034: browsers should cache avatars instead of revalidating each
+        # navigation. The route sets a max-age; ETag/Last-Modified still allow
+        # conditional revalidation once it expires.
+        token = _get_csrf(client)
+        cid = _create_contact(client, token, photo=_PNG)
+        resp = client.get(f'/contacts/{cid}/photo')
+        assert resp.cache_control.max_age == 86400
+
     def test_detail_shows_img_when_photo(self, client):
         token = _get_csrf(client)
         cid = _create_contact(client, token, photo=_PNG)
@@ -536,3 +546,44 @@ class TestContactPhotos:
             'field_name': 'Survivor',
         })
         assert not os.path.exists(os.path.join(photos_dir, f'{loser}.png'))
+
+
+# --- Upcoming birthdays (CL-0038) ------------------------------------------
+
+class TestUpcomingBirthdaysView:
+    def _create_with_birthday(self, client, token, name, bday):
+        client.post('/contacts', data={
+            '_csrf_token': token, 'type': 'individual', 'name': name,
+            'cf_name': ['birthday'], 'cf_value': [bday],
+        }, follow_redirects=True)
+
+    def test_nav_has_birthdays_link(self, client):
+        resp = client.get('/contacts')
+        assert b'/contacts/birthdays' in resp.data
+
+    def test_todays_birthday_is_shown(self, client):
+        token = _get_csrf(client)
+        mmdd = datetime.date.today().strftime('%m-%d')
+        self._create_with_birthday(client, token, 'Birthday Person', mmdd)
+        resp = client.get('/contacts/birthdays')
+        assert resp.status_code == 200
+        assert b'Birthday Person' in resp.data
+
+    def test_far_birthday_excluded_by_default(self, client):
+        token = _get_csrf(client)
+        far = (datetime.date.today() + datetime.timedelta(days=100)).strftime('%m-%d')
+        self._create_with_birthday(client, token, 'Far Away', far)
+        resp = client.get('/contacts/birthdays')
+        assert b'Far Away' not in resp.data
+
+    def test_days_param_widens_window(self, client):
+        token = _get_csrf(client)
+        d = (datetime.date.today() + datetime.timedelta(days=100)).strftime('%m-%d')
+        self._create_with_birthday(client, token, 'Hundred Days', d)
+        resp = client.get('/contacts/birthdays?days=200')
+        assert b'Hundred Days' in resp.data
+
+    def test_empty_state(self, client):
+        resp = client.get('/contacts/birthdays')
+        assert resp.status_code == 200
+        assert b'No upcoming birthdays' in resp.data

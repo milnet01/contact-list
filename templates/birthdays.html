@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Upcoming Birthdays — Contacts{% endblock %}
+
+{% block breadcrumb %}
+<nav class="breadcrumb" aria-label="Breadcrumb">
+    <a href="{{ url_for('contacts.contact_list') }}">Contacts</a>
+    <span aria-hidden="true">/</span>
+    <span>Birthdays</span>
+</nav>
+{% endblock %}
+
+{% block content %}
+<h1>Upcoming Birthdays</h1>
+
+{% if not upcoming %}
+<div class="empty-state">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M20 12v9H4v-9M2 7h20v5H2zM12 22V7M12 7C11 5 9 3 7.5 3S5 4 5 5.5 6.5 7 8 7h4zM12 7c1-2 3-4 4.5-4S19 4 19 5.5 17.5 7 16 7h-4z"/></svg>
+    <p>No upcoming birthdays in the next {{ days }} days.</p>
+    <a href="{{ url_for('contacts.contact_list') }}" class="btn btn-secondary mt-md">Back to contacts</a>
+</div>
+{% else %}
+<p class="toolbar-meta mb-md">{{ upcoming|length }} birthday{{ 's' if upcoming|length != 1 }} in the next {{ days }} days.</p>
+
+<div class="card">
+    <table>
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Birthday</th>
+                <th>When</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in upcoming %}
+            {% set initial = r.name[0]|upper if r.name else '?' %}
+            {% set avatar_class = 'avatar-' ~ initial if initial.isalpha() else 'avatar-other' %}
+            <tr>
+                <td data-label="Name">
+                    <div class="name-cell">
+                        <span class="avatar {{ avatar_class }}">{{ initial }}</span>
+                        <a href="{{ url_for('contacts.detail', contact_id=r.id) }}">{{ r.name }}</a>
+                    </div>
+                </td>
+                <td data-label="Birthday">
+                    {{ r.next_date.strftime('%B') }} {{ r.day }}{% if r.age is not none %} <small>(turns {{ r.age }})</small>{% endif %}
+                </td>
+                <td data-label="When">
+                    {% if r.days_until == 0 %}<strong>Today</strong>{% elif r.days_until == 1 %}Tomorrow{% else %}in {{ r.days_until }} days{% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="actions mt-md">
+    <a href="{{ url_for('contacts.contact_list') }}" class="btn btn-secondary">Back to contacts</a>
+</div>
+{% endif %}
+{% endblock %}

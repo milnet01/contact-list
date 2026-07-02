@@ -1,3 +1,5 @@
+import datetime
+
 import pytest
 
 import models
@@ -474,3 +476,80 @@ class TestContactPhotos:
         by_id = {r['id']: r['has_photo'] for r in results}
         assert by_id[with_photo] == 1
         assert all(v == 0 for k, v in by_id.items() if k != with_photo)
+
+
+class TestUpcomingBirthdays:
+    """CL-0038: surface contacts whose 'birthday' custom field is near."""
+
+    def _mk(self, db, name, bday):
+        return models.create_contact(
+            db, 'individual', name, custom_fields=[('birthday', bday)]
+        )
+
+    def test_full_date_gives_days_and_age(self, db):
+        today = datetime.date(2026, 3, 10)
+        self._mk(db, 'Alice', '1990-03-14')
+        rows = models.upcoming_birthdays(db, within_days=30, today=today)
+        assert len(rows) == 1
+        r = rows[0]
+        assert r['name'] == 'Alice'
+        assert r['days_until'] == 4
+        assert r['age'] == 36
+        assert (r['month'], r['day']) == (3, 14)
+
+    def test_mmdd_has_no_age(self, db):
+        today = datetime.date(2026, 3, 10)
+        self._mk(db, 'Bob', '03-14')
+        rows = models.upcoming_birthdays(db, within_days=30, today=today)
+        assert rows[0]['age'] is None
+
+    def test_birthday_today_is_included(self, db):
+        today = datetime.date(2026, 3, 14)
+        self._mk(db, 'Cara', '03-14')
+        rows = models.upcoming_birthdays(db, within_days=30, today=today)
+        assert rows[0]['days_until'] == 0
+
+    def test_year_wraps_december_to_january(self, db):
+        today = datetime.date(2026, 12, 28)
+        self._mk(db, 'Dan', '01-02')
+        rows = models.upcoming_birthdays(db, within_days=30, today=today)
+        assert len(rows) == 1
+        assert rows[0]['days_until'] == 5
+
+    def test_outside_window_excluded(self, db):
+        today = datetime.date(2026, 3, 10)
+        self._mk(db, 'Eve', '05-01')
+        assert models.upcoming_birthdays(db, within_days=30, today=today) == []
+
+    def test_window_boundary_is_inclusive(self, db):
+        today = datetime.date(2026, 3, 10)
+        self._mk(db, 'Fay', '04-09')  # exactly 30 days out
+        rows = models.upcoming_birthdays(db, within_days=30, today=today)
+        assert len(rows) == 1 and rows[0]['days_until'] == 30
+
+    def test_invalid_values_skipped(self, db):
+        today = datetime.date(2026, 3, 10)
+        self._mk(db, 'Bad', 'not-a-date')
+        self._mk(db, 'Empty', '')
+        self._mk(db, 'Impossible', '13-40')
+        assert models.upcoming_birthdays(db, within_days=30, today=today) == []
+
+    def test_sorted_by_days_until(self, db):
+        today = datetime.date(2026, 3, 10)
+        self._mk(db, 'Later', '03-25')
+        self._mk(db, 'Sooner', '03-12')
+        rows = models.upcoming_birthdays(db, within_days=30, today=today)
+        assert [r['name'] for r in rows] == ['Sooner', 'Later']
+
+    def test_leap_day_celebrated_feb28_in_non_leap_year(self, db):
+        today = datetime.date(2027, 2, 1)  # 2027 is not a leap year
+        self._mk(db, 'Leap', '2000-02-29')
+        rows = models.upcoming_birthdays(db, within_days=30, today=today)
+        assert len(rows) == 1
+        assert rows[0]['next_date'] == datetime.date(2027, 2, 28)
+        assert rows[0]['age'] == 27
+
+    def test_contact_without_birthday_ignored(self, db):
+        today = datetime.date(2026, 3, 10)
+        models.create_contact(db, 'individual', 'NoBday')
+        assert models.upcoming_birthdays(db, within_days=30, today=today) == []
