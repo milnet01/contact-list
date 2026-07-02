@@ -98,6 +98,36 @@ efficiency / coding standards every item must comply with.
   Kind: feature.
   Source: in-session-2026-07-01.
 
+- 📋 [CL-0037] **Add tags/labels to contacts with filter-by-tag.**
+  New tags table + contact_tags join table (many-to-many). UI: tag chips on the contact form and detail page; a tag filter on the contact list (reuse the existing list query filters). Highest-value 'steal' from Monica; fits the SQLite model cleanly with no new dependency.
+  **Layman:** Group contacts under labels like 'family', 'work', or 'gym' and filter the list to just one group.
+  Kind: feature.
+  Source: in-session-2026-07-02 (steal-from-Monica).
+
+- 📋 [CL-0038] **Add an 'upcoming birthdays' view.**
+  Birthdays are already captured as a 'birthday' custom field (stored MM-DD or YYYY-MM-DD). Add a view/section that surfaces contacts whose birthday falls in the next N days, month-aware. No schema change needed; query the existing custom_fields rows.
+  **Layman:** A little 'birthdays this week/month' list so you never miss one. The birthday data is already stored.
+  Kind: feature.
+  Source: in-session-2026-07-02 (steal-from-Monica).
+
+- 📋 [CL-0039] **Add favourite/pinned contacts.**
+  Add a boolean 'favourite' column to contacts (idempotent migration note: use a new table or a guarded migration since ADD COLUMN IF NOT EXISTS is unavailable in SQLite — see the CL-0026 pattern). Sort favourites first on the list; a star toggle on detail/list.
+  **Layman:** Star the people you contact most so they pin to the top of the list.
+  Kind: enhancement.
+  Source: in-session-2026-07-02 (steal-from-Monica).
+
+- 💭 [CL-0040] **Add a per-contact interaction log ('last spoke on ...').**
+  New interactions table (contact_id, date, note). Timeline on the contact detail page. NOTE: this nudges the app from 'contact manager' toward 'personal CRM' — kept as considered pending a decision on whether that scope creep is wanted.
+  **Layman:** A simple running note of when you last talked to someone and what about.
+  Kind: feature.
+  Source: in-session-2026-07-02 (steal-from-Monica).
+
+- 💭 [CL-0041] **Link relationships between contacts (spouse-of, works-with).**
+  New contact_relationships table (from_id, to_id, kind). Show linked people on the detail page. NOTE: niche; kept as considered until the higher-value tag/birthday features prove the appetite.
+  **Layman:** Connect two contacts so you can see family members or colleagues from a contact's page.
+  Kind: feature.
+  Source: in-session-2026-07-02 (steal-from-Monica).
+
 ## Audit & Review Follow-ups
 
 Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inline.
