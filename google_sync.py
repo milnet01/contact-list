@@ -1,16 +1,32 @@
 from __future__ import annotations
 
+import datetime
 import logging
 import os
 import sqlite3
 import urllib.parse
 import urllib.request
+from dataclasses import dataclass
 
 import models
 import phoneutil
 import photos
 
 log = logging.getLogger(__name__)
+
+
+@dataclass
+class SyncResult:
+    """Outcome of one bidirectional sync (CL-0033). Replaces the old
+    (count, error) tuple; the /sync route reads it by attribute."""
+    pulled: int = 0            # contacts imported/updated from Google
+    created: int = 0           # local-only contacts created on Google
+    updated: int = 0           # linked contacts updated on Google
+    conflicts_google: int = 0  # conflicts resolved Google-wins
+    conflicts_local: int = 0   # conflicts resolved local-wins
+    skipped: int = 0           # per-contact push failures (logged, not fatal)
+    push_no_time: int = 0      # linked contacts whose Google updateTime was absent
+    error: str | None = None   # fatal error (else None)
 
 # Read-WRITE scope (CL-0033): covers reading too, so the old .readonly scope is
 # dropped. Single source of truth — google_auth.py imports this constant, so the
@@ -126,19 +142,33 @@ def _is_expired_sync_token(exc) -> bool:
     return 'EXPIRED_SYNC_TOKEN' in content
 
 
-def sync_contacts(config: dict, db: sqlite3.Connection, region: str) -> tuple[int, str | None]:
-    """Import contacts from Google. Returns (count_synced, error_or_none)."""
+def sync_contacts(config: dict, db: sqlite3.Connection, region: str) -> SyncResult:
+    """Bidirectional Google Contacts sync (CL-0033): pull changed Google contacts,
+    then push local creates + edits back. Returns a SyncResult."""
     creds = _load_credentials(config)
     if not creds:
-        return 0, 'Not authenticated with Google.'
+        return SyncResult(error='Not authenticated with Google.')
 
     from googleapiclient.discovery import build
     from googleapiclient.errors import HttpError
 
     service = build('people', 'v1', credentials=creds, cache_discovery=False)
 
-    row = db.execute('SELECT sync_token FROM sync_state WHERE id = 1').fetchone()
+    result = SyncResult()
+
+    # --- Step 0: snapshot BEFORE the pull writes or Step 3 advances the baseline.
+    # prev_sync is captured now because Step 3 overwrites last_synced_at; the dirty
+    # sets are computed once here and never recomputed after that advance.
+    row = db.execute(
+        'SELECT sync_token, last_synced_at FROM sync_state WHERE id = 1'
+    ).fetchone()
     sync_token: str | None = row['sync_token'] if row else None
+    prev_sync: str | None = row['last_synced_at'] if row else None
+    dirty_linked = models.get_dirty_linked(db, prev_sync)
+    dirty_google_ids = frozenset(
+        r['google_id'] for r in dirty_linked if r['google_id']
+    )
+    local_only = models.get_local_only_ids(db)
 
     log.info('Starting Google Contacts sync')
 
@@ -182,10 +212,14 @@ def sync_contacts(config: dict, db: sqlite3.Connection, region: str) -> tuple[in
             # (which can include request URLs / error JSON) to the user. Return
             # what was already committed rather than 0 (CL-0020).
             log.exception('Google Contacts sync failed')
-            return synced, 'A Google API error occurred. Check the logs for details.'
+            result.pulled = synced
+            result.error = 'A Google API error occurred. Check the logs for details.'
+            return result
         except Exception:
             log.exception('Google Contacts sync failed')
-            return synced, 'A Google API error occurred. Check the logs for details.'
+            result.pulled = synced
+            result.error = 'A Google API error occurred. Check the logs for details.'
+            return result
 
         for person in results.get('connections', []):
             # Isolate each contact in its own SAVEPOINT: a malformed record must
@@ -197,7 +231,7 @@ def sync_contacts(config: dict, db: sqlite3.Connection, region: str) -> tuple[in
             # (<=3.11) sqlite3 a SAVEPOINT in autocommit can weaken the rollback.
             try:
                 db.execute('SAVEPOINT person')
-                imported = _upsert_person(db, person, region, config)
+                imported = _upsert_person(db, person, region, config, dirty_google_ids)
                 db.execute('RELEASE SAVEPOINT person')
             except Exception:
                 db.execute('ROLLBACK TO SAVEPOINT person')
@@ -219,19 +253,225 @@ def sync_contacts(config: dict, db: sqlite3.Connection, region: str) -> tuple[in
         if not next_page_token:
             break
 
-    if new_sync_token:
-        db.execute(
-            """INSERT INTO sync_state (id, sync_token, last_synced_at)
-               VALUES (1, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
-               ON CONFLICT(id) DO UPDATE SET
-                   sync_token = excluded.sync_token,
-                   last_synced_at = excluded.last_synced_at""",
-            [new_sync_token],
-        )
+    result.pulled = synced
 
+    # --- Step 2: push local changes back to Google (per-contact commits inside).
+    _push_local_changes(service, db, region, config, dirty_linked, local_only,
+                        prev_sync, result)
+
+    # --- Step 3: finalise. last_synced_at advances UNCONDITIONALLY on a clean
+    # finish (decoupled from the sync-token write), or the next run's prev_sync is
+    # stale and re-pushes edits it already pushed. sync_token updates only when a
+    # new one was returned.
+    db.execute(
+        """INSERT INTO sync_state (id, sync_token, last_synced_at)
+           VALUES (1, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+           ON CONFLICT(id) DO UPDATE SET
+               sync_token = COALESCE(excluded.sync_token, sync_state.sync_token),
+               last_synced_at = excluded.last_synced_at""",
+        [new_sync_token],
+    )
     db.commit()
-    log.info('Sync complete: %d contact(s) synced', synced)
-    return synced, None
+    log.info('Sync complete: pulled=%d created=%d updated=%d',
+             result.pulled, result.created, result.updated)
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Push phase (local -> Google)
+# ---------------------------------------------------------------------------
+
+# The only fields the app reads or writes; updatePersonFields never lists anything
+# outside this set, so Google-side data we don't manage is untouched (INV-2).
+_MANAGED_FIELDS = (
+    'names,emailAddresses,phoneNumbers,biographies,birthdays,addresses,organizations'
+)
+
+
+def _parse_dt(value: str | None) -> datetime.datetime | None:
+    """Parse an app timestamp ('...Z', second precision) or a Google RFC3339
+    updateTime (fractional seconds / offset) into a UTC-aware datetime. Comparing
+    parsed datetimes — not strings — avoids mis-ordering ...123456Z vs ...00Z."""
+    if not value:
+        return None
+    text = value.strip()
+    if text.endswith('Z'):
+        text = text[:-1] + '+00:00'
+    try:
+        dt = datetime.datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=datetime.timezone.utc)
+    return dt.astimezone(datetime.timezone.utc)
+
+
+def _contact_update_time(person: dict) -> datetime.datetime | None:
+    """Google's last-edit time for a contact — the CONTACT-source updateTime,
+    returned automatically on a get() (not a personFields value). None if absent."""
+    for src in person.get('metadata', {}).get('sources', []):
+        if src.get('type') == 'CONTACT' and src.get('updateTime'):
+            return _parse_dt(src['updateTime'])
+    return None
+
+
+def _merge_primary(existing: list | None, value: str, key: str) -> list:
+    """Set the value of the FIRST entry (index 0) in place, preserving its other
+    keys and every later entry — the multi-value-preservation guard (INV-2). If
+    the list is empty, create one entry. Position-based (not value-matching): the
+    app imports index 0 and re-formats phones, so a value-equality match could
+    silently clobber the wrong entry."""
+    entries = [dict(e) for e in (existing or [])]
+    if entries:
+        entries[0][key] = value
+    else:
+        entries = [{key: value}]
+    return entries
+
+
+def _birthday_to_google_date(value: str) -> dict | None:
+    """'YYYY-MM-DD' or 'MM-DD' -> a People API date {year?, month, day}."""
+    match = models._BIRTHDAY_RE.match((value or '').strip())
+    if not match:
+        return None
+    year, month, day = match.group(1), int(match.group(2)), int(match.group(3))
+    date = {'month': month, 'day': day}
+    if year:
+        date['year'] = int(year)
+    return date
+
+
+def _person_body_for_push(
+    contact: sqlite3.Row, custom_fields: list, existing: dict | None
+) -> tuple[dict, list[str]]:
+    """Build a People API person body + the list of personFields being written,
+    from a local contact. `existing` is the live Google person (update, to preserve
+    multi-values) or None (create). Only managed fields are ever written."""
+    existing = existing or {}
+    body: dict = {}
+    fields: list[str] = []
+
+    if contact['name']:
+        body['names'] = _merge_primary(existing.get('names'), contact['name'],
+                                       'unstructuredName')
+        fields.append('names')
+    if contact['email']:
+        body['emailAddresses'] = _merge_primary(
+            existing.get('emailAddresses'), contact['email'], 'value')
+        fields.append('emailAddresses')
+    if contact['phone']:
+        body['phoneNumbers'] = _merge_primary(
+            existing.get('phoneNumbers'), contact['phone'], 'value')
+        fields.append('phoneNumbers')
+    if contact['notes']:
+        body['biographies'] = _merge_primary(
+            existing.get('biographies'), contact['notes'], 'value')
+        fields.append('biographies')
+
+    cf = {r['field_name'].lower(): r['field_value'] for r in custom_fields}
+    date = _birthday_to_google_date(cf['birthday']) if cf.get('birthday') else None
+    if date:
+        body['birthdays'] = [{'date': date}]  # single-valued
+        fields.append('birthdays')
+    if cf.get('address'):
+        body['addresses'] = _merge_primary(
+            existing.get('addresses'), cf['address'], 'formattedValue')
+        fields.append('addresses')
+    # organizations only from the explicit custom field; a type=company contact's
+    # org name already lives in `name`->`names`, so don't duplicate it (§6).
+    if cf.get('organization'):
+        body['organizations'] = _merge_primary(
+            existing.get('organizations'), cf['organization'], 'name')
+        fields.append('organizations')
+
+    return body, fields
+
+
+def _apply_google_to_local(db, person: dict, region: str, config) -> None:
+    """Overwrite the local row with Google's copy (a Google-wins conflict). Reuses
+    the pull's upsert, so it writes updated_at, never edited_at (INV-1)."""
+    db.execute('SAVEPOINT applygoogle')
+    try:
+        _upsert_person(db, person, region, config)
+        db.execute('RELEASE SAVEPOINT applygoogle')
+    except Exception:
+        db.execute('ROLLBACK TO SAVEPOINT applygoogle')
+        db.execute('RELEASE SAVEPOINT applygoogle')
+        raise
+
+
+def _push_update(service, db, contact_id: int, google_id: str, person: dict) -> bool:
+    """updateContact with the fresh etag + a preserving body. Returns True if a
+    write happened (False when there was nothing managed to write)."""
+    contact = models.get_contact(db, contact_id)
+    if not contact:
+        return False
+    cfs = models.get_custom_fields(db, contact_id)
+    body, fields = _person_body_for_push(contact, cfs, person)
+    if not fields:
+        return False
+    body['etag'] = person.get('etag')
+    updated = service.people().updateContact(
+        resourceName=google_id, updatePersonFields=','.join(fields), body=body,
+    ).execute()
+    models.set_contact_etag(db, contact_id, updated.get('etag'))
+    db.commit()
+    return True
+
+
+def _push_local_changes(service, db, region, config, dirty_linked, local_only,
+                        prev_sync, result: SyncResult) -> None:
+    """Step 2: create local-only contacts on Google, and push locally-edited
+    linked contacts with per-contact conflict resolution (§7). Each push is its own
+    committed unit, isolated so one failure is logged + skipped, never fatal."""
+    prev_dt = _parse_dt(prev_sync)
+
+    for contact_id in local_only:
+        try:
+            contact = models.get_contact(db, contact_id)
+            if not contact:
+                continue
+            cfs = models.get_custom_fields(db, contact_id)
+            body, _fields = _person_body_for_push(contact, cfs, None)
+            created = service.people().createContact(body=body).execute()
+            models.link_google_contact(
+                db, contact_id, created.get('resourceName'), created.get('etag'))
+            db.commit()  # persist the link at once so a re-run never re-creates
+            result.created += 1
+        except Exception:
+            db.rollback()
+            log.exception('Failed to create Google contact for %s', contact_id)
+            result.skipped += 1
+
+    for row in dirty_linked:
+        contact_id, google_id = row['id'], row['google_id']
+        try:
+            person = service.people().get(
+                resourceName=google_id, personFields=_MANAGED_FIELDS,
+            ).execute()
+            google_dt = _contact_update_time(person)
+            if google_dt is None:
+                # Can't prove our edit is newer -> Google-wins, don't push. Counted
+                # so a systematic absence is visible, not a silent one-way sync.
+                result.push_no_time += 1
+                continue
+            local_dt = _parse_dt(models.get_edited_at(db, contact_id))
+            google_changed = prev_dt is None or google_dt > prev_dt
+            if google_changed and not (local_dt is not None and local_dt > google_dt):
+                # Both changed and Google is newer-or-equal -> Google wins.
+                _apply_google_to_local(db, person, region, config)
+                db.commit()
+                result.conflicts_google += 1
+            else:
+                pushed = _push_update(service, db, contact_id, google_id, person)
+                if pushed and google_changed:
+                    result.conflicts_local += 1  # local edit beat a concurrent Google edit
+                elif pushed:
+                    result.updated += 1
+        except Exception:
+            db.rollback()
+            log.exception('Failed to push contact %s', contact_id)
+            result.skipped += 1
 
 
 def _fetch_photo_bytes(url: str) -> bytes:
@@ -272,10 +512,18 @@ def _store_person_photo(config, db: sqlite3.Connection, contact_id: int, person:
         return  # first usable photo only
 
 
-def _upsert_person(db: sqlite3.Connection, person: dict, region: str, config) -> bool:
+def _upsert_person(
+    db: sqlite3.Connection, person: dict, region: str, config,
+    skip_google_ids: frozenset[str] = frozenset(),
+) -> bool:
     """Import one Google person. Returns True if a contact was imported/updated,
-    False for a delete tombstone or a record with no usable name."""
+    False for a delete tombstone, a record with no usable name, or a deferred one.
+
+    A resourceName in skip_google_ids is a locally-edited contact whose pull we
+    DEFER so the local edit survives for the push phase to resolve (CL-0033)."""
     metadata = person.get('metadata', {})
+    if person.get('resourceName') in skip_google_ids:
+        return False
     google_id = person.get('resourceName')
 
     if metadata.get('deleted'):

@@ -278,6 +278,47 @@ def get_edited_at(db: sqlite3.Connection, contact_id: int) -> str | None:
     return row['edited_at'] if row else None
 
 
+def get_dirty_linked(db: sqlite3.Connection, prev_sync: str | None) -> list[sqlite3.Row]:
+    """Google-linked contacts the USER edited since the last sync — candidates
+    for push-update (CL-0033). A NULL prev_sync (never synced) yields zero rows:
+    nothing has diverged from a Google baseline yet, so the first sync only
+    creates local-only contacts. The `:prev_sync IS NOT NULL` guard is
+    belt-and-braces over SQLite's 3VL (`edited_at > NULL` is already NULL)."""
+    return db.execute(
+        'SELECT c.id, c.google_id FROM contacts c '
+        'JOIN contact_edits e ON e.contact_id = c.id '
+        'WHERE c.google_id IS NOT NULL '
+        '  AND :prev IS NOT NULL AND e.edited_at > :prev',
+        {'prev': prev_sync},
+    ).fetchall()
+
+
+def get_local_only_ids(db: sqlite3.Connection) -> list[int]:
+    """Contacts with no google_id — candidates for push-create (all of them, so a
+    new local contact reaches Google/the phone). CL-0033."""
+    return [
+        r['id'] for r in db.execute(
+            'SELECT id FROM contacts WHERE google_id IS NULL ORDER BY id'
+        )
+    ]
+
+
+def link_google_contact(
+    db: sqlite3.Connection, contact_id: int, google_id: str, etag: str | None
+) -> None:
+    """Record the Google resourceName + etag after push-creating a contact, so a
+    re-run updates rather than re-creates it (INV-6). Caller commits."""
+    db.execute(
+        'UPDATE contacts SET google_id = ?, etag = ? WHERE id = ?',
+        [google_id, etag, contact_id],
+    )
+
+
+def set_contact_etag(db: sqlite3.Connection, contact_id: int, etag: str | None) -> None:
+    """Store the fresh etag returned by a push-update. Caller commits."""
+    db.execute('UPDATE contacts SET etag = ? WHERE id = ?', [etag, contact_id])
+
+
 # Birthdays are stored as a 'birthday' custom field, either 'YYYY-MM-DD' or the
 # year-less 'MM-DD' (see google_sync._upsert_person and DESIGN.md § data model).
 _BIRTHDAY_RE = re.compile(r'^(?:(\d{4})-)?(\d{2})-(\d{2})$')

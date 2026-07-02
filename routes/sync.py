@@ -75,11 +75,27 @@ def start_sync():
     config = current_app.config
     db = get_db()
 
-    count, error = google_sync.sync_contacts(config, db, g.settings['phone_region'])
-    if error:
-        flash(f'Sync failed: {error}', 'error')
+    r = google_sync.sync_contacts(config, db, g.settings['phone_region'])
+    if r.error:
+        flash(f'Sync failed: {r.error}', 'error')
     else:
-        flash(f'Synced {count} contact{"s" if count != 1 else ""} from Google.', 'success')
+        parts = [f'{r.pulled} imported from Google']
+        if r.created:
+            parts.append(f'{r.created} created on Google')
+        if r.updated:
+            parts.append(f'{r.updated} updated')
+        conflicts = r.conflicts_local + r.conflicts_google
+        if conflicts:
+            parts.append(
+                f'{conflicts} conflict{"s" if conflicts != 1 else ""} resolved '
+                f'({r.conflicts_local} kept yours, {r.conflicts_google} kept Google)')
+        if r.push_no_time:
+            parts.append(
+                f"{r.push_no_time} edit{'s' if r.push_no_time != 1 else ''} "
+                "couldn't be pushed (Google's edit time was unavailable)")
+        if r.skipped:
+            parts.append(f'{r.skipped} skipped')
+        flash('Sync complete: ' + ', '.join(parts) + '.', 'success')
 
     return redirect(url_for('sync.sync_page'))
 

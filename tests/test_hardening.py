@@ -136,10 +136,10 @@ class TestMidPaginationPreservesPages:
 
         with app.app_context():
             conn = get_db()
-            synced, error = google_sync.sync_contacts({}, conn, 'US')
+            result = google_sync.sync_contacts({}, conn, 'US')
             # Page 1 was committed before page 2 failed.
-            assert error is not None
-            assert synced == 1
+            assert result.error is not None
+            assert result.pulled == 1
             row = conn.execute(
                 "SELECT name FROM contacts WHERE name = 'PageOne Person'"
             ).fetchone()
