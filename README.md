@@ -24,7 +24,7 @@ Google import you explicitly trigger.
 
 ## Requirements
 
-- Python 3.10 or newer
+- Python 3.12 or newer
 - Linux/macOS (a `run.sh` launcher is provided; Windows users can run `app.py` directly)
 
 ## Quick start

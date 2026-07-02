@@ -241,10 +241,29 @@ they reduce duplication and query count.
   Source: in-session-2026-07-01.
   Resolved (2026-07-01): nav-badge count cached on g via contact_count(); unfiltered list route pre-seeds g.contact_count = total, so the list page no longer issues a second COUNT(*). Badge still shows the full count on filtered pages.
 
-- 💭 [CL-0032] **Consider SQLite FTS5 for full-text search if the contact count grows large.**
+- 📋 [CL-0032] **Consider SQLite FTS5 for full-text search if the contact count grows large.**
   Search uses LIKE '%term%' (leading wildcard), which cannot use any index and always full-scans; the idx_contacts_email/phone indexes only help exact-match/dedup paths, not substring search. At the current single-user scale (~330 rows) this is sub-millisecond, so this is deferred. If N reaches the thousands, add an FTS5 virtual table (contentless, synced via triggers) over name/email/phone/notes/custom_fields. Pairs with CL-0025 (search notes + custom fields). NOTE: WAL mode, synchronous=NORMAL, 8MB cache, temp_store=MEMORY, busy_timeout, and indexes on all filter/sort/join columns are already in place (db.py + migrations) — the DB is otherwise well-tuned.
   **Layman:** If the address book ever grows to many thousands of contacts, switch the search to a proper text index so it stays instant.
   Kind: perf.
   Source: in-session-2026-07-01.
+  Promoted considered->planned (2026-07-02): though the maintainer's own contact count is small, other users may have thousands of contacts where the current LIKE-based search degrades. Worth implementing for general users. FTS5 is bundled with SQLite (no new dependency).
+
+- 📋 [CL-0034] **Add cache headers to the contact-photo route so browsers cache avatars.**
+  send_from_directory in routes/contacts.py photo() sets no max_age, so browsers revalidate each avatar on every navigation. Pass max_age (e.g. 1 day) and rely on the existing ETag/Last-Modified for conditional revalidation. Small, self-contained perf win on photo-heavy list pages.
+  **Layman:** Right now the browser re-downloads every contact photo on each page. Telling it to keep photos cached makes list pages load instantly after the first visit.
+  Kind: perf.
+  Source: in-session-2026-07-02.
+
+- 📋 [CL-0035] **Generate downscaled photo thumbnails instead of serving full-size uploads.**
+  List/detail avatars display at ~40-96px but the full upload is served. Generate a thumbnail (e.g. 128px) on save and serve that for list/detail; keep the original for download. User has lifted the no-C-extension dependency ban for this: Pillow may be added. NOTE: requires updating DESIGN.md §3 dependency budget (currently bans non-stdlib C-extension deps and caps at <8 direct pip packages) and CLAUDE.md convention. Spec/cold-eyes before implementing.
+  **Layman:** A 4 MB photo is currently sent in full even though it shows as a tiny circle. Making small thumbnail copies means the list page sends kilobytes, not megabytes.
+  Kind: perf.
+  Source: in-session-2026-07-02.
+
+- 📋 [CL-0036] **Split routes/contacts.py (696 lines) into contacts + import/export + merge modules.**
+  routes/contacts.py exceeds the DESIGN §14 file-size cap. Extract CSV/vCard import+export routes and the merge_preview/merge_apply routes into their own blueprints/modules. Pure structural refactor; the test suite (229 tests) locks behaviour.
+  **Layman:** One file currently handles contacts, CSV/vCard import-export, and merging all at once. Splitting it into focused files makes each part easier to find and change. No behaviour change.
+  Kind: refactor.
+  Source: in-session-2026-07-02.
 
 ## Shipped
