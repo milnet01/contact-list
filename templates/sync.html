@@ -18,10 +18,26 @@
     </ol>
 </div>
 
+{% elif needs_reconsent %}
+<div class="card">
+    <h2>Reconnect to Google</h2>
+    <p>Two-way sync needs a new permission: the app now sends your changes back to
+       Google, not just reads them. Your existing connection was granted read-only
+       access, so please reconnect to grant read-and-write access.</p>
+    <form method="post" action="{{ url_for('sync.authorize') }}">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn">
+            <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd"/></svg>
+            Reconnect Google Account
+        </button>
+    </form>
+</div>
+
 {% elif not is_authenticated %}
 <div class="card">
     <h2>Connect to Google</h2>
-    <p>Click below to authorize access to your Google Contacts (read-only).</p>
+    <p>Click below to authorize access to your Google Contacts. Two-way sync reads
+       your contacts in and sends your local changes (edits and new contacts) back.</p>
     <form method="post" action="{{ url_for('sync.authorize') }}">
         <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="btn">

@@ -328,3 +328,77 @@ class TestSyncPhotos:
         # Import must still succeed; the contact is stored without a photo.
         assert google_sync._upsert_person(db, person, 'US', app.config) is True
         assert models.get_contact_photo_ext(db, self._cid(db)) is None
+
+
+# --- Two-way sync: OAuth scope upgrade & re-consent (CL-0033) ---------------
+
+_READONLY = ['https://www.googleapis.com/auth/contacts.readonly']
+_WRITE = ['https://www.googleapis.com/auth/contacts']
+
+
+def _write_token(path, scopes):
+    import json
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, 'w') as f:
+        json.dump({
+            'token': 'fake-access-token', 'refresh_token': 'r',
+            'client_id': 'c', 'client_secret': 's',
+            'token_uri': 'https://oauth2.googleapis.com/token',
+            'scopes': scopes,
+            'expiry': '2099-01-01T00:00:00Z',  # far future -> valid, no refresh
+        }, f)
+
+
+class TestReconsent:
+    def test_no_token_neither_authenticated_nor_reconsent(self, app):
+        import google_sync
+        cfg = app.config
+        assert google_sync.is_authenticated(cfg) is False
+        assert google_sync.needs_reconsent(cfg) is False
+
+    def test_legacy_readonly_token_needs_reconsent(self, app):
+        import google_sync
+        cfg = app.config
+        _write_token(cfg['GOOGLE_TOKEN_FILE'], _READONLY)
+        # Detected via the token file's OWN scopes, even though the app now
+        # requests the write scope.
+        assert google_sync.is_authenticated(cfg) is False
+        assert google_sync.needs_reconsent(cfg) is True
+
+    def test_write_scope_token_authenticated(self, app):
+        import google_sync
+        cfg = app.config
+        _write_token(cfg['GOOGLE_TOKEN_FILE'], _WRITE)
+        assert google_sync.needs_reconsent(cfg) is False
+        assert google_sync.is_authenticated(cfg) is True
+
+    def test_token_missing_scopes_key_needs_reconsent(self, app):
+        import json
+        import google_sync
+        cfg = app.config
+        path = cfg['GOOGLE_TOKEN_FILE']
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, 'w') as f:
+            json.dump({'token': 't', 'refresh_token': 'r', 'client_id': 'c',
+                       'client_secret': 's',
+                       'token_uri': 'https://oauth2.googleapis.com/token'}, f)
+        assert google_sync.needs_reconsent(cfg) is True
+
+    def test_scopes_single_source(self):
+        import google_auth
+        import google_sync
+        assert google_auth.SCOPES is google_sync.SCOPES
+        assert google_sync.SCOPES == _WRITE
+
+    def test_sync_page_prompts_reconnect_for_legacy_token(self, app):
+        # A legacy read-only token makes /sync show the reconnect prompt, not the
+        # ordinary first-time authorise prompt.
+        _write_token(app.config['GOOGLE_TOKEN_FILE'], _READONLY)
+        # Credentials file must exist so the page passes the "setup" gate.
+        os.makedirs(app.config['GOOGLE_CREDENTIALS_DIR'], exist_ok=True)
+        with open(app.config['GOOGLE_CREDENTIALS_FILE'], 'w') as f:
+            f.write('{}')
+        resp = app.test_client().get('/sync')
+        assert resp.status_code == 200
+        assert b'Reconnect to Google' in resp.data
+        assert b'new permission' in resp.data

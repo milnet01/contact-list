@@ -9,7 +9,12 @@ from __future__ import annotations
 import os
 import sys
 
-SCOPES = ['https://www.googleapis.com/auth/contacts.readonly']
+# Single source of truth for the OAuth scope (CL-0033, INV-5) — importing it here
+# means this standalone auth script can never request a different scope than the
+# app's sync code. google_sync imports only stdlib + local pure modules at import
+# time, so this is cheap for the subprocess.
+from google_sync import SCOPES
+
 CREDS_DIR = os.path.expanduser('~/.config/contact-list')
 CREDS_FILE = os.path.join(CREDS_DIR, 'credentials.json')
 TOKEN_FILE = os.path.join(CREDS_DIR, 'token.json')

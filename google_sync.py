@@ -12,7 +12,10 @@ import photos
 
 log = logging.getLogger(__name__)
 
-SCOPES = ['https://www.googleapis.com/auth/contacts.readonly']
+# Read-WRITE scope (CL-0033): covers reading too, so the old .readonly scope is
+# dropped. Single source of truth — google_auth.py imports this constant, so the
+# two modules can never request different scopes (INV-5).
+SCOPES = ['https://www.googleapis.com/auth/contacts']
 
 
 # ---------------------------------------------------------------------------
@@ -21,6 +24,31 @@ SCOPES = ['https://www.googleapis.com/auth/contacts.readonly']
 
 def has_credentials(config: dict) -> bool:
     return os.path.isfile(config['GOOGLE_CREDENTIALS_FILE'])
+
+
+def _token_has_write_scope(config: dict) -> bool:
+    """True iff a token file exists AND its OWN recorded scopes include the write
+    scope. Reads the token file's scopes via a throwaway probe with the scopes
+    arg OMITTED — passing SCOPES would make ``creds.scopes`` echo the argument and
+    ``has_scopes`` return True tautologically, masking a legacy read-only token
+    (CL-0033 §3). A token file with no ``scopes`` key → probe.scopes is None →
+    has_scopes False → treated as needing re-consent."""
+    token_path = config['GOOGLE_TOKEN_FILE']
+    if not os.path.isfile(token_path):
+        return False
+    from google.oauth2.credentials import Credentials
+    try:
+        probe = Credentials.from_authorized_user_file(token_path)
+    except Exception:
+        return False
+    return bool(probe.has_scopes(SCOPES))
+
+
+def needs_reconsent(config: dict) -> bool:
+    """True when a token exists but lacks the write scope (a legacy read-only
+    token, or one missing its scopes) — so the /sync page can prompt a reconnect
+    rather than the plain first-time authorise. False when there is no token."""
+    return os.path.isfile(config['GOOGLE_TOKEN_FILE']) and not _token_has_write_scope(config)
 
 
 def is_authenticated(config: dict) -> bool:
@@ -32,6 +60,10 @@ def _load_credentials(config: dict):
     """Load and refresh stored OAuth credentials. Returns None if unavailable."""
     token_path = config['GOOGLE_TOKEN_FILE']
     if not os.path.isfile(token_path):
+        return None
+    # A legacy token minted for the read-only scope can't authorise writes and
+    # would 403; treat it as no token so the app shows the reconnect path.
+    if not _token_has_write_scope(config):
         return None
 
     from google.oauth2.credentials import Credentials

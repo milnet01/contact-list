@@ -34,6 +34,7 @@ def sync_page():
         'sync.html',
         has_credentials=google_sync.has_credentials(config),
         is_authenticated=google_sync.is_authenticated(config),
+        needs_reconsent=google_sync.needs_reconsent(config),
         sync_state=sync_state,
     )
 
