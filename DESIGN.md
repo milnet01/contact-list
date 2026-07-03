@@ -161,15 +161,40 @@ stays an honest "last edited by you" signal, immune to a sync refreshing the row
 No row exists until the user genuinely edits a contact (no backfill). Powers the
 two-way-sync dirty detection and the "Last edited"/list/footer display.
 
-### 4.5 Schema Conventions (for future iterations)
+### 4.5 Tags (`tags` + `contact_tags`, CL-0037)
+
+```sql
+CREATE TABLE tags (
+    id    INTEGER PRIMARY KEY,
+    name  TEXT NOT NULL UNIQUE COLLATE NOCASE
+);
+CREATE TABLE contact_tags (
+    contact_id  INTEGER NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
+    tag_id      INTEGER NOT NULL REFERENCES tags(id)     ON DELETE CASCADE,
+    PRIMARY KEY (contact_id, tag_id)
+);
+CREATE INDEX idx_contact_tags_tag ON contact_tags(tag_id);
+```
+
+A many-to-many label store. `tags.name` is case-insensitively unique (NOCASE), so
+"Family"/"family" collapse to one row (stored casing = first typed). A tag is
+created on first use and garbage-collected when its last contact drops it, so the
+in-use set is always exactly what `get_all_tags` (an INNER JOIN) surfaces. The list
+filter is an AND of scalar `id IN (subquery)` membership tests (one per selected
+tag) — no JOIN, so no row fan-out. Being a pure join table, `contact_tags` carries
+no timestamps (see §4.6). *Deliberately out of scope for CL-0037:* CSV
+export/import of tags, Google-group sync, and per-tag colours (future items).
+
+### 4.6 Schema Conventions (for future iterations)
 
 - All timestamps are ISO 8601 UTC strings.
 - All text columns use UTF-8.
 - Foreign keys always use `ON DELETE CASCADE`.
 - New tables should include `created_at` and `updated_at` — **except** a table
   whose sole purpose is a single domain timestamp, which may name that column
-  instead (e.g. `contact_edits.edited_at`, `contact_photos.updated_at`). (This
-  convention is aspirational: no existing table carries both.)
+  instead (e.g. `contact_edits.edited_at`, `contact_photos.updated_at`), or a pure
+  join table (`contact_tags`), which needs none. (This convention is aspirational:
+  only `contacts` currently carries both; the companion tables deliberately do not.)
 - Migrations are sequential numbered SQL files in `migrations/`.
 
 ---
@@ -357,9 +382,10 @@ All routes are server-rendered HTML. No REST/JSON API in v1 (add in v2 if needed
 
 | Param | Description |
 |-------|-------------|
-| `q` | Search term (matches name, email, phone) |
+| `q` | Search term (matches name, email, phone, notes, and custom-field values) |
 | `type` | Filter by `individual` or `company` |
 | `letter` | Filter by first letter (A-Z or `#` for non-alpha) |
+| `tag` | Filter by tag (repeatable; matches contacts carrying **all** given tags) |
 | `page` | Page number (clamped to valid range) |
 | `per_page` | Items per page (1-200, default 50) |
 | `sort` | Sort column: `name`, `type`, `created`, `updated` |

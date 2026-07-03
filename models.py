@@ -7,6 +7,13 @@ import sqlite3
 
 import phoneutil
 
+# CL-0037: tag caps. MAX_TAG_LEN bounds a single tag's length; MAX_TAGS bounds
+# how many tags one contact may carry (matching the hard-coded 50-item
+# custom-field limit in routes.contacts). Both are enforced in _normalize_tags,
+# which is the single choke-point for every tag write.
+MAX_TAG_LEN = 50
+MAX_TAGS = 50
+
 
 def _escape_like(term: str) -> str:
     """Escape special LIKE characters."""
@@ -17,6 +24,7 @@ def _build_contact_query(
     search: str | None = None,
     contact_type: str | None = None,
     letter: str | None = None,
+    tags: list[str] | None = None,
 ) -> tuple[str, list[str | int]]:
     """Build WHERE clause for contact listing. Returns (query_fragment, params)."""
     # has_photo is a scalar EXISTS column spliced into the static SELECT prefix,
@@ -60,6 +68,16 @@ def _build_contact_query(
         conditions.append('first_letter(name) = ?')
         params.append(letter.upper())
 
+    # CL-0037: AND-filter by tag. One scalar `id IN (subquery)` membership test
+    # per selected tag — reuses the custom-field-search idiom above, so a contact
+    # is returned at most once (no JOIN fan-out) and must carry ALL N tags.
+    for tag in (tags or []):
+        conditions.append(
+            'id IN (SELECT ct.contact_id FROM contact_tags ct '
+            'JOIN tags t ON t.id = ct.tag_id WHERE t.name = ? COLLATE NOCASE)'
+        )
+        params.append(tag)
+
     if conditions:
         query += ' WHERE ' + ' AND '.join(conditions)
 
@@ -75,13 +93,14 @@ def list_contacts(
     letter: str | None = None,
     sort: str = 'name',
     sort_dir: str = 'asc',
+    tags: list[str] | None = None,
 ) -> tuple[list[sqlite3.Row], int]:
     # Clamp pagination at the data layer too, so the "max 200 per page" contract
     # holds for every caller (tests, future API), not just the web route.
     per_page = max(1, min(per_page, 200))
     page = max(1, page)
 
-    query, params = _build_contact_query(search, contact_type, letter)
+    query, params = _build_contact_query(search, contact_type, letter, tags)
 
     count_query = f'SELECT COUNT(*) FROM ({query})'
     total: int = db.execute(count_query, params).fetchone()[0]
@@ -447,6 +466,82 @@ def is_favourite(db: sqlite3.Connection, contact_id: int) -> bool:
     return row is not None
 
 
+def _normalize_tags(raw: str) -> list[str]:
+    """Parse a comma-separated tag field into a clean, de-duplicated list (CL-0037).
+
+    The single choke-point for what becomes a tag, so create/update/merge apply
+    identical rules. Splits on commas; for each piece strips surrounding
+    whitespace and collapses internal whitespace runs to one space; drops empties;
+    truncates to MAX_TAG_LEN chars; de-duplicates case-insensitively preserving
+    the first-seen casing and order; then keeps at most MAX_TAGS (dropping the
+    surplus). Returns [] for a blank field.
+    """
+    out: list[str] = []
+    seen: set[str] = set()
+    for piece in raw.split(','):
+        name = ' '.join(piece.split())  # strip + collapse internal whitespace
+        if not name:
+            continue
+        name = name[:MAX_TAG_LEN]
+        key = name.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(name)
+        if len(out) >= MAX_TAGS:
+            break
+    return out
+
+
+def _gc_orphan_tags(db: sqlite3.Connection) -> None:
+    """Delete tag rows no contact references any more. No commit of its own — runs
+    inside the caller's transaction. Global sweep, so any tag write also clears
+    stragglers left by paths that don't GC inline (INV-3)."""
+    db.execute('DELETE FROM tags WHERE id NOT IN (SELECT tag_id FROM contact_tags)')
+
+
+def set_contact_tags(
+    db: sqlite3.Connection, contact_id: int, tag_names: list[str]
+) -> None:
+    """Replace a contact's tag set with `tag_names` (already normalized).
+
+    Upserts each name into `tags` (matched case-insensitively via the NOCASE
+    UNIQUE), replaces the contact's `contact_tags` rows, then GCs orphans. NO
+    transaction of its own — composes into the caller's `with db:` block, the same
+    way _write_contact handles custom fields."""
+    db.execute('DELETE FROM contact_tags WHERE contact_id = ?', [contact_id])
+    for name in tag_names:
+        db.execute('INSERT OR IGNORE INTO tags (name) VALUES (?)', [name])
+        row = db.execute(
+            'SELECT id FROM tags WHERE name = ? COLLATE NOCASE', [name]
+        ).fetchone()
+        db.execute(
+            'INSERT INTO contact_tags (contact_id, tag_id) VALUES (?, ?)',
+            [contact_id, row['id']],
+        )
+    _gc_orphan_tags(db)
+
+
+def get_contact_tags(db: sqlite3.Connection, contact_id: int) -> list[str]:
+    """The contact's tag names, ordered case-insensitively (for form + detail)."""
+    rows = db.execute(
+        'SELECT t.name FROM tags t JOIN contact_tags ct ON ct.tag_id = t.id '
+        'WHERE ct.contact_id = ? ORDER BY t.name COLLATE NOCASE',
+        [contact_id],
+    ).fetchall()
+    return [r['name'] for r in rows]
+
+
+def get_all_tags(db: sqlite3.Connection) -> list[sqlite3.Row]:
+    """Every in-use tag with its contact count, for the list filter bar. The INNER
+    JOIN excludes any orphan tag (0 contacts) independent of GC."""
+    return db.execute(
+        'SELECT t.name, COUNT(ct.contact_id) AS cnt '
+        'FROM tags t JOIN contact_tags ct ON ct.tag_id = t.id '
+        'GROUP BY t.id ORDER BY t.name COLLATE NOCASE'
+    ).fetchall()
+
+
 def _validate_custom_field_names(custom_fields: list[tuple[str, str]] | None) -> None:
     """Reject invalid or case-insensitively-duplicate custom field names before
     any DML, so the persistence layer enforces the contract for every caller
@@ -481,6 +576,7 @@ def create_contact(
     phone: str | None = None,
     notes: str | None = None,
     custom_fields: list[tuple[str, str]] | None = None,
+    tags: list[str] | None = None,
 ) -> int:
     _validate_contact_type(contact_type)
     _validate_custom_field_names(custom_fields)
@@ -500,6 +596,9 @@ def create_contact(
                 'INSERT INTO custom_fields (contact_id, field_name, field_value) VALUES (?, ?, ?)',
                 [(contact_id, fn, fv) for fn, fv in custom_fields],
             )
+        # create_contact has its own INSERT path (not via _write_contact), so it
+        # makes its own tag write inside this transaction (CL-0037).
+        set_contact_tags(db, contact_id, tags or [])
         _mark_edited(db, contact_id)
     return contact_id
 
@@ -513,8 +612,9 @@ def _write_contact(
     phone: str | None = None,
     notes: str | None = None,
     custom_fields: list[tuple[str, str]] | None = None,
+    tags: list[str] | None = None,
 ) -> None:
-    """Validate, UPDATE a contact, and replace its custom fields — WITHOUT a
+    """Validate, UPDATE a contact, and replace its custom fields + tags — WITHOUT a
     transaction of its own, so a caller can compose it into a larger atomic
     block. `update_contact` wraps this in `with db:`; `merge_contacts` runs it
     alongside the loser deletes in one transaction. Validating here means every
@@ -535,6 +635,7 @@ def _write_contact(
             'INSERT INTO custom_fields (contact_id, field_name, field_value) VALUES (?, ?, ?)',
             [(contact_id, fn, fv) for fn, fv in custom_fields],
         )
+    set_contact_tags(db, contact_id, tags or [])  # CL-0037
     # _write_contact backs update_contact AND merge_contacts (survivor); both are
     # genuine user edits, so mark the row edited (CL-0033). create_contact and
     # import_contact INSERT directly (not via here), so they mark separately.
@@ -550,19 +651,22 @@ def update_contact(
     phone: str | None = None,
     notes: str | None = None,
     custom_fields: list[tuple[str, str]] | None = None,
+    tags: list[str] | None = None,
 ) -> None:
     # `with db` makes the UPDATE + DELETE + re-insert atomic: if the re-insert
     # fails, the delete of the old custom fields is rolled back too, so a failed
     # update can't silently wipe a contact's existing custom fields.
     with db:
         _write_contact(
-            db, contact_id, contact_type, name, email, phone, notes, custom_fields
+            db, contact_id, contact_type, name, email, phone, notes,
+            custom_fields, tags,
         )
 
 
 def delete_contact(db: sqlite3.Connection, contact_id: int) -> None:
     with db:
         db.execute('DELETE FROM contacts WHERE id = ?', [contact_id])
+        _gc_orphan_tags(db)  # CL-0037: reap a tag this contact was the last user of
 
 
 _FIELD_NAME_RE = re.compile(r'^[a-zA-Z0-9_ ]{1,64}$')
@@ -686,11 +790,12 @@ def merge_contacts(
     loser_ids: list[int],
     fields: dict,
     custom_fields: list[tuple[str, str]] | None = None,
+    tags: list[str] | None = None,
 ) -> None:
     """Merge `loser_ids` into `survivor_id`: overwrite the survivor with the
-    chosen `fields` + `custom_fields`, then delete the losers (their custom
-    fields cascade via the FK). One `with db:` block makes it atomic (INV-3);
-    `_write_contact` carries the validation (INV-4)."""
+    chosen `fields` + `custom_fields` + `tags`, then delete the losers (their
+    custom fields / tag links cascade via the FK). One `with db:` block makes it
+    atomic (INV-3); `_write_contact` carries the validation (INV-4)."""
     losers = list(dict.fromkeys(loser_ids))  # de-dupe, preserve order
     if not losers:
         raise ValueError('merge needs at least one other contact')
@@ -712,10 +817,14 @@ def merge_contacts(
         _write_contact(
             db, survivor_id, fields['type'], fields['name'],
             fields.get('email'), fields.get('phone'), fields.get('notes'),
-            custom_fields,
+            custom_fields, tags,
         )
         for lid in losers:
             db.execute('DELETE FROM contacts WHERE id = ?', [lid])
+        # The survivor's tag write GC'd before the losers were deleted, so a
+        # loser-only tag the user pruned still had the loser's link then. Sweep
+        # again now that the loser links have cascaded away (CL-0037, INV-3).
+        _gc_orphan_tags(db)
 
 
 def get_import_profile(db: sqlite3.Connection, header_signature: str) -> dict | None:

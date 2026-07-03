@@ -19,8 +19,10 @@ from flask import (
 import photos
 from db import get_db
 from models import (
+    _normalize_tags,
     get_contact,
     get_contact_photo_ext,
+    get_contact_tags,
     get_custom_fields,
     merge_contacts,
 )
@@ -66,9 +68,18 @@ def merge_preview():
             if cf['field_value'] not in entry['values']:
                 entry['values'].append(cf['field_value'])
 
+    # CL-0037: pre-fill the merge form's tags field with the union of every
+    # involved contact's tags, so the survivor keeps them all by default (the
+    # user can prune before confirming). `tag_union`, not `union` — the latter is
+    # already bound above for the custom-field aggregation.
+    tag_union = _normalize_tags(
+        ', '.join(name for c in contacts for name in get_contact_tags(db, c['id']))
+    )
+
     return render_template(
         'merge.html', contacts=contacts, survivor_id=survivor_id,
         loser_ids=loser_ids, core=core, customs=list(union.values()),
+        tags_str=', '.join(tag_union),
     )
 
 
@@ -135,8 +146,9 @@ def merge_apply():
     # unlink the orphaned files afterwards (the survivor keeps its own photo).
     loser_photo_exts = {lid: get_contact_photo_ext(db, lid) for lid in loser_ids}
 
+    tags = _normalize_tags(request.form.get('tags', ''))
     try:
-        merge_contacts(db, survivor_id, loser_ids, fields, customs)
+        merge_contacts(db, survivor_id, loser_ids, fields, customs, tags)
     except ValueError as exc:
         flash(f'Could not merge: {exc}', 'error')
         return redirect(url_for('contacts.duplicates'))

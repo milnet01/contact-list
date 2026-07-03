@@ -100,11 +100,12 @@ efficiency / coding standards every item must comply with.
   Scope refined (2026-07-02): spec docs/specs/2026-07-02-two-way-google-sync.md narrows v2.0 to edits + new contacts (push-create local-only, push-update locally-edited linked contacts) with automatic last-write-wins by Google updateTime timestamp. Deletions are NOT pushed in v2.0 (deferred; a locally-deleted linked contact stays on Google and reappears only on a full re-sync) — supersedes this bullet's original 'deletions' / deleteContact wording. Also folds in an honest 'last edited by you' timestamp (contact_edits table) surfaced on the contact list + footer last-synced. Spec passed /cold-eyes before implementation.
   Resolved (2026-07-02): two-way Google sync shipped as v2.0. Scope upgraded readonly->contacts (single-source SCOPES; legacy-token reconnect via token-file scope probe). sync_contacts is bidirectional (SyncResult): Step-0 snapshot of dirty-linked/local-only sets, pull defers dirty contacts (skip_google_ids), push-create for local-only (persists google_id+etag at once), push-update for edited linked contacts with fresh-etag + index-0 multi-value preservation, timestamp last-write-wins (RFC3339-parsed, tie->Google, absent updateTime->push_no_time+Google-wins), last_synced_at advances unconditionally. No deletions (v2.0). Plus honest edited_at (contact_edits table) surfaced on detail/list/footer. Spec docs/specs/2026-07-02-two-way-google-sync.md passed 4-loop /cold-eyes. 31 tests added; suite 276 green. DESIGN.md §4.4/§6.2/§8.2/§8.3/§9/§13 + README amended.
 
-- 📋 [CL-0037] **Add tags/labels to contacts with filter-by-tag.**
+- ✅ [CL-0037] **Add tags/labels to contacts with filter-by-tag.**
   New tags table + contact_tags join table (many-to-many). UI: tag chips on the contact form and detail page; a tag filter on the contact list (reuse the existing list query filters). Highest-value 'steal' from Monica; fits the SQLite model cleanly with no new dependency.
   **Layman:** Group contacts under labels like 'family', 'work', or 'gym' and filter the list to just one group.
   Kind: feature.
   Source: in-session-2026-07-02 (steal-from-Monica).
+  Resolved (2026-07-03): shipped as migration 008_tags.sql + tag model helpers + ?tag= AND filter + detail chips / list filter bar + merge tag-union. Spec docs/specs/2026-07-03-tags-labels-design.md (cold-eyes converged, 9 loops). 31 new tests, 328 suite total green.
 
 - ✅ [CL-0038] **Add an 'upcoming birthdays' view.**
   Birthdays are already captured as a 'birthday' custom field (stored MM-DD or YYYY-MM-DD). Add a view/section that surfaces contacts whose birthday falls in the next N days, month-aware. No schema change needed; query the existing custom_fields rows.

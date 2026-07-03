@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Tags / labels for contacts, with filter-by-tag** (CL-0037)
+  Group contacts under free-text labels (e.g. "family", "work", "gym"), typed as a comma-separated list on the contact form and shown as chips on the detail page. A filter bar on the contact list narrows to contacts carrying all selected tags (AND). Tags are created on first use and removed when their last contact drops them; merging contacts keeps the union of their tags. No new dependency.
+
 - ****Favourite / pinned contacts (CL-0039).** Star a contact to pin it to the top of the list.** (CL-0039)
   Star the people you contact most and they pin to the top of the contact list (favourites first, then your chosen sort). A star toggle sits on each list row and on the contact page. Favourites are stored locally and never synced to Google.
 

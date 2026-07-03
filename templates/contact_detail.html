@@ -68,6 +68,14 @@
         {% endfor %}
     </dl>
 
+    {% if tags %}
+    <div class="tag-list detail-tags">
+        {% for t in tags %}
+        <a class="tag-chip" href="{{ url_for('contacts.contact_list', tag=t) }}">{{ t }}</a>
+        {% endfor %}
+    </div>
+    {% endif %}
+
     <div class="detail-meta">
         <small>Created: {{ contact.created_at|friendly_date }}</small>
         {% if edited_at and edited_at != contact.created_at %}

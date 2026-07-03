@@ -68,6 +68,14 @@
     <input type="hidden" name="cf_count" value="0">
     {% endif %}
 
+    {# CL-0037: pre-filled with the union of every merged contact's tags; the
+       survivor keeps whatever is submitted, so pruning here drops a tag. #}
+    <div class="card">
+        <h2>Tags</h2>
+        <input name="tags" type="text" maxlength="2600" value="{{ tags_str }}">
+        <small class="form-hint">Separate tags with commas.</small>
+    </div>
+
     <div class="actions">
         <button type="submit" class="btn">Merge</button>
         <a href="{{ url_for('contacts.duplicates') }}" class="btn btn-secondary">Cancel</a>

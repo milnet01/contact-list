@@ -88,6 +88,13 @@
             <label for="notes">Notes</label>
             <textarea id="notes" name="notes" rows="3" maxlength="2000">{{ contact.notes if contact and contact.notes else '' }}</textarea>
         </div>
+
+        <div class="form-group">
+            <label for="tags">Tags</label>
+            <input id="tags" name="tags" type="text" maxlength="2600"
+                   value="{{ tags_str }}">
+            <small class="form-hint">Separate tags with commas.</small>
+        </div>
     </fieldset>
 
     <fieldset id="custom-fields-section">

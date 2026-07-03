@@ -21,13 +21,16 @@ import phoneutil
 import photos
 from db import get_db
 from models import (
+    _normalize_tags,
     clear_contact_photo,
     create_contact,
     delete_contact,
     find_all_duplicates,
     find_duplicates,
+    get_all_tags,
     get_contact,
     get_contact_photo_ext,
+    get_contact_tags,
     get_custom_fields,
     get_edited_at,
     get_letter_counts,
@@ -126,6 +129,9 @@ def contact_list():
     search = request.args.get('q', '').strip()
     contact_type = request.args.get('type', '').strip()
     letter = request.args.get('letter', '').strip()
+    # CL-0037: repeated ?tag= params, normalized (dedup/clean) via the same
+    # choke-point the write path uses.
+    tags = _normalize_tags(', '.join(request.args.getlist('tag')))
 
     db = get_db()
     sort = request.args.get('sort') or s['sort']
@@ -133,14 +139,15 @@ def contact_list():
 
     contacts, total = list_contacts(
         db, page, per_page, search or None, contact_type or None, letter or None,
-        sort=sort, sort_dir=sort_dir,
+        sort=sort, sort_dir=sort_dir, tags=tags or None,
     )
     # list_contacts already computed the total and clamped the page internally;
     # reuse both here instead of issuing a second COUNT (CL-0017).
     total_pages = max((total + per_page - 1) // per_page, 1)
     # When the list is unfiltered, `total` is the full contact count — seed the
-    # nav-badge cache so the context processor skips its own COUNT (CL-0031).
-    if not (search or contact_type or letter):
+    # nav-badge cache so the context processor skips its own COUNT (CL-0031). An
+    # active tag filter is a filtered view, so it must not seed the badge (INV-7).
+    if not (search or contact_type or letter or tags):
         g.contact_count = total
     page = min(max(page, 1), total_pages)
     letter_counts = get_letter_counts(db)
@@ -160,6 +167,9 @@ def contact_list():
         sort=sort,
         sort_dir=sort_dir,
         type_counts=type_counts,
+        all_tags=get_all_tags(db),
+        active_tags=tags,
+        active_tags_lc={t.lower() for t in tags},
     )
 
 
@@ -213,7 +223,7 @@ def new_contact():
     ref = _safe_ref(_get_ref())
     return render_template(
         'contact_form.html', contact=None, custom_fields=[], editing=False,
-        ref=ref, default_type=g.settings['default_type'],
+        ref=ref, default_type=g.settings['default_type'], tags_str='',
     )
 
 
@@ -277,6 +287,7 @@ def create():
             editing=False,
             errors=errors,
             ref=ref,
+            tags_str=request.form.get('tags', ''),
         ), 400
 
     db = get_db()
@@ -288,7 +299,7 @@ def create():
     contact_id = create_contact(
         db, fields['type'], fields['name'],
         fields['email'], fields['phone'], fields['notes'],
-        custom_fields,
+        custom_fields, _normalize_tags(request.form.get('tags', '')),
     )
     _apply_photo(db, contact_id)
     return redirect(url_for('contacts.detail', contact_id=contact_id, ref=ref))
@@ -315,6 +326,7 @@ def detail(contact_id: int):
         ref=ref, list_url=list_url, photo_ext=photo_ext,
         edited_at=get_edited_at(db, contact_id),
         is_favourite=is_favourite(db, contact_id),
+        tags=get_contact_tags(db, contact_id),
     )
 
 
@@ -330,6 +342,7 @@ def edit(contact_id: int):
     return render_template(
         'contact_form.html', contact=contact, custom_fields=cfs, editing=True,
         ref=ref, photo_ext=photo_ext,
+        tags_str=', '.join(get_contact_tags(db, contact_id)),
     )
 
 
@@ -353,12 +366,13 @@ def update(contact_id: int):
             editing=True,
             errors=errors,
             ref=ref,
+            tags_str=request.form.get('tags', ''),
         ), 400
 
     update_contact(
         db, contact_id, fields['type'], fields['name'],
         fields['email'], fields['phone'], fields['notes'],
-        custom_fields,
+        custom_fields, _normalize_tags(request.form.get('tags', '')),
     )
     _apply_photo(db, contact_id)
     return redirect(url_for('contacts.detail', contact_id=contact_id, ref=ref))

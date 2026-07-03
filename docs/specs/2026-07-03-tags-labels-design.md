@@ -1,6 +1,10 @@
 # Tags / Labels for Contacts — Design (CL-0037)
 
-Status: **Signed off** (2026-07-03) — passed `/cold-eyes` to convergence over
+Status: **Implemented** (2026-07-03) — shipped as migration `008_tags.sql`,
+`_normalize_tags`/`set_contact_tags`/`get_contact_tags`/`get_all_tags`/`_gc_orphan_tags`
++ `tags` params threaded through create/update/merge, the `?tag=` AND filter,
+detail chips + list filter bar, and merge tag-union, with 31 tests (all green;
+328 suite total). Passed `/cold-eyes` to convergence over
 **9 loops**, findings decaying from structural (a merge-union `TypeError`, the
 search/type `<form>`-vs-`url_for` filter-preservation mechanism, the
 `maxlength` 50/500/2600 coherence) → filter & GC correctness (pagination silently

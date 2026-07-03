@@ -14,8 +14,11 @@
             <option value="individual" {{ 'selected' if contact_type == 'individual' }}>Individual</option>
             <option value="company" {{ 'selected' if contact_type == 'company' }}>Company</option>
         </select>
+        {# CL-0037: the search/type GET form isn't a url_for link, so carry the
+           active tag filter through a search submit / type change via hidden fields. #}
+        {% for t in active_tags %}<input type="hidden" name="tag" value="{{ t }}">{% endfor %}
         <button type="submit" class="btn btn-small">Search</button>
-        {% if search or contact_type %}
+        {% if search or contact_type or active_tags %}
             <a href="{{ url_for('contacts.contact_list') }}" class="btn btn-small btn-secondary">Clear</a>
         {% endif %}
     </form>
@@ -34,12 +37,12 @@
 </div>
 
 <nav class="alpha-nav" aria-label="Alphabetical navigation">
-    <a href="{{ url_for('contacts.contact_list', type=contact_type, q=search) }}"
+    <a href="{{ url_for('contacts.contact_list', type=contact_type, q=search, tag=active_tags) }}"
        class="alpha-link {{ 'active' if not letter }}">All</a>
     {% for l in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' %}
         {% set count = letter_counts.get(l, 0) %}
         {% if count %}
-            <a href="{{ url_for('contacts.contact_list', letter=l, type=contact_type, q=search) }}"
+            <a href="{{ url_for('contacts.contact_list', letter=l, type=contact_type, q=search, tag=active_tags) }}"
                class="alpha-link {{ 'active' if letter == l }}"
                title="{{ count }} contact{{ 's' if count != 1 }}">{{ l }}</a>
         {% else %}
@@ -48,13 +51,28 @@
     {% endfor %}
     {% set other_count = letter_counts.get('#', 0) %}
     {% if other_count %}
-        <a href="{{ url_for('contacts.contact_list', letter='#', type=contact_type, q=search) }}"
+        <a href="{{ url_for('contacts.contact_list', letter='#', type=contact_type, q=search, tag=active_tags) }}"
            class="alpha-link {{ 'active' if letter == '#' }}"
            title="{{ other_count }} contact{{ 's' if other_count != 1 }}">#</a>
     {% else %}
         <span class="alpha-link disabled">#</span>
     {% endif %}
 </nav>
+
+{% if all_tags %}
+{# CL-0037: tag filter bar. Each chip toggles itself in/out of the active set;
+   AND-filtering means the list shows contacts carrying ALL selected tags. #}
+<nav class="tag-filter tag-list" aria-label="Filter by tag">
+    {% for t in all_tags %}
+        {% set is_active = t.name|lower in active_tags_lc %}
+        {% set ns = namespace(target=[]) %}
+        {% for a in active_tags %}{% if a|lower != t.name|lower %}{% set ns.target = ns.target + [a] %}{% endif %}{% endfor %}
+        {% if not is_active %}{% set ns.target = ns.target + [t.name] %}{% endif %}
+        <a href="{{ url_for('contacts.contact_list', tag=ns.target, q=search, type=contact_type, letter=letter) }}"
+           class="tag-chip {{ 'active' if is_active }}">{{ t.name }} <span class="tag-count">{{ t.cnt }}</span></a>
+    {% endfor %}
+</nav>
+{% endif %}
 </div><!-- /.list-controls -->
 
 <!-- Recently viewed (populated by JS) -->
@@ -75,9 +93,9 @@
         <tr>
             <th class="th-check"><input type="checkbox" id="select-all" aria-label="Select all"></th>
             {% set next_dir = 'desc' if sort == 'name' and sort_dir == 'asc' else 'asc' %}
-            <th><a href="{{ url_for('contacts.contact_list', q=search, type=contact_type, letter=letter, sort='name', dir=next_dir) }}">Name {{ '▲' if sort == 'name' and sort_dir == 'asc' else ('▼' if sort == 'name' else '') }}</a></th>
+            <th><a href="{{ url_for('contacts.contact_list', q=search, type=contact_type, letter=letter, tag=active_tags, sort='name', dir=next_dir) }}">Name {{ '▲' if sort == 'name' and sort_dir == 'asc' else ('▼' if sort == 'name' else '') }}</a></th>
             {% set next_dir = 'desc' if sort == 'type' and sort_dir == 'asc' else 'asc' %}
-            <th><a href="{{ url_for('contacts.contact_list', q=search, type=contact_type, letter=letter, sort='type', dir=next_dir) }}">Type {{ '▲' if sort == 'type' and sort_dir == 'asc' else ('▼' if sort == 'type' else '') }}</a></th>
+            <th><a href="{{ url_for('contacts.contact_list', q=search, type=contact_type, letter=letter, tag=active_tags, sort='type', dir=next_dir) }}">Type {{ '▲' if sort == 'type' and sort_dir == 'asc' else ('▼' if sort == 'type' else '') }}</a></th>
             <th>Email</th>
             <th>Phone</th>
             <th class="th-icon"></th>
@@ -143,11 +161,11 @@
 {% if total_pages > 1 %}
 <nav class="pagination" aria-label="Pages">
     {% if page > 1 %}
-        <a href="{{ url_for('contacts.contact_list', page=page-1, q=search, type=contact_type, letter=letter, per_page=per_page) }}">&laquo; Prev</a>
+        <a href="{{ url_for('contacts.contact_list', page=page-1, q=search, type=contact_type, letter=letter, tag=active_tags, per_page=per_page) }}">&laquo; Prev</a>
     {% endif %}
     <span>Page {{ page }} of {{ total_pages }}</span>
     {% if page < total_pages %}
-        <a href="{{ url_for('contacts.contact_list', page=page+1, q=search, type=contact_type, letter=letter, per_page=per_page) }}">Next &raquo;</a>
+        <a href="{{ url_for('contacts.contact_list', page=page+1, q=search, type=contact_type, letter=letter, tag=active_tags, per_page=per_page) }}">Next &raquo;</a>
     {% endif %}
 </nav>
 {% endif %}
@@ -155,7 +173,7 @@
 {% else %}
 <div class="empty-state">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128H5.228A2 2 0 013 17.16v-.003c0-1.113.285-2.16.786-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z"/></svg>
-    {% if search or contact_type or letter %}
+    {% if search or contact_type or letter or active_tags %}
         <p>No contacts match your filters.</p>
         <a href="{{ url_for('contacts.contact_list') }}" class="btn btn-secondary mt-md">Clear filters</a>
     {% else %}
