@@ -1,10 +1,11 @@
 # Favourite / Pinned Contacts — Design (CL-0039)
 
-Status: **Approved** — design confirmed by the user (2026-07-03); passed
+Status: **Implemented** (2026-07-03) — design confirmed by the user; passed
 `/cold-eyes` to convergence (4 loops: findings decayed from doc-accuracy fixes
 → a real nested-`<form>` structural catch → wording polish; final pass 0
-Critical / 0 High / 0 Medium, both reviewers "implementation-ready"). Ready to
-implement.
+Critical / 0 High / 0 Medium). Shipped as migration `007_favourites.sql` +
+`set_favourite`/`is_favourite` + the `toggle_favourite` route + list/detail star
+toggles, with 21 tests (all green).
 Date: 2026-07-03
 
 > **Confirmed design decisions (user-approved 2026-07-03):**

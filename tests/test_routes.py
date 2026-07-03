@@ -637,3 +637,111 @@ class TestEditedDisplay:
             '_csrf_token': token, 'type': 'individual', 'name': 'Listed Liz'})
         resp = client.get('/contacts')
         assert b'edited-hint' in resp.data
+
+
+class TestFavourites:
+    """CL-0039 favourite / pinned contacts — route + display."""
+
+    def _make(self, app, name='Alice', ctype='individual'):
+        import models
+        from db import get_db
+        with app.app_context():
+            return models.create_contact(get_db(), ctype, name)
+
+    def _is_fav(self, app, cid):
+        import models
+        from db import get_db
+        with app.app_context():
+            return models.is_favourite(get_db(), cid)
+
+    def test_star_sets_favourite(self, client, app):
+        cid = self._make(app)
+        token = _get_csrf(client)
+        resp = client.post(f'/contacts/{cid}/favourite',
+                           data={'_csrf_token': token, 'favourite': '1'})
+        assert resp.status_code == 302
+        assert self._is_fav(app, cid) is True
+
+    def test_unstar_removes_favourite(self, client, app):
+        cid = self._make(app)
+        token = _get_csrf(client)
+        client.post(f'/contacts/{cid}/favourite',
+                    data={'_csrf_token': token, 'favourite': '1'})
+        client.post(f'/contacts/{cid}/favourite',
+                    data={'_csrf_token': token, 'favourite': '0'})
+        assert self._is_fav(app, cid) is False
+
+    def test_missing_csrf_rejected(self, client, app):
+        cid = self._make(app)
+        resp = client.post(f'/contacts/{cid}/favourite', data={'favourite': '1'})
+        assert resp.status_code == 403
+        assert self._is_fav(app, cid) is False
+
+    def test_unknown_id_404(self, client):
+        token = _get_csrf(client)
+        resp = client.post('/contacts/99999/favourite',
+                           data={'_csrf_token': token, 'favourite': '1'})
+        assert resp.status_code == 404
+
+    def test_missing_field_unstars(self, client, app):
+        # 'favourite' absent resolves to un-star (desired-state, by design).
+        cid = self._make(app)
+        token = _get_csrf(client)
+        client.post(f'/contacts/{cid}/favourite',
+                    data={'_csrf_token': token, 'favourite': '1'})
+        resp = client.post(f'/contacts/{cid}/favourite', data={'_csrf_token': token})
+        assert resp.status_code == 302
+        assert self._is_fav(app, cid) is False
+
+    def test_safe_ref_honoured(self, client, app):
+        cid = self._make(app)
+        token = _get_csrf(client)
+        resp = client.post(f'/contacts/{cid}/favourite',
+                           data={'_csrf_token': token, 'favourite': '1',
+                                 'ref': '/contacts?letter=A'})
+        assert resp.status_code == 302
+        assert 'letter=A' in resp.headers['Location']
+
+    def test_unsafe_ref_falls_back_to_detail(self, client, app):
+        cid = self._make(app)
+        token = _get_csrf(client)
+        resp = client.post(f'/contacts/{cid}/favourite',
+                           data={'_csrf_token': token, 'favourite': '1',
+                                 'ref': '//evil.com'})
+        assert resp.status_code == 302
+        assert f'/contacts/{cid}' in resp.headers['Location']
+        assert 'evil.com' not in resp.headers['Location']
+
+    def test_no_ref_redirects_to_detail(self, client, app):
+        cid = self._make(app)
+        token = _get_csrf(client)
+        resp = client.post(f'/contacts/{cid}/favourite',
+                           data={'_csrf_token': token, 'favourite': '1'})
+        assert resp.status_code == 302
+        assert resp.headers['Location'].endswith(f'/contacts/{cid}')
+
+    def test_list_shows_star_and_toggle_form(self, client, app):
+        cid = self._make(app, name='Zoe')
+        token = _get_csrf(client)
+        client.post(f'/contacts/{cid}/favourite',
+                    data={'_csrf_token': token, 'favourite': '1'})
+        resp = client.get('/contacts')
+        assert resp.status_code == 200
+        assert '★'.encode() in resp.data
+        assert f'id="fav-{cid}"'.encode() in resp.data
+
+    def test_detail_shows_star_toggle(self, client, app):
+        cid = self._make(app, name='Zoe')
+        resp = client.get(f'/contacts/{cid}')
+        assert resp.status_code == 200
+        assert f'/contacts/{cid}/favourite'.encode() in resp.data
+        assert '☆'.encode() in resp.data
+
+    def test_favourite_pins_to_top_of_list(self, client, app):
+        self._make(app, name='Aaron')
+        zoe = self._make(app, name='Zoe')
+        token = _get_csrf(client)
+        client.post(f'/contacts/{zoe}/favourite',
+                    data={'_csrf_token': token, 'favourite': '1'})
+        body = client.get('/contacts').data.decode()
+        assert body.index('Zoe') < body.index('Aaron')

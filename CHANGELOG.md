@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- ****Favourite / pinned contacts (CL-0039).** Star a contact to pin it to the top of the list.** (CL-0039)
+  Star the people you contact most and they pin to the top of the contact list (favourites first, then your chosen sort). A star toggle sits on each list row and on the contact page. Favourites are stored locally and never synced to Google.
+
 - ****Honest “Last edited” timestamp.** A per-contact last-edit time that only moves when you edit a contact (never when a Google sync refreshes it), shown on the contact page and as a hint in the list; the footer shows the last Google sync time on every page.** (CL-0033)
 
 - ****Two-way Google sync (CL-0033).** Google Sync now also pushes your changes back: local edits to synced contacts, and brand-new local contacts become new Google contacts. Conflicts (both sides changed since the last sync) resolve by newest edit, with a fresh-etag safety check; multi-valued emails/phones on Google are preserved. Deletions are not pushed. Requires the read-write `contacts` scope — a previously-connected read-only account is detected and prompted to reconnect.** (CL-0033)

@@ -32,8 +32,10 @@ from models import (
     get_edited_at,
     get_letter_counts,
     get_type_counts,
+    is_favourite,
     list_contacts,
     set_contact_photo,
+    set_favourite,
     update_contact,
     upcoming_birthdays,
     valid_field_name,
@@ -312,6 +314,7 @@ def detail(contact_id: int):
         'contact_detail.html', contact=contact, custom_fields=cfs,
         ref=ref, list_url=list_url, photo_ext=photo_ext,
         edited_at=get_edited_at(db, contact_id),
+        is_favourite=is_favourite(db, contact_id),
     )
 
 
@@ -398,3 +401,18 @@ def delete(contact_id: int):
     if ref:
         return redirect(ref)
     return redirect(url_for('contacts.contact_list'))
+
+
+@bp.route('/contacts/<int:contact_id>/favourite', methods=['POST'])
+def toggle_favourite(contact_id: int):
+    """Star / un-star a contact (CL-0039). Sets the posted desired end-state
+    (`favourite=1` stars, anything else un-stars); returns to the carried list
+    `ref` or, when none, back to the contact's detail page."""
+    db = get_db()
+    if not get_contact(db, contact_id):
+        abort(404)
+    set_favourite(db, contact_id, request.form.get('favourite') == '1')
+    ref = _safe_ref(_get_ref())
+    if ref:
+        return redirect(ref)
+    return redirect(url_for('contacts.detail', contact_id=contact_id))

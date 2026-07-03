@@ -25,6 +25,11 @@
         {% if contact.google_id %}
             <span class="badge badge-google">Google</span>
         {% endif %}
+        <form method="post" action="{{ url_for('contacts.toggle_favourite', contact_id=contact.id) }}" class="fav-form-inline">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="favourite" value="{{ 0 if is_favourite else 1 }}">
+            <button type="submit" class="fav-toggle" aria-label="{{ 'Remove from favourites' if is_favourite else 'Add to favourites' }}">{{ '★' if is_favourite else '☆' }}</button>
+        </form>
     </div>
 </div>
 

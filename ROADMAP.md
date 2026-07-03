@@ -113,11 +113,12 @@ efficiency / coding standards every item must comply with.
   Source: in-session-2026-07-02 (steal-from-Monica).
   Resolved (2026-07-02): models.upcoming_birthdays() reads existing 'birthday' custom fields (MM-DD or YYYY-MM-DD), month-aware with Feb-29->Feb-28 fallback and age computation; new /contacts/birthdays route + birthdays.html + nav link. 15 tests added, no schema change.
 
-- 📋 [CL-0039] **Add favourite/pinned contacts.**
+- ✅ [CL-0039] **Add favourite/pinned contacts.**
   Add a boolean 'favourite' column to contacts (idempotent migration note: use a new table or a guarded migration since ADD COLUMN IF NOT EXISTS is unavailable in SQLite — see the CL-0026 pattern). Sort favourites first on the list; a star toggle on detail/list.
   **Layman:** Star the people you contact most so they pin to the top of the list.
   Kind: enhancement.
   Source: in-session-2026-07-02 (steal-from-Monica).
+  Resolved (2026-07-03): shipped. Migration 007_favourites.sql (companion table, mirrors 005/006), models.set_favourite/is_favourite + an is_favourite EXISTS scalar pinning favourites first in list_contacts, a CSRF-guarded POST /contacts/<id>/favourite toggle, and star toggles on list rows (HTML5 form= attribute to avoid nesting inside #bulk-form) + the detail header. Spec ran /cold-eyes to convergence (4 loops; a real nested-<form> structural catch in loop 2). 21 new tests; ruff + mypy + 297 tests green.
 
 - 💭 [CL-0040] **Add a per-contact interaction log ('last spoke on ...').**
   New interactions table (contact_id, date, note). Timeline on the contact detail page. NOTE: this nudges the app from 'contact manager' toward 'personal CRM' — kept as considered pending a decision on whether that scope creep is wanted.

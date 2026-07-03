@@ -626,3 +626,91 @@ class TestEditedAt:
         models.create_contact(db, 'individual', 'Bob')
         _, total = models.list_contacts(db)
         assert total == 2
+
+
+class TestFavourites:
+    """CL-0039 favourite / pinned contacts."""
+
+    def test_set_and_is_favourite(self, db):  # INV-1
+        cid = models.create_contact(db, 'individual', 'Alice')
+        assert models.is_favourite(db, cid) is False
+        models.set_favourite(db, cid, True)
+        assert models.is_favourite(db, cid) is True
+
+    def test_unset_favourite(self, db):  # INV-1
+        cid = models.create_contact(db, 'individual', 'Alice')
+        models.set_favourite(db, cid, True)
+        models.set_favourite(db, cid, False)
+        assert models.is_favourite(db, cid) is False
+
+    def test_set_favourite_is_idempotent(self, db):  # INV-1
+        cid = models.create_contact(db, 'individual', 'Alice')
+        models.set_favourite(db, cid, True)
+        models.set_favourite(db, cid, True)
+        rows = db.execute(
+            'SELECT COUNT(*) FROM contact_favourites WHERE contact_id = ?', [cid]
+        ).fetchone()[0]
+        assert rows == 1
+        assert models.is_favourite(db, cid) is True
+
+    def test_unset_when_absent_is_noop(self, db):  # INV-1
+        cid = models.create_contact(db, 'individual', 'Alice')
+        models.set_favourite(db, cid, False)
+        assert models.is_favourite(db, cid) is False
+
+    def test_list_exposes_is_favourite_flag(self, db):
+        cid = models.create_contact(db, 'individual', 'Alice')
+        models.set_favourite(db, cid, True)
+        models.create_contact(db, 'individual', 'Bob')
+        contacts, _ = models.list_contacts(db)
+        flags = {c['name']: c['is_favourite'] for c in contacts}
+        assert flags['Alice'] == 1
+        assert flags['Bob'] == 0
+
+    def test_favourites_pinned_first_across_sorts(self, db):  # INV-2
+        # Zoe sorts last by name-asc, but a star pins it to the top for every
+        # sort column and both directions.
+        models.create_contact(db, 'individual', 'Alice')
+        models.create_contact(db, 'company', 'Mid Co')
+        zoe = models.create_contact(db, 'individual', 'Zoe')
+        models.set_favourite(db, zoe, True)
+        for sort in ('name', 'type', 'created', 'updated'):
+            for sort_dir in ('asc', 'desc'):
+                contacts, _ = models.list_contacts(db, sort=sort, sort_dir=sort_dir)
+                assert contacts[0]['name'] == 'Zoe', (sort, sort_dir)
+
+    def test_favourite_block_internally_sorted(self, db):  # INV-2
+        a = models.create_contact(db, 'individual', 'Aaron')
+        z = models.create_contact(db, 'individual', 'Zara')
+        models.create_contact(db, 'individual', 'Mid')
+        models.set_favourite(db, a, True)
+        models.set_favourite(db, z, True)
+        contacts, _ = models.list_contacts(db, sort='name', sort_dir='asc')
+        assert [c['name'] for c in contacts[:2]] == ['Aaron', 'Zara']
+        assert contacts[2]['name'] == 'Mid'
+
+    def test_filter_can_exclude_a_favourite(self, db):  # INV-2 (within filtered set)
+        comp = models.create_contact(db, 'company', 'Acme')
+        models.set_favourite(db, comp, True)
+        models.create_contact(db, 'individual', 'Bob')
+        contacts, total = models.list_contacts(db, contact_type='individual')
+        names = [c['name'] for c in contacts]
+        assert 'Acme' not in names
+        assert names == ['Bob']
+        assert total == 1
+
+    def test_favourite_does_not_inflate_total(self, db):  # INV-3
+        cid = models.create_contact(db, 'individual', 'Alice')
+        models.create_contact(db, 'individual', 'Bob')
+        models.set_favourite(db, cid, True)
+        _, total = models.list_contacts(db)
+        assert total == 2
+
+    def test_cascade_on_contact_delete(self, db):  # INV-4
+        cid = models.create_contact(db, 'individual', 'Alice')
+        models.set_favourite(db, cid, True)
+        models.delete_contact(db, cid)
+        row = db.execute(
+            'SELECT 1 FROM contact_favourites WHERE contact_id = ?', [cid]
+        ).fetchone()
+        assert row is None

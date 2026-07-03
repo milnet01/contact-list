@@ -27,7 +27,9 @@ def _build_contact_query(
         'EXISTS (SELECT 1 FROM contact_photos p WHERE p.contact_id = contacts.id) '
         'AS has_photo, '
         '(SELECT edited_at FROM contact_edits e WHERE e.contact_id = contacts.id) '
-        'AS edited_at FROM contacts'
+        'AS edited_at, '
+        'EXISTS (SELECT 1 FROM contact_favourites f WHERE f.contact_id = contacts.id) '
+        'AS is_favourite FROM contacts'
     )
     params: list[str | int] = []
     conditions: list[str] = []
@@ -99,7 +101,7 @@ def list_contacts(
     }
     order_col = allowed_sorts.get(sort, 'name COLLATE NOCASE')
     direction = 'DESC' if sort_dir == 'desc' else 'ASC'
-    query += f' ORDER BY {order_col} {direction}'
+    query += f' ORDER BY is_favourite DESC, {order_col} {direction}'
     query += ' LIMIT ? OFFSET ?'
     params.extend([per_page, (page - 1) * per_page])
 
@@ -420,6 +422,29 @@ def clear_contact_photo(db: sqlite3.Connection, contact_id: int) -> str | None:
         db.execute('DELETE FROM contact_photos WHERE contact_id = ?', [contact_id])
         db.commit()
     return old_ext
+
+
+def set_favourite(db: sqlite3.Connection, contact_id: int, favourite: bool) -> None:
+    """Star (favourite=True) or un-star (False) a contact (CL-0039). Idempotent.
+
+    Set-to-state, not a blind toggle: the caller passes the desired end state, so
+    a double-submit converges rather than two rapid clicks cancelling out."""
+    if favourite:
+        db.execute(
+            'INSERT OR IGNORE INTO contact_favourites (contact_id) VALUES (?)',
+            [contact_id],
+        )
+    else:
+        db.execute('DELETE FROM contact_favourites WHERE contact_id = ?', [contact_id])
+    db.commit()
+
+
+def is_favourite(db: sqlite3.Connection, contact_id: int) -> bool:
+    """True iff the contact is currently a favourite (for the detail page)."""
+    row = db.execute(
+        'SELECT 1 FROM contact_favourites WHERE contact_id = ?', [contact_id]
+    ).fetchone()
+    return row is not None
 
 
 def _validate_custom_field_names(custom_fields: list[tuple[str, str]] | None) -> None:

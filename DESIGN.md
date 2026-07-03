@@ -344,6 +344,7 @@ All routes are server-rendered HTML. No REST/JSON API in v1 (add in v2 if needed
 | GET | `/contacts/<id>/edit` | Edit contact form |
 | POST | `/contacts/<id>` | Update contact |
 | POST | `/contacts/<id>/delete` | Delete contact |
+| POST | `/contacts/<id>/favourite` | Toggle favourite / pinned status (CL-0039) |
 | GET | `/contacts/<id>/photo` | Stream the contact's stored photo (CL-0026) |
 | GET | `/contacts/export` | CSV export of all contacts |
 | GET | `/contacts/duplicates` | Scan and display duplicate contacts |

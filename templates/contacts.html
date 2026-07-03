@@ -91,6 +91,7 @@
             <td data-label="" class="td-check"><input type="checkbox" name="selected" value="{{ c.id }}" class="row-select" aria-label="Select {{ c.name }}"></td>
             <td data-label="Name">
                 <div class="name-cell">
+                    <button form="fav-{{ c.id }}" type="submit" class="fav-toggle" aria-label="{{ 'Remove from favourites' if c.is_favourite else 'Add to favourites' }}">{{ '★' if c.is_favourite else '☆' }}</button>
                     {% if c.has_photo %}
                     <img class="avatar" src="{{ url_for('contacts.photo', contact_id=c.id) }}" alt="" loading="lazy">
                     {% else %}
@@ -129,6 +130,15 @@
     </tbody>
 </table>
 </form>
+{# CL-0039: per-row favourite forms live OUTSIDE #bulk-form (HTML forbids nested
+   forms); the in-row star <button form="fav-..."> binds to these by id. #}
+{% for c in contacts %}
+<form id="fav-{{ c.id }}" method="post" action="{{ url_for('contacts.toggle_favourite', contact_id=c.id) }}" class="fav-form">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="favourite" value="{{ 0 if c.is_favourite else 1 }}">
+    <input type="hidden" name="ref" value="{{ request.full_path.rstrip('?') }}">
+</form>
+{% endfor %}
 
 {% if total_pages > 1 %}
 <nav class="pagination" aria-label="Pages">
