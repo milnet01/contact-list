@@ -57,6 +57,40 @@ explicitly because the sync code imports it directly (`google.oauth2` /
 `google.auth`) rather than relying on it transitively. `pytest` is a test-only
 dependency and does not affect the running app.
 
+### Dependency Versioning Policy
+
+**Default: latest.** Every dependency tracks its latest stable release — for
+features **and** security. Scope: runtime pip packages (`requirements.txt`), dev
+/ CI tools (`ruff`, `mypy`, `pytest`), GitHub Actions (`actions/checkout`,
+`actions/setup-python`) and the CI runner image, and the Python runtime itself.
+The `requirements.txt` constraints cap only the **major** version, so an
+unreviewed breaking major cannot land silently; within that cap the newest
+release is always installed, and the cap is raised promptly once a new major is
+vetted.
+
+**Holding a version back is the rare exception — allowed only when a newer
+version explicitly breaks a feature and there is no reasonable workaround.** Every
+such exception MUST be recorded in the register below with (a) the exact version
+that first broke the feature and (b) a re-test trigger, so that when a release
+newer than the broken one ships we re-test and move forward rather than staying
+pinned indefinitely. An undocumented downgrade or below-latest pin is a policy
+violation.
+
+Check at the start of a release cycle, or whenever touching a manifest/workflow:
+
+```bash
+./venv/bin/pip list --outdated                              # pip packages
+gh api repos/actions/checkout/releases/latest -q .tag_name   # a GitHub Action
+```
+
+### Dependency Exceptions & Breakage Register
+
+One row per dependency held below its latest release. Empty is the healthy state.
+
+| Dependency | Pinned to | Latest available | First broken at | Symptom / what breaks | Re-test when | Noted |
+|------------|-----------|------------------|-----------------|-----------------------|--------------|-------|
+| _None_ | — | — | — | All dependencies track their latest release. Audited 2026-07-03: flask 3.1.3, google-api-python-client 2.198.0, google-auth 2.55.1, google-auth-oauthlib 1.4.0, google-auth-httplib2 0.4.0, phonenumbers 9.0.34, pytest 9.1.1, ruff 0.15.20, mypy 2.1.0; actions/checkout@v7 (v7.0.0), actions/setup-python@v6 (v6.3.0). | — | 2026-07-03 |
+
 ---
 
 ## 4. Data Model

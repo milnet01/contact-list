@@ -24,6 +24,11 @@ JS. No ORM. Google import is in `google_sync.py` / `google_auth.py`.
 - **Secrets:** Google credentials/tokens live in `~/.config/contact-list/`, never
   in the repo or database. `.gitignore` enforces this.
 - **No new dependencies** without justification (budget: <8 direct pip packages).
+- **Dependencies track latest.** All deps — runtime, dev/CI tools, GitHub
+  Actions, Python — stay on their latest stable release, for features and
+  security. Holding a version back requires a documented exception in DESIGN.md
+  §3 (*Dependency Exceptions & Breakage Register*) recording the breaking version
+  and a re-test trigger.
 - Type hints on all signatures; PEP 8; line length 100; specific exceptions only.
 
 ## Running & testing
