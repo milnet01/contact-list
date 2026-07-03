@@ -12,9 +12,6 @@ from flask import Flask, abort, g, render_template, request, session
 from config import Config, ensure_private_dir
 from db import close_db, init_db
 
-# Sentinel for "not computed yet" on g, distinct from a real None value.
-_UNSET = object()
-
 
 def create_app(test_config: dict | None = None) -> Flask:
     app = Flask(__name__)
@@ -107,18 +104,18 @@ def create_app(test_config: dict | None = None) -> Flask:
         Runs on every response (including error pages), so a DB failure must
         degrade to None/"Never" rather than recurse into another 500 — the same
         defensive shape as ``contact_count()`` (CL-0033)."""
-        value = getattr(g, 'last_synced', _UNSET)
-        if value is _UNSET:
+        # hasattr (not a None check) distinguishes "not yet computed" from
+        # "computed as None" — None is a valid cached value here.
+        if not hasattr(g, 'last_synced'):
             from db import get_db
             try:
                 row = get_db().execute(
                     'SELECT last_synced_at FROM sync_state WHERE id = 1'
                 ).fetchone()
-                value = row['last_synced_at'] if row else None
+                g.last_synced = row['last_synced_at'] if row else None
             except Exception:
-                value = None
-            g.last_synced = value
-        return value
+                g.last_synced = None
+        return g.last_synced
 
     @app.context_processor
     def _inject_globals() -> dict:
