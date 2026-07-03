@@ -190,6 +190,9 @@ def create_app(test_config: dict | None = None) -> Flask:
     # ------------------------------------------------------------------
 
     from routes.contacts import bp as contacts_bp
+    # import_export and merge attach their routes to contacts_bp; importing them
+    # runs the @bp.route decorators so the routes exist before registration.
+    from routes import import_export, merge  # noqa: F401
     from routes.settings import bp as settings_bp
     from routes.sync import bp as sync_bp
 

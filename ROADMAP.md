@@ -300,10 +300,11 @@ they reduce duplication and query count.
   Kind: perf.
   Source: in-session-2026-07-02.
 
-- 📋 [CL-0036] **Split routes/contacts.py (696 lines) into contacts + import/export + merge modules.**
+- ✅ [CL-0036] **Split routes/contacts.py (696 lines) into contacts + import/export + merge modules.**
   routes/contacts.py exceeds the DESIGN §14 file-size cap. Extract CSV/vCard import+export routes and the merge_preview/merge_apply routes into their own blueprints/modules. Pure structural refactor; the test suite (229 tests) locks behaviour.
   **Layman:** One file currently handles contacts, CSV/vCard import-export, and merging all at once. Splitting it into focused files makes each part easier to find and change. No behaviour change.
   Kind: refactor.
   Source: in-session-2026-07-02.
+  Resolved (2026-07-03): split into routes/contacts.py (core CRUD + list/detail/photo), routes/import_export.py (CSV+vCard import/export), and routes/merge.py — all attached to the same 'contacts' blueprint, so every endpoint name and URL is unchanged. 276 tests + ruff + mypy all green (zero behaviour change). Correction: the "exceeds the §14 file-size cap" premise was inaccurate — §14 is a ~100 KB *total* soft budget across shipped .py, not a per-file cap (contacts.py was ~24 KB / 716 lines), so this was a readability split, not a cap violation.
 
 ## Shipped
