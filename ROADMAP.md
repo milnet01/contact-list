@@ -261,6 +261,18 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   Source: in-session-2026-07-01.
   Resolved (2026-07-01): added pyproject.toml centralising ruff (line-length 100, target py312), mypy (py312, scoped stub-ignores for the untyped Google client libs), and pytest (testpaths=tests) config. Verified ruff/mypy/pytest all read config from the file and pass (124 tests green). One latent type bug fixed en route: models.create_contact narrows cursor.lastrowid (int|None) with an assert.
 
+- 📋 [CL-0044] **Re-baseline or retire DESIGN.md §14 "Total pip install < 20 MB" budget row.**
+  DESIGN.md §14's `Total pip install | < 20 MB` row is stale by ~15x: the
+  current venv site-packages is ~296 MB (googleapiclient ~100 MB, phonenumbers
+  ~46 MB, plus grpc/others), independent of CL-0035. CL-0035 adds Pillow 12.3.0 (~21 MB:
+  PIL 7 MB + pillow.libs 14 MB). The row reads as a live gate but is
+  aspirational only. Either raise it to a realistic figure (or split "wheel size"
+  vs "installed size"), or drop the row and keep only the meaningful shipped-`.py`
+  soft target. Pre-existing; not introduced by CL-0035.
+  **Layman:** One line in the design doc says the installed code should be under 20 MB, but it's already about 296 MB — the line is long out of date and misleading.
+  Kind: doc-fix.
+  Source: in-session-2026-07-04 (surfaced during CL-0035 cold-eyes).
+
 ## Efficiency & Refactoring
 
 Performance and code-health opportunities surfaced during the 2026-06-30 review.
@@ -309,11 +321,12 @@ they reduce duplication and query count.
   Source: in-session-2026-07-02.
   Resolved (2026-07-02): photo() passes max_age=86400 to send_from_directory; ETag/Last-Modified still enable conditional revalidation. Test test_photo_response_is_cacheable asserts max-age=86400.
 
-- 📋 [CL-0035] **Generate downscaled photo thumbnails instead of serving full-size uploads.**
+- ✅ [CL-0035] **Generate downscaled photo thumbnails instead of serving full-size uploads.**
   List/detail avatars display at ~40-96px but the full upload is served. Generate a thumbnail (e.g. 128px) on save and serve that for list/detail; keep the original for download. User has lifted the no-C-extension dependency ban for this: Pillow may be added. NOTE: requires updating DESIGN.md §3 dependency budget (currently bans non-stdlib C-extension deps and caps at <8 direct pip packages) and CLAUDE.md convention. Spec/cold-eyes before implementing.
   **Layman:** A 4 MB photo is currently sent in full even though it shows as a tiny circle. Making small thumbnail copies means the list page sends kilobytes, not megabytes.
   Kind: perf.
   Source: in-session-2026-07-02.
+  Resolved (2026-07-04): 256 px thumbnails via Pillow 12.3.0. Spec docs/specs/2026-07-04-photo-thumbnails-design.md passed /cold-eyes to convergence (10 loops; loop 8 caught a track-latest violation — pinned >=12.0,<13.0). photos.generate_thumbnail + _write_thumbnail (eager on save, atomic write) + avatar_filename (lazy self-heal + full-size fallback); serve route serves the thumbnail. Original kept on disk. DESIGN.md §3 (Pillow authorised, 7 runtime deps), §6 File-uploads row, and the 2026-07-01 spec updated. 21 new tests; 345 total green; ruff+mypy clean. Filed CL-0044 for the pre-existing stale §14 pip-install budget.
 
 - ✅ [CL-0036] **Split routes/contacts.py (696 lines) into contacts + import/export + merge modules.**
   routes/contacts.py exceeds the DESIGN §14 file-size cap. Extract CSV/vCard import+export routes and the merge_preview/merge_apply routes into their own blueprints/modules. Pure structural refactor; the test suite (229 tests) locks behaviour.

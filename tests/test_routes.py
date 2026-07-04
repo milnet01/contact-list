@@ -464,6 +464,14 @@ class TestOpenRedirect:
 _PNG = b'\x89PNG\r\n\x1a\n' + b'\x00' * 40
 
 
+def _real_png(w, h):
+    """A genuinely decodable PNG (CL-0035 thumbnail path needs a real image)."""
+    from PIL import Image
+    buf = io.BytesIO()
+    Image.new('RGB', (w, h), (10, 120, 200)).save(buf, format='PNG')
+    return buf.getvalue()
+
+
 def _create_contact(client, token, name='Photo Person', photo=None):
     """POST create; return the new contact id parsed from the redirect."""
     data = {'_csrf_token': token, 'type': 'individual', 'name': name}
@@ -488,6 +496,17 @@ class TestContactPhotos:
         assert resp.status_code == 200
         assert resp.mimetype == 'image/png'
         assert resp.data == _PNG
+
+    def test_serves_downscaled_thumbnail(self, client):
+        # CL-0035: a real >256 px upload is served as the 256 px thumbnail, not
+        # the full-size original.
+        from PIL import Image
+        token = _get_csrf(client)
+        cid = _create_contact(client, token, photo=_real_png(512, 512))
+        resp = client.get(f'/contacts/{cid}/photo')
+        assert resp.status_code == 200
+        with Image.open(io.BytesIO(resp.data)) as im:
+            assert max(im.size) == 256
 
     def test_photo_response_is_cacheable(self, client):
         # CL-0034: browsers should cache avatars instead of revalidating each

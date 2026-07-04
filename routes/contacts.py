@@ -259,14 +259,18 @@ def photo(contact_id: int):
     ext = get_contact_photo_ext(db, contact_id)
     if not ext:
         abort(404)
-    # Filename is int id + our own allow-listed ext (no request string), and
-    # send_from_directory rejects any escaping path and 404s a missing file.
-    # max_age lets browsers cache avatars for a day instead of revalidating on
-    # every navigation; the ETag/Last-Modified send_file sets still allow
-    # conditional revalidation once the cache entry expires.
+    # Serve the 256 px thumbnail (CL-0035), lazily generating it from the
+    # original if missing and falling back to the full-size original if it can't
+    # be made. avatar_filename returns a basename built from the int id + our own
+    # allow-listed ext (no request string), so send_from_directory still rejects
+    # any escaping path and 404s a missing file. max_age lets browsers cache
+    # avatars for a day instead of revalidating on every navigation; the
+    # ETag/Last-Modified send_file sets still allow conditional revalidation once
+    # the cache entry expires.
+    filename = photos.avatar_filename(current_app.config, contact_id, ext)
     return send_from_directory(
         current_app.config['PHOTOS_DIR'],
-        f'{contact_id}.{ext}',
+        filename,
         mimetype=photos.mime_for_ext(ext),
         max_age=86400,
     )

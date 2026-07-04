@@ -38,7 +38,7 @@ A lightweight, secure contact management application for storing, searching, and
 
 ### Dependency Budget
 
-Total pip dependencies must stay under **8 packages** (direct). No C-extension dependencies beyond what ships with Python. Every new dependency requires justification in a PR description.
+Total pip dependencies must stay under **8 packages** (direct). No C-extension dependencies beyond what ships with Python — **with one authorised exception: Pillow** (for CL-0035 photo thumbnailing; the user lifted the ban specifically for that need). Every new dependency requires justification in a PR description.
 
 ```
 # Runtime
@@ -48,11 +48,12 @@ google-auth>=2.0,<3.0
 google-auth-oauthlib>=1.0,<2.0
 google-auth-httplib2>=0.2,<1.0
 phonenumbers>=9.0,<10.0
+pillow>=12.0,<13.0
 # Test-only (not counted against the runtime footprint)
 pytest>=9.0,<10.0
 ```
 
-Six runtime packages (under the 8-direct budget); `google-auth` is listed
+Seven runtime packages (under the 8-direct budget); `google-auth` is listed
 explicitly because the sync code imports it directly (`google.oauth2` /
 `google.auth`) rather than relying on it transitively. `pytest` is a test-only
 dependency and does not affect the running app.
@@ -89,7 +90,7 @@ One row per dependency held below its latest release. Empty is the healthy state
 
 | Dependency | Pinned to | Latest available | First broken at | Symptom / what breaks | Re-test when | Noted |
 |------------|-----------|------------------|-----------------|-----------------------|--------------|-------|
-| _None_ | — | — | — | All dependencies track their latest release. Audited 2026-07-03: flask 3.1.3, google-api-python-client 2.198.0, google-auth 2.55.1, google-auth-oauthlib 1.4.0, google-auth-httplib2 0.4.0, phonenumbers 9.0.34, pytest 9.1.1, ruff 0.15.20, mypy 2.1.0; actions/checkout@v7 (v7.0.0), actions/setup-python@v6 (v6.3.0). | — | 2026-07-03 |
+| _None_ | — | — | — | All dependencies track their latest release. Audited 2026-07-04: flask 3.1.3, google-api-python-client 2.198.0, google-auth 2.55.1, google-auth-oauthlib 1.4.0, google-auth-httplib2 0.4.0, phonenumbers 9.0.34, pillow 12.3.0, pytest 9.1.1, ruff 0.15.20, mypy 2.1.0; actions/checkout@v7 (v7.0.0), actions/setup-python@v6 (v6.3.0). | — | 2026-07-04 |
 
 ---
 
@@ -250,7 +251,7 @@ These are **mandatory** for all current and future code.
 | XSS prevention | Jinja2 autoescaping enabled globally (`autoescape=True`, Flask default). Manual `| e` filter on any `Markup()` usage. |
 | CSRF protection | Signed token in every state-changing form. Validate on POST/PUT/DELETE. |
 | Input validation | Whitelist validation: `type` must be `individual` or `company`. `field_name` must match `^[a-zA-Z0-9_ ]{1,64}$`. Phone/email validated with regex, not sanitized. |
-| File uploads | CSV/vCard import (v1.1) and contact photos (v1.2, CL-0026). Photos are validated by magic bytes (JPEG/PNG/GIF/WebP allow-list; SVG rejected) and a 4 MiB cap, stored on disk under `PHOTOS_DIR` (never blobs in the DB), and served same-origin with `nosniff` — see `photos.py`. |
+| File uploads | CSV/vCard import (v1.1) and contact photos (v1.2, CL-0026). Photos are validated by magic bytes (JPEG/PNG/GIF/WebP allow-list; SVG rejected) and a 4 MiB cap, stored on disk under `PHOTOS_DIR` (never blobs in the DB), and served same-origin with `nosniff` — see `photos.py`. CL-0035 additionally decodes/re-encodes each photo via Pillow to make a 256 px thumbnail, but only **behind** that magic-byte allow-list + size cap (the allow-list stays the gatekeeper; a decode failure is non-fatal and falls back to the original) — see `docs/specs/2026-07-04-photo-thumbnails-design.md` §6. |
 
 ### 6.2 Google OAuth
 

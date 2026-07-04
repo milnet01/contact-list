@@ -64,6 +64,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Contact photos are now served as 256 px thumbnails for avatars, not the full-size upload (CL-0035).**
+  List and detail avatars display at ~35–56 px but were being sent the entire
+  upload (up to 4 MiB). A downscaled 256 px thumbnail is now generated on save
+  (via Pillow) and served instead, cutting a typical avatar from megabytes to
+  ~20–40 KB. The full-size original is kept on disk unchanged. Photos saved before
+  this change get a thumbnail generated lazily on first view. Adds Pillow as a
+  runtime dependency (the no-C-extension rule was lifted for this; DESIGN.md §3).
+
 - ****Contact photos are now browser-cacheable** — the avatar route sends a one-day `Cache-Control` max-age (ETag/Last-Modified still allow revalidation), so list pages no longer re-download every photo on each navigation.** (CL-0034)
 
 - **Cache the nav-badge contact count per request; the unfiltered contact-list page no longer runs a second `COUNT(*)`.** (CL-0031)

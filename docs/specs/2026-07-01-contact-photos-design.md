@@ -150,6 +150,13 @@ the list template on `has_photo`.
 New module `photos.py` (file I/O + validation; DB access stays in `models.py`,
 mirroring how `google_sync.py`/`phoneutil.py` sit beside `models.py`).
 
+> **Superseded in part by CL-0035 (2026-07-04):** Pillow *was* subsequently added,
+> for photo thumbnailing — see `docs/specs/2026-07-04-photo-thumbnails-design.md`.
+> The magic-byte allow-list below remains the validation gatekeeper; Pillow only
+> decodes bytes that already passed it, and the security trade-off is re-examined
+> in that spec's §6. The "no image library" reasoning here is the historical
+> rationale, retained for context.
+
 **Why no image library (e.g. Pillow):** decode-and-re-encode is the gold standard
 for stripping hostile payloads, but it adds a large C-extension codec surface —
 itself a historical source of image-parsing CVEs — for marginal benefit in a
@@ -448,6 +455,8 @@ Test-first (TDD), following the existing `tests/` fixtures (`app`, `db`,
   merged-away contact's photo (no picker for it yet).
 - **Image cropping/resizing/thumbnails** — the browser scales via CSS
   `object-fit`; no server-side resizing (that is what a Pillow-class dependency
-  would be for, deliberately deferred).
+  would be for, deliberately deferred). *(Delivered later by CL-0035, 2026-07-04:
+  server-side 256 px thumbnails via Pillow — see
+  `docs/specs/2026-07-04-photo-thumbnails-design.md`.)*
 - **Cache headers / ETag on the serve route** beyond the framework defaults from
   `send_from_directory` (§6).
