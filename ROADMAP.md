@@ -139,7 +139,7 @@ efficiency / coding standards every item must comply with.
   Kind: feature.
   Source: in-session-2026-07-02.
 
-- 📋 [CL-0043] **Show the list "Clear" button for a letter-only (and letter+tag) filter.**
+- ✅ [CL-0043] **Show the list "Clear" button for a letter-only (and letter+tag) filter.**
   Pre-existing: the toolbar Clear guard in templates/contacts.html reads
   `{% if search or contact_type %}` — it omits `letter`, so a letter-only
   (alpha-nav) filter shows no Clear affordance. CL-0037 added `or active_tags`
@@ -150,6 +150,7 @@ efficiency / coding standards every item must comply with.
   **Layman:** When you filter the contact list by just a starting letter, the "Clear" button is missing, so there's no one-click way back to the full list.
   Kind: fix.
   Source: in-session-2026-07-04 (pre-existing bug surfaced during CL-0037).
+  Resolved (2026-07-04): added `or letter` to the toolbar Clear guard in templates/contacts.html:21, making it consistent with the empty-state guard (line 176). Regression test test_clear_button_shown_for_letter_only_filter added to tests/test_routes.py (TestLetterFilter). Full suite 329 passed.
 
 ## Audit & Review Follow-ups
 

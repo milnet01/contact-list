@@ -106,6 +106,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Show the list "Clear" button when filtering by a starting letter** (CL-0043)
+  The toolbar Clear guard omitted the `letter` filter, so a letter-only (alpha-nav) or letter+tag view offered no one-click way back to the full list. It now matches the empty-state guard.
+
 - **Duplicates scan page now normalizes phone numbers to E.164 before comparing, so the same number typed differently is caught — matching the add-contact warning.** (CL-0027)
 
 - **Recently-viewed widget builds DOM nodes via createElement/textContent instead of innerHTML, removing an XSS surface from contact names.**

@@ -18,7 +18,7 @@
            active tag filter through a search submit / type change via hidden fields. #}
         {% for t in active_tags %}<input type="hidden" name="tag" value="{{ t }}">{% endfor %}
         <button type="submit" class="btn btn-small">Search</button>
-        {% if search or contact_type or active_tags %}
+        {% if search or contact_type or letter or active_tags %}
             <a href="{{ url_for('contacts.contact_list') }}" class="btn btn-small btn-secondary">Clear</a>
         {% endif %}
     </form>

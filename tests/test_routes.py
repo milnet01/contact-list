@@ -390,6 +390,16 @@ class TestLetterFilter:
         resp = client.get('/contacts?letter=A')
         assert b'alice' in resp.data
 
+    def test_clear_button_shown_for_letter_only_filter(self, client):
+        # CL-0043: a letter-only filter must offer the toolbar Clear affordance;
+        # the guard previously omitted `letter`, so alpha-nav had no way back.
+        token = _get_csrf(client)
+        client.post('/contacts', data={
+            '_csrf_token': token, 'type': 'individual', 'name': 'Alice',
+        })
+        resp = client.get('/contacts?letter=A')
+        assert b'>Clear</a>' in resp.data
+
 
 class TestFriendlyDate:
     def test_timestamp_formatted(self, client):
