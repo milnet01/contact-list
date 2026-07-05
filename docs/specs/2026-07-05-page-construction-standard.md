@@ -362,6 +362,11 @@ this standard only requires the new tab handler to stand alone.)
   `.tabs.js-tabs` selector is belt-and-suspenders, not strictly required.
 - `.form-hint` currently has **no** dedicated rule (renders as a default `<small>`,
   intentionally). This standard does not add one; leave as-is.
+- **`.form-actions[hidden] { display:none; }`** — required. The JS hides the Save
+  row on the Server tab by setting its `hidden` attribute, but `.form-actions`
+  carries `display:flex`, and a class selector out-specifies the UA
+  `[hidden]{display:none}` — so without this rule the hidden Save row stays
+  visible. (Found in post-implementation visual QA.)
 
 **Scope of tabs:** Settings only. Import (stage-driven) and Sync (auth-state-driven)
 are **not** peer sections — not tabbed.
