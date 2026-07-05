@@ -112,7 +112,7 @@ pull, the app sends local changes back to Google:
   resolved **automatically: the newest edit wins**, compared by timestamp.
 
 Deletions are **not** pushed in v2.0 (this spec's §2, §15). Single-user, localhost,
-user-triggered, no background threads (DESIGN.md §7.2 unchanged).
+user-triggered, no background threads (DESIGN.md §7.2 — sync adds no threads).
 
 > **Pre-implementation gate (one external-API assumption).** The conflict logic
 > (§7) reads each contact's Google-side last-edit time from

@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+{# Standalone page (CL-0046): NOT a base.html child — base.html's <head> has no
+   {% block head %}, and a meta-refresh is only honoured inside <head>. During a
+   restart the nav links point at a momentarily-down server, so the nav is omitted. #}
+<html lang="en"{% if settings.theme %} data-theme="{{ settings.theme }}"{% endif %}>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    {% if action == 'restart' %}
+    <meta http-equiv="refresh" content="3; url={{ url_for('contacts.contact_list') }}">
+    <title>Restarting…</title>
+    {% else %}
+    <title>Server stopped</title>
+    {% endif %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body class="density-{{ settings.density }} view-{{ settings.view }}">
+    <main class="empty-state">
+        {% if action == 'restart' %}
+        <h1>Restarting…</h1>
+        <p>The server is reloading. This page will reconnect automatically in a
+           few seconds.</p>
+        {% else %}
+        <h1>Server stopped</h1>
+        <p>You can close this tab. To start the app again, launch it from the
+           Contact&nbsp;List icon.</p>
+        {% endif %}
+    </main>
+</body>
+</html>

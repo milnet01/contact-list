@@ -270,6 +270,7 @@ These are **mandatory** for all current and future code.
 - **Error pages** must not leak stack traces, file paths, or SQL. Use Flask `errorhandler` decorators.
 - **HTTPS only** if ever deployed beyond localhost. v1 runs on `127.0.0.1` only.
 - **Content-Security-Policy** header: `default-src 'self'; style-src 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'`. Inline `style=` attributes were moved into the stylesheet so `style-src` no longer needs `'unsafe-inline'` (CL-0012).
+- **Local process control** (`POST /settings/server`, CL-0046). The Settings page can restart or shut down the server (the app is launched from a desktop icon with no terminal). This process-control power is safe because it is reachable only on `127.0.0.1`, is CSRF-gated like every other POST, and is scoped to a `restart`/`shutdown` allow-list — nothing user-supplied ever reaches the `subprocess.Popen` argv, which is built only from `sys.executable` + `sys.argv` and passed as a list (no `shell=True`, no argument injection).
 
 ---
 
@@ -293,7 +294,7 @@ These are **mandatory** for all current and future code.
 - **Single SQLite connection per request.** Opened on first query, closed on teardown. No connection pooling needed for SQLite.
 - **Streaming responses** for any future CSV/vCard export (use generators, not full in-memory buffers).
 - **Google sync is batched.** Use `people.connections.list` with `pageSize=1000` and `syncToken` for incremental sync. Never fetch all contacts on every sync.
-- **No background threads or task queues** in v1. Sync is user-triggered.
+- **No background threads or task queues** for application work in v1. Sync is user-triggered. *Exception (CL-0046):* a single short-lived daemon thread may defer a server restart/shutdown until the HTTP response has flushed — it does no application work and the process respawns a fresh child then exits milliseconds later. See `docs/specs/2026-07-05-server-restart-control.md`.
 - **Indexes** on all columns used in WHERE/ORDER BY (see schema above).
 
 ### 7.3 What to Avoid
@@ -378,6 +379,9 @@ All routes are server-rendered HTML. No REST/JSON API in v1 (add in v2 if needed
 | POST | `/sync/start` | Trigger Google sync (import and export) |
 | POST | `/sync/authorize` | Start OAuth flow (Desktop client) |
 | POST | `/sync/disconnect` | Revoke Google credentials |
+| GET | `/settings` | Settings page |
+| POST | `/settings` | Save settings |
+| POST | `/settings/server` | Restart or shut down the local server (CL-0046) |
 
 ### 9.1 Query Parameters for `/contacts`
 

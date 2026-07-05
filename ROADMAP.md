@@ -168,6 +168,19 @@ efficiency / coding standards every item must comply with.
   Kind: fix.
   Source: in-session-2026-07-05 (user-reported /sync/start 500).
 
+- ✅ [CL-0046] **Add in-app Restart / Shutdown server controls on the Settings page.**
+  Launched from a desktop icon (run.sh -> exec python app.py, no
+  terminal, debug=False so no reloader), the user has no Ctrl-C. Restart
+  = self re-exec (os.execv fresh python app.py); Shutdown = os._exit(0).
+  Deferred on a daemon thread so the HTTP response flushes first; guarded
+  against firing under pytest. POST /settings/server, CSRF-gated,
+  localhost-only. Spec: docs/specs/2026-07-05-server-restart-control.md
+  (spec passed /cold-eyes, 5 loops).
+  **Layman:** Buttons on the Settings page to restart or stop the server, so you don't need a terminal when you launch from the desktop icon.
+  Kind: feature.
+  Source: user-request-2026-07-05.
+  Resolved (2026-07-05): Settings page has Restart + Shutdown buttons. Restart respawns a fresh detached python app.py via subprocess.Popen (close_fds drops the inherited Werkzeug socket) then os._exit(0) — in-place os.execv was tried and failed (Werkzeug marks its listen socket inheritable, serving.py:1105, so it survives execve and blocks rebind); found by a real port-5099 smoke test. Deferred on a daemon thread (guarded under pytest), CSRF-gated, localhost-only, data-confirm modal. 355 tests green + end-to-end smoke test.
+
 ## Audit & Review Follow-ups
 
 Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inline.

@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Restart and Shutdown server buttons on the Settings page.** (CL-0046)
+  For when the app is launched from the desktop icon with no terminal:
+  Restart reloads the server with fresh code, Shutdown stops it. Both are
+  localhost-only, CSRF-gated, and confirm before acting.
+
 - **Tags / labels for contacts, with filter-by-tag** (CL-0037)
   Group contacts under free-text labels (e.g. "family", "work", "gym"), typed as a comma-separated list on the contact form and shown as chips on the detail page. A filter bar on the contact list narrows to contacts carrying all selected tags (AND). Tags are created on first use and removed when their last contact drops them; merging contacts keeps the union of their tags. No new dependency.
 

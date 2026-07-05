@@ -5,6 +5,7 @@ import zoneinfo
 import phonenumbers
 from flask import (
     Blueprint,
+    abort,
     flash,
     g,
     redirect,
@@ -13,6 +14,7 @@ from flask import (
     url_for,
 )
 
+import server_control
 import settings as settings_mod
 from db import get_db
 
@@ -50,3 +52,18 @@ def save_settings():
         ), 400
     flash('Settings saved.', 'success')
     return redirect(url_for('settings.settings_page'))
+
+
+@bp.route('/settings/server', methods=['POST'])
+def server_control_route():
+    """Restart or shut down the local server (CL-0046).
+
+    Named ``server_control_route`` so it does not shadow the imported
+    ``server_control`` module. CSRF is enforced by the global ``_check_csrf``
+    before_request; the action allow-list makes ``schedule``'s own ValueError
+    unreachable from here (belt-and-braces for direct callers)."""
+    action = request.form.get('action', '')
+    if action not in ('restart', 'shutdown'):
+        abort(400)
+    server_control.schedule(action)
+    return render_template('server_action.html', action=action)

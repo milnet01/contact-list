@@ -89,4 +89,26 @@
 
     <button type="submit" class="btn">Save settings</button>
 </form>
+
+<fieldset class="settings-form">
+    <legend>Server</legend>
+    <small class="form-hint">Restart to load updated code, or shut the server
+       down. After a shutdown, relaunch from the Contact&nbsp;List icon.</small>
+    <form method="post" action="{{ url_for('settings.server_control_route') }}">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="restart">
+        <button type="submit" class="btn"
+                data-confirm="Restart the server now? It will be briefly unavailable.">
+            Restart server
+        </button>
+    </form>
+    <form method="post" action="{{ url_for('settings.server_control_route') }}">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="shutdown">
+        <button type="submit" class="btn btn-danger"
+                data-confirm="Shut the server down? You will need the desktop icon to start it again.">
+            Shut down server
+        </button>
+    </form>
+</fieldset>
 {% endblock %}
