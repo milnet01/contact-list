@@ -114,6 +114,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Google Sync no longer 500s when a synced contact has a photo.** (CL-0045)
+  The photo data-access helpers committed the transaction mid-way through
+  the per-contact sync savepoint, destroying it, so the sync loop crashed
+  with "no such savepoint: person". The helpers now leave committing to
+  their caller, matching every other data-access helper.
+
 - **Show the list "Clear" button when filtering by a starting letter** (CL-0043)
   The toolbar Clear guard omitted the `letter` filter, so a letter-only (alpha-nav) or letter+tag view offered no one-click way back to the full list. It now matches the empty-state guard.
 

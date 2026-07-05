@@ -356,10 +356,13 @@ each page and the sync-token/`last_synced_at` write is deferred to Step 3), so t
 push never interleaves with an uncommitted pull page. Each pushed contact is its
 own committed unit, isolated in its own `try/except` — one failure is logged and
 skipped, never aborting the run. (This per-contact commit is the isolation
-mechanism; it is **not** a strict copy of the pull's `SAVEPOINT` model — and note
-the pull's own SAVEPOINT is already not pristine: `_upsert_person` calls
-`set_contact_photo`, which `db.commit()`s mid-savepoint when a photo is stored.
-That pre-existing behaviour is out of scope here; flagged as a code-side question.)
+mechanism; it is **not** a strict copy of the pull's `SAVEPOINT` model. (This
+spec originally flagged that `_upsert_person → set_contact_photo` did a
+`db.commit()` mid-savepoint as an out-of-scope "code-side question". That
+turned out to be a live bug — the commit destroyed the savepoint, so
+`RELEASE SAVEPOINT person` threw `no such savepoint` and `/sync/start` 500'd
+for any pulled contact with a photo. **Resolved in CL-0045**: the photo
+helpers no longer commit; the caller owns the commit.)
 For each id captured in Step 0:
 
 - **`local_only` → `createContact`.** Build a full person body from the local row

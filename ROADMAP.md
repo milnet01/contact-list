@@ -152,6 +152,22 @@ efficiency / coding standards every item must comply with.
   Source: in-session-2026-07-04 (pre-existing bug surfaced during CL-0037).
   Resolved (2026-07-04): added `or letter` to the toolbar Clear guard in templates/contacts.html:21, making it consistent with the empty-state guard (line 176). Regression test test_clear_button_shown_for_letter_only_filter added to tests/test_routes.py (TestLetterFilter). Full suite 329 passed.
 
+- ✅ [CL-0045] **Fix Google Sync 500: photo helpers committed mid-savepoint, destroying it.**
+  Pre-existing bug, explicitly flagged as out-of-scope "code-side
+  question" in the two-way-sync spec (§5). models.set_contact_photo /
+  clear_contact_photo called db.commit(); the sync pull invokes the first
+  from inside the per-contact `SAVEPOINT person`, and a COMMIT destroys
+  all SQLite savepoints, so the loop's `RELEASE SAVEPOINT person` threw
+  `no such savepoint: person` -> /sync/start 500 on the happy path (any
+  pulled contact with a downloadable photo). Fix: both photo helpers no
+  longer commit (matching the "caller commits" convention of every other
+  models helper); the manual upload route commits in _apply_photo, the
+  sync path relies on its existing per-page commit. Regression test wraps
+  _upsert_person in a SAVEPOINT and asserts RELEASE survives.
+  **Layman:** Google Sync crashed with a "500" whenever a synced contact had a photo. Now it syncs cleanly.
+  Kind: fix.
+  Source: in-session-2026-07-05 (user-reported /sync/start 500).
+
 ## Audit & Review Follow-ups
 
 Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inline.

@@ -329,6 +329,22 @@ class TestSyncPhotos:
         assert google_sync._upsert_person(db, person, 'US', app.config) is True
         assert models.get_contact_photo_ext(db, self._cid(db)) is None
 
+    def test_photo_upsert_inside_savepoint_survives(self, app, db, monkeypatch):
+        """Regression (CL-0045): a photo'd contact imported inside the per-contact
+        ``SAVEPOINT person`` must not blow up the sync. ``set_contact_photo`` used
+        to ``db.commit()`` mid-savepoint, which destroys the savepoint, so the real
+        sync loop's ``RELEASE SAVEPOINT person`` raised ``no such savepoint`` and
+        the whole /sync/start 500'd. This mirrors that loop structure."""
+        import google_sync
+        import models
+        monkeypatch.setattr(google_sync, '_fetch_photo_bytes', lambda url: self._PNG)
+        person = self._person('https://lh3.googleusercontent.com/abc')
+        db.execute('SAVEPOINT person')
+        google_sync._upsert_person(db, person, 'US', app.config)
+        db.execute('RELEASE SAVEPOINT person')   # must not raise
+        db.commit()
+        assert models.get_contact_photo_ext(db, self._cid(db)) == 'png'
+
 
 # --- Two-way sync: OAuth scope upgrade & re-consent (CL-0033) ---------------
 

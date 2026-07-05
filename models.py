@@ -415,14 +415,17 @@ def upcoming_birthdays(
 
 
 def set_contact_photo(db: sqlite3.Connection, contact_id: int, ext: str) -> None:
-    """Record (upsert) the stored photo extension for a contact (CL-0026)."""
+    """Record (upsert) the stored photo extension for a contact (CL-0026).
+
+    Caller commits. Must NOT commit itself: the Google-sync pull calls this from
+    inside a per-contact ``SAVEPOINT person`` and a commit there destroys the
+    savepoint, so the loop's ``RELEASE SAVEPOINT`` throws (CL-0045)."""
     db.execute(
         "INSERT INTO contact_photos (contact_id, ext) VALUES (?, ?) "
         "ON CONFLICT(contact_id) DO UPDATE SET "
         "ext = excluded.ext, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')",
         [contact_id, ext],
     )
-    db.commit()
 
 
 def get_contact_photo_ext(db: sqlite3.Connection, contact_id: int) -> str | None:
@@ -435,11 +438,11 @@ def get_contact_photo_ext(db: sqlite3.Connection, contact_id: int) -> str | None
 
 def clear_contact_photo(db: sqlite3.Connection, contact_id: int) -> str | None:
     """Delete the photo row for a contact. Return the old ext (for the caller to
-    unlink the file), or None if there was no photo."""
+    unlink the file), or None if there was no photo. Caller commits (see
+    set_contact_photo — same savepoint-safety reason, CL-0045)."""
     old_ext = get_contact_photo_ext(db, contact_id)
     if old_ext is not None:
         db.execute('DELETE FROM contact_photos WHERE contact_id = ?', [contact_id])
-        db.commit()
     return old_ext
 
 

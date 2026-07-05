@@ -251,6 +251,10 @@ def _apply_photo(db, contact_id: int) -> None:
     elif request.form.get('remove_photo'):
         old_ext = clear_contact_photo(db, contact_id)
         photos.delete_photo(current_app.config, contact_id, old_ext)
+    # set_contact_photo / clear_contact_photo no longer commit themselves (they
+    # run inside the Google-sync savepoint too — CL-0045); the manual route owns
+    # the commit. A no-op branch above makes this a harmless flush.
+    db.commit()
 
 
 @bp.route('/contacts/<int:contact_id>/photo')
