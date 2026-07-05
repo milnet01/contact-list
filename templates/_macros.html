@@ -1,0 +1,12 @@
+{# Shared page-construction macros (CL-0047). #}
+
+{# Page title row: one <h1> per page, with optional right-aligned actions.
+   Plain:   {{ page_header('Settings') }}
+   Actions: {% call page_header('Contacts') %}<a class="btn" ...>+ New</a>{% endcall %}
+   Uses {% call %}/caller() so the action markup is real Markup, not escaped. #}
+{% macro page_header(title) %}
+<div class="page-header">
+  <h1>{{ title }}</h1>
+  {% if caller %}<div class="page-actions">{{ caller() }}</div>{% endif %}
+</div>
+{% endmacro %}

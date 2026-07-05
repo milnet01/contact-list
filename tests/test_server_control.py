@@ -122,3 +122,20 @@ class TestServerControlRoute:
         assert resp.status_code == 200
         assert b'value="restart"' in resp.data
         assert b'value="shutdown"' in resp.data
+
+    def test_settings_tab_scaffold(self, client):
+        # CL-0047: the four tab panels are server-rendered (present in the no-JS
+        # DOM), and every tab button is type="button" so a click can't submit the
+        # settings form. All section controls remain present regardless of tabs.
+        resp = client.get('/settings')
+        body = resp.data
+        for pid in (b'id="tab-appearance"', b'id="tab-dates"',
+                    b'id="tab-contacts"', b'id="tab-server"'):
+            assert pid in body
+        # No tab button may default to submit.
+        assert body.count(b'class="tab"') == body.count(b'role="tab"')
+        assert b'<button type="button" class="tab"' in body
+        # Controls from every section still present (panels are not JS-gated server-side).
+        assert b'name="theme"' in body        # Appearance
+        assert b'name="timezone"' in body      # Dates & Time
+        assert b'name="per_page"' in body      # Contacts & Phone

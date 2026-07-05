@@ -1,8 +1,9 @@
 {% extends "base.html" %}
+{% from "_macros.html" import page_header %}
 {% block title %}Google Sync — Contacts{% endblock %}
 
 {% block content %}
-<h1>Google Contacts Sync</h1>
+{{ page_header('Google Sync') }}
 
 {% if not has_credentials %}
 <div class="card">

@@ -537,6 +537,56 @@ tbody tr:last-child td { border-bottom: none; }
     margin-bottom: 1rem;
     border: 1px solid var(--border-light);
 }
+/* Optional section header inside a .card — same underlined look as a <legend>,
+   but WITHOUT the legend's float (an <h2> is already a full-width block). */
+.card-title {
+    margin: 0 0 1.25rem;
+    padding: 0 0 0.65rem;
+    border-bottom: 1px solid var(--border-light);
+    font-size: 1rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: var(--text);
+}
+
+/* === Page header (CL-0047) — one title row per page, optional right-aligned actions === */
+.page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-bottom: 1rem;
+}
+.page-header h1 { margin-bottom: 0; }
+.page-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+
+/* === Tabs (CL-0047) — progressive enhancement: bar hidden until JS adds .js-tabs === */
+.tabs { margin-bottom: 1rem; }
+.tab-bar { display: none; }
+.tabs.js-tabs .tab-bar {
+    display: flex;
+    gap: 0.25rem;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+}
+.tab {
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    padding: 0.5rem 0.9rem;
+    font: inherit;
+    color: var(--text-muted);
+    cursor: pointer;
+}
+.tab:hover { color: var(--text); }
+.tab[aria-selected="true"] {
+    color: var(--primary);
+    border-bottom-color: var(--primary);
+    font-weight: 600;
+}
 
 /* === Detail View === */
 .detail-header {
@@ -616,32 +666,52 @@ dd { word-break: break-word; }
 
 .btn-small { padding: 0.3rem 0.65rem; font-size: 0.8rem; }
 
-/* === Forms === */
+/* === Forms ===
+   Every <fieldset> renders as a card (CL-0047): same surface/border/radius/shadow
+   as .card, and the <legend> is reflowed into a full-width underlined section
+   header (the float trick), cleared by the next element. */
 fieldset {
     border: 1px solid var(--border-light);
     border-radius: var(--radius-lg);
-    padding: 1.25rem;
+    padding: 1.5rem;
     margin-bottom: 1rem;
     background: var(--surface);
+    box-shadow: var(--shadow);
+    min-inline-size: 0;         /* neutralise the UA min-inline-size:min-content so a fieldset matches a .card div */
 }
 legend {
-    font-weight: 600;
-    padding: 0 0.5rem;
-    font-size: 0.9rem;
+    float: left;
+    width: 100%;
+    margin: 0 0 1.25rem;
+    padding: 0 0 0.65rem;
+    border-bottom: 1px solid var(--border-light);
+    font-size: 1rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
     color: var(--text);
 }
+/* Clear the floated legend so the first content block sits below it. Targets the
+   first ELEMENT sibling; display:block makes `clear` bite even when that element
+   is inline (e.g. the Server fieldset's <small class="form-hint">). */
+fieldset > legend + * { clear: both; display: block; }
 
 .form-group {
     margin-bottom: 0.85rem;
 }
 .form-group label {
     display: block;
-    font-size: 0.8rem;
-    font-weight: 600;
+    font-size: 0.9rem;
+    font-weight: 500;
     margin-bottom: 0.3rem;
     color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
+}
+.form-group select,
+.form-group textarea,
+.form-group input:not([type="checkbox"]):not([type="radio"]):not([type="file"]) {
+    display: block;
+    width: 100%;
+    max-width: 26rem;
+    margin-top: 0.4rem;
 }
 
 input[type="text"],
@@ -1015,9 +1085,12 @@ input:focus, select:focus, textarea:focus {
     header, nav, footer, .actions, .btn, .flash, .toolbar, .alpha-nav, .pagination, .form-actions, .bulk-bar, .breadcrumb, .modal-overlay, .back-to-top { display: none; }
     body { background: #fff; color: #000; font-size: 12pt; }
     a { color: #0066cc; }
-    .card { box-shadow: none; border: 1px solid #ddd; }
+    .card, fieldset { box-shadow: none; border: 1px solid #ddd; }
     table { box-shadow: none; }
     .badge { border: 1px solid #999; }
+    /* Print every settings tab, not just the active one; drop the tab bar. */
+    .tab-panel[hidden] { display: block !important; }
+    .tabs.js-tabs .tab-bar { display: none !important; }
 }
 
 /* ---- Layout density (Settings) ---- */
@@ -1097,31 +1170,9 @@ body.view-card .td-check::before, body.view-card .td-icon::before { display: non
    border, which reads as unfinished on a rounded card. Float it to a full-width
    block header with its own underline instead, so each section's border stays
    an unbroken frame. Fields stack cleanly one per row at a readable width. */
-.settings-form fieldset {
-    padding: 1.4rem 1.5rem 1.6rem;
-    margin-bottom: 1.5rem;
-    box-shadow: var(--shadow);
-}
-.settings-form legend {
-    float: left;
-    width: 100%;
-    margin: 0 0 1.25rem;
-    padding: 0 0 0.65rem;
-    border-bottom: 1px solid var(--border-light);
-    font-size: 1rem;
-    font-weight: 700;
-    letter-spacing: -0.01em;
-    color: var(--text);
-}
-.settings-form label {
-    display: block;
-    clear: both;
-    margin-bottom: 1.1rem;
-    font-size: 0.9rem;
-    font-weight: 500;
-    color: var(--text-muted);
-}
-.settings-form fieldset label:last-child { margin-bottom: 0; }
+/* CL-0047: the .settings-form fieldset/legend/label/control rules that used to
+   live here are now the GLOBAL fieldset/legend/.form-group rules (see "Forms"),
+   so every form matches Settings. Only the merge-screen rule remains. */
 
 /* Merge screen: each candidate value on its own line, radio aligned to text. */
 .merge-option {
@@ -1131,13 +1182,6 @@ body.view-card .td-check::before, body.view-card .td-icon::before { display: non
     padding: 0.4rem 0;
 }
 .merge-option input[type="radio"] { flex: none; }
-.settings-form select,
-.settings-form input[type="number"] {
-    display: block;
-    width: 100%;
-    max-width: 26rem;
-    margin-top: 0.4rem;
-}
 
 /* ---- Utility classes ----
    These replace the inline style= attributes that used to live in the

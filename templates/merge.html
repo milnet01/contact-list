@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros.html" import page_header %}
 {% block title %}Merge Contacts — Contacts{% endblock %}
 
 {% block breadcrumb %}
@@ -12,7 +13,7 @@
 {% endblock %}
 
 {% block content %}
-<h1>Merge Contacts</h1>
+{{ page_header('Merge Contacts') }}
 <p class="toolbar-meta mb-md">
     Merging {{ contacts|length }} contacts. For each field, choose the value to
     keep as the main one. The oldest record is kept and updated; the others are

@@ -1,7 +1,11 @@
 {% extends "base.html" %}
+{% from "_macros.html" import page_header %}
 {% block title %}Contacts{% endblock %}
 
 {% block content %}
+{% call page_header('Contacts') %}
+    <a class="btn" href="{{ url_for('contacts.new_contact') }}">+ New</a>
+{% endcall %}
 <div class="list-controls">
 <div class="toolbar">
     <form method="get" action="{{ url_for('contacts.contact_list') }}" class="search-form" aria-label="Search and filter contacts">

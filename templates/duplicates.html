@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros.html" import page_header %}
 {% block title %}Duplicate Contacts — Contacts{% endblock %}
 
 {% block breadcrumb %}
@@ -10,7 +11,7 @@
 {% endblock %}
 
 {% block content %}
-<h1>Duplicate Contacts</h1>
+{{ page_header('Duplicates') }}
 
 {% if total == 0 %}
 <div class="empty-state">

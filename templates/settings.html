@@ -1,8 +1,9 @@
 {% extends "base.html" %}
+{% from "_macros.html" import page_header %}
 {% block title %}Settings{% endblock %}
 
 {% block content %}
-<h1>Settings</h1>
+{{ page_header('Settings') }}
 
 {% if errors %}
 <div class="flash flash-error">
@@ -10,105 +11,140 @@
 </div>
 {% endif %}
 
-<form method="post" action="{{ url_for('settings.save_settings') }}" class="settings-form">
-    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+<div class="tabs">
+    <div class="tab-bar" role="tablist" aria-label="Settings sections">
+        <button type="button" class="tab" role="tab" id="tabbtn-appearance"
+                aria-controls="tab-appearance" aria-selected="true" tabindex="0">Appearance</button>
+        <button type="button" class="tab" role="tab" id="tabbtn-dates"
+                aria-controls="tab-dates" aria-selected="false" tabindex="-1">Dates &amp; Time</button>
+        <button type="button" class="tab" role="tab" id="tabbtn-contacts"
+                aria-controls="tab-contacts" aria-selected="false" tabindex="-1">Contacts &amp; Phone</button>
+        <button type="button" class="tab" role="tab" id="tabbtn-server"
+                aria-controls="tab-server" aria-selected="false" tabindex="-1">Server</button>
+    </div>
 
-    <fieldset>
-        <legend>Appearance</legend>
-        <label>Theme
-            <select name="theme">
-                {% for t in themes %}
-                <option value="{{ t }}" {{ 'selected' if settings.theme == t }}>{{ t or 'Auto' }}</option>
-                {% endfor %}
-            </select>
-        </label>
-        <label>Density
-            <select name="density">
-                <option value="comfortable" {{ 'selected' if settings.density == 'comfortable' }}>Comfortable</option>
-                <option value="compact" {{ 'selected' if settings.density == 'compact' }}>Compact</option>
-            </select>
-        </label>
-        <label>Contact view
-            <select name="view">
-                <option value="list" {{ 'selected' if settings.view == 'list' }}>List</option>
-                <option value="card" {{ 'selected' if settings.view == 'card' }}>Card</option>
-            </select>
-        </label>
-    </fieldset>
-
-    <fieldset>
-        <legend>Dates &amp; Time</legend>
-        <label>Timezone
-            <select name="timezone">
-                {% for tz in timezones %}
-                <option value="{{ tz }}" {{ 'selected' if settings.timezone == tz }}>{{ tz }}</option>
-                {% endfor %}
-            </select>
-        </label>
-        <label>Date format
-            <select name="date_format">
-                {% for key, pattern in date_formats.items() %}
-                <option value="{{ key }}" {{ 'selected' if settings.date_format == key }}>{{ key }}</option>
-                {% endfor %}
-            </select>
-        </label>
-    </fieldset>
-
-    <fieldset>
-        <legend>Contacts &amp; Phone</legend>
-        <label>Phone region
-            <select name="phone_region">
-                {% for r in regions %}
-                <option value="{{ r }}" {{ 'selected' if settings.phone_region == r }}>{{ r }}</option>
-                {% endfor %}
-            </select>
-        </label>
-        <label>Contacts per page
-            <input type="number" name="per_page" min="1" max="200" value="{{ settings.per_page }}">
-        </label>
-        <label>Default sort
-            <select name="sort">
-                {% for s in ['name', 'type', 'created', 'updated'] %}
-                <option value="{{ s }}" {{ 'selected' if settings.sort == s }}>{{ s }}</option>
-                {% endfor %}
-            </select>
-        </label>
-        <label>Sort direction
-            <select name="sort_dir">
-                <option value="asc" {{ 'selected' if settings.sort_dir == 'asc' }}>Ascending</option>
-                <option value="desc" {{ 'selected' if settings.sort_dir == 'desc' }}>Descending</option>
-            </select>
-        </label>
-        <label>Default new-contact type
-            <select name="default_type">
-                <option value="individual" {{ 'selected' if settings.default_type == 'individual' }}>Individual</option>
-                <option value="company" {{ 'selected' if settings.default_type == 'company' }}>Company</option>
-            </select>
-        </label>
-    </fieldset>
-
-    <button type="submit" class="btn">Save settings</button>
-</form>
-
-<fieldset class="settings-form">
-    <legend>Server</legend>
-    <small class="form-hint">Restart to load updated code, or shut the server
-       down. After a shutdown, relaunch from the Contact&nbsp;List icon.</small>
-    <form method="post" action="{{ url_for('settings.server_control_route') }}">
+    <form method="post" action="{{ url_for('settings.save_settings') }}">
         <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
-        <input type="hidden" name="action" value="restart">
-        <button type="submit" class="btn"
-                data-confirm="Restart the server now? It will be briefly unavailable.">
-            Restart server
-        </button>
+
+        <section class="tab-panel" id="tab-appearance" role="tabpanel" aria-labelledby="tabbtn-appearance">
+            <fieldset>
+                <legend>Appearance</legend>
+                <div class="form-group">
+                    <label for="theme">Theme</label>
+                    <select id="theme" name="theme">
+                        {% for t in themes %}
+                        <option value="{{ t }}" {{ 'selected' if settings.theme == t }}>{{ t or 'Auto' }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="density">Density</label>
+                    <select id="density" name="density">
+                        <option value="comfortable" {{ 'selected' if settings.density == 'comfortable' }}>Comfortable</option>
+                        <option value="compact" {{ 'selected' if settings.density == 'compact' }}>Compact</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="view">Contact view</label>
+                    <select id="view" name="view">
+                        <option value="list" {{ 'selected' if settings.view == 'list' }}>List</option>
+                        <option value="card" {{ 'selected' if settings.view == 'card' }}>Card</option>
+                    </select>
+                </div>
+            </fieldset>
+        </section>
+
+        <section class="tab-panel" id="tab-dates" role="tabpanel" aria-labelledby="tabbtn-dates">
+            <fieldset>
+                <legend>Dates &amp; Time</legend>
+                <div class="form-group">
+                    <label for="timezone">Timezone</label>
+                    <select id="timezone" name="timezone">
+                        {% for tz in timezones %}
+                        <option value="{{ tz }}" {{ 'selected' if settings.timezone == tz }}>{{ tz }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="date_format">Date format</label>
+                    <select id="date_format" name="date_format">
+                        {% for key, pattern in date_formats.items() %}
+                        <option value="{{ key }}" {{ 'selected' if settings.date_format == key }}>{{ key }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </fieldset>
+        </section>
+
+        <section class="tab-panel" id="tab-contacts" role="tabpanel" aria-labelledby="tabbtn-contacts">
+            <fieldset>
+                <legend>Contacts &amp; Phone</legend>
+                <div class="form-group">
+                    <label for="phone_region">Phone region</label>
+                    <select id="phone_region" name="phone_region">
+                        {% for r in regions %}
+                        <option value="{{ r }}" {{ 'selected' if settings.phone_region == r }}>{{ r }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="per_page">Contacts per page</label>
+                    <input id="per_page" type="number" name="per_page" min="1" max="200" value="{{ settings.per_page }}">
+                </div>
+                <div class="form-group">
+                    <label for="sort">Default sort</label>
+                    <select id="sort" name="sort">
+                        {% for s in ['name', 'type', 'created', 'updated'] %}
+                        <option value="{{ s }}" {{ 'selected' if settings.sort == s }}>{{ s }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="sort_dir">Sort direction</label>
+                    <select id="sort_dir" name="sort_dir">
+                        <option value="asc" {{ 'selected' if settings.sort_dir == 'asc' }}>Ascending</option>
+                        <option value="desc" {{ 'selected' if settings.sort_dir == 'desc' }}>Descending</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="default_type">Default new-contact type</label>
+                    <select id="default_type" name="default_type">
+                        <option value="individual" {{ 'selected' if settings.default_type == 'individual' }}>Individual</option>
+                        <option value="company" {{ 'selected' if settings.default_type == 'company' }}>Company</option>
+                    </select>
+                </div>
+            </fieldset>
+        </section>
+
+        <div class="form-actions" data-tab-scope="settings-save">
+            <button type="submit" class="btn">Save settings</button>
+        </div>
     </form>
-    <form method="post" action="{{ url_for('settings.server_control_route') }}">
-        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
-        <input type="hidden" name="action" value="shutdown">
-        <button type="submit" class="btn btn-danger"
-                data-confirm="Shut the server down? You will need the desktop icon to start it again.">
-            Shut down server
-        </button>
-    </form>
-</fieldset>
+
+    <section class="tab-panel" id="tab-server" role="tabpanel" aria-labelledby="tabbtn-server">
+        <fieldset>
+            <legend>Server</legend>
+            <small class="form-hint">Restart to load updated code, or shut the server
+                down. After a shutdown, relaunch from the Contact&nbsp;List icon.</small>
+            <div class="form-actions">
+                <form method="post" action="{{ url_for('settings.server_control_route') }}">
+                    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="action" value="restart">
+                    <button type="submit" class="btn"
+                            data-confirm="Restart the server now? It will be briefly unavailable.">
+                        Restart server
+                    </button>
+                </form>
+                <form method="post" action="{{ url_for('settings.server_control_route') }}">
+                    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="action" value="shutdown">
+                    <button type="submit" class="btn btn-danger"
+                            data-confirm="Shut the server down? You will need the desktop icon to start it again.">
+                        Shut down server
+                    </button>
+                </form>
+            </div>
+        </fieldset>
+    </section>
+</div>
 {% endblock %}

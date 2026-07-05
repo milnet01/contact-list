@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros.html" import page_header %}
 {% block title %}{{ 'Edit' if editing else 'New' }} Contact — Contacts{% endblock %}
 
 {% block breadcrumb %}
@@ -16,7 +17,7 @@
 {% endblock %}
 
 {% block content %}
-<h1>{{ 'Edit Contact' if editing else 'New Contact' }}</h1>
+{{ page_header('Edit Contact' if editing else 'New Contact') }}
 
 {% if errors is defined and errors %}
 <div class="flash flash-error">
@@ -29,8 +30,7 @@
 {% endif %}
 
 <form method="post" enctype="multipart/form-data"
-      action="{% if editing %}{{ url_for('contacts.update', contact_id=contact.id) }}{% else %}{{ url_for('contacts.create') }}{% endif %}"
-      class="contact-form">
+      action="{% if editing %}{{ url_for('contacts.update', contact_id=contact.id) }}{% else %}{{ url_for('contacts.create') }}{% endif %}">
     <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="ref" value="{{ ref }}">
 

@@ -407,6 +407,24 @@ All routes are server-rendered HTML. No REST/JSON API in v1 (add in v2 if needed
 - **Minimal color palette.** Neutral base, single accent color for actions.
 - **Fast perceived performance.** Full page loads, no SPA loading spinners.
 
+### 10.1 Page Construction Standard (CL-0047)
+
+Every page is built to one standard so the app reads as one product. Full spec:
+`docs/specs/2026-07-05-page-construction-standard.md`. In brief:
+
+- **Shell:** every page `extends base.html`.
+- **Header:** one `<h1>` per page via the `page_header` macro (`_macros.html`) —
+  title + optional right-aligned actions; `contact_detail` keeps its richer
+  `.detail-header` variant.
+- **Sections:** the `.card` look is canonical. A `<fieldset>` in a form renders
+  identically to a `<div class="card">` (shared surface/border/radius/shadow, and
+  the `<legend>` / `.card-title` full-width underlined header).
+- **Forms:** each field is a `.form-group` (label above control); actions in a
+  `.form-actions` row.
+- **Tabs:** multi-section pages (Settings) use `.tabs` — progressive enhancement,
+  tab bar hidden until `app.js` adds `.js-tabs`; JS-off shows all panels. Tab
+  buttons are `type="button"`; confirms use `data-confirm` (no inline JS, CSP).
+
 ---
 
 ## 11. Testing Standards

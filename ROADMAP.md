@@ -181,6 +181,32 @@ efficiency / coding standards every item must comply with.
   Source: user-request-2026-07-05.
   Resolved (2026-07-05): Settings page has Restart + Shutdown buttons. Restart respawns a fresh detached python app.py via subprocess.Popen (close_fds drops the inherited Werkzeug socket) then os._exit(0) — in-place os.execv was tried and failed (Werkzeug marks its listen socket inheritable, serving.py:1105, so it survives execve and blocks rebind); found by a real port-5099 smoke test. Deferred on a daemon thread (guarded under pytest), CSRF-gated, localhost-only, data-confirm modal. 355 tests green + end-to-end smoke test.
 
+- ✅ [CL-0047] **Page construction standard: one consistent look across all pages, tabs on Settings.**
+  Establishes a documented page-construction standard (page_header
+  macro, card sections, .form-group/.form-actions forms, button
+  placement, tabs) and migrates every page to it — the contact edit form
+  gains the Settings card look; Settings sections become tabs. Spec:
+  docs/specs/2026-07-05-page-construction-standard.md (spec passed /cold-eyes, 6 loops).
+  **Layman:** Make every page look and feel like the Settings page, and put the Settings sections into tabs.
+  Kind: refactor.
+  Source: user-request-2026-07-05.
+  Resolved (2026-07-05): page_header macro (_macros.html), base fieldset now renders as a card (matches Settings), .form-group forms + .form-actions, .card-title, .page-header, and progressive-enhancement tabs (app.js separate IIFE, tab-bar hidden until .js-tabs, type=button, roving tabindex, Save hidden on Server tab). Settings sections are tabs; contact form + all pages migrated; contact_detail keeps its .detail-header variant. Spec passed 6-loop /cold-eyes. 356 tests green (+1), all templates compile + render 200, app.js valid, CSS balanced. DESIGN.md §10.1 records the standard. Manual visual QA pending (no browser automation here).
+
+- 📋 [CL-0048] **app.js single-IIFE early return strands back-to-top / --header-h on most pages.**
+  static/app.js is one big IIFE (lines 2-534). The custom-fields
+  block does `if (!container || !addBtn) return;` at line 347, which
+  returns from the WHOLE IIFE. So on any page without #custom-fields
+  (Settings, contact list, detail, sync, import, merge, duplicates,
+  birthdays) everything after line 347 never runs — including the
+  back-to-top button wiring and the --header-h sticky-header height calc
+  the list page's sticky filter bar relies on. Fix: split app.js into
+  independent per-feature IIFEs (or replace the early return with a guarded
+  block) so one absent element can't disable later features. Found while
+  restructuring app.js for CL-0047 settings tabs.
+  **Layman:** The 'back to top' button and the sticky filter-bar positioning silently don't work on most pages (everywhere except the contact add/edit form).
+  Kind: fix.
+  Source: surfaced-during-CL-0047 cold-eyes 2026-07-05.
+
 ## Audit & Review Follow-ups
 
 Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inline.

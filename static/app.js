@@ -532,3 +532,50 @@
         });
     }
 })();
+
+// =====================================================================
+// Tabs (CL-0047) — its OWN IIFE: the custom-fields block above returns
+// early on pages without #custom-fields, so anything sharing that IIFE
+// would never run on the Settings page.
+// =====================================================================
+(function () {
+    document.querySelectorAll('.tabs').forEach(function (tabs) {
+        var tabList = tabs.querySelectorAll('.tab');
+        if (!tabList.length) return;
+        tabs.classList.add('js-tabs');   // reveal the bar (CSS hides it by default)
+
+        function panelFor(tab) {
+            return document.getElementById(tab.getAttribute('aria-controls'));
+        }
+        // The Save action row is shown only on settings tabs, hidden on Server.
+        var saveRow = tabs.querySelector('[data-tab-scope="settings-save"]');
+
+        function select(tab, focus) {
+            tabList.forEach(function (t) {
+                var on = t === tab;
+                t.setAttribute('aria-selected', on ? 'true' : 'false');
+                t.tabIndex = on ? 0 : -1;
+                var panel = panelFor(t);
+                if (panel) panel.hidden = !on;
+            });
+            if (saveRow) saveRow.hidden = (tab.getAttribute('aria-controls') === 'tab-server');
+            if (focus) tab.focus();
+        }
+
+        // Initial state: honour the pre-selected tab (first), hide the rest.
+        var selected = tabs.querySelector('.tab[aria-selected="true"]') || tabList[0];
+        select(selected, false);
+
+        tabList.forEach(function (tab, i) {
+            tab.addEventListener('click', function () { select(tab, false); });
+            tab.addEventListener('keydown', function (e) {
+                var next = null;
+                if (e.key === 'ArrowRight') next = tabList[(i + 1) % tabList.length];
+                else if (e.key === 'ArrowLeft') next = tabList[(i - 1 + tabList.length) % tabList.length];
+                else if (e.key === 'Home') next = tabList[0];
+                else if (e.key === 'End') next = tabList[tabList.length - 1];
+                if (next) { e.preventDefault(); select(next, true); }
+            });
+        });
+    });
+})();

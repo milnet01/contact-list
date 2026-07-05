@@ -69,6 +69,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Consistent look across every page, and tabs on the Settings page.** (CL-0047)
+  Every page now follows one construction standard: a shared page-header,
+  the same "card" panels (the contact add/edit form now matches Settings),
+  uniform form fields and buttons. The Settings page groups its sections
+  into tabs. Documented in DESIGN.md §10.1.
+
 - **Contact photos are now served as 256 px thumbnails for avatars, not the full-size upload (CL-0035).**
   List and detail avatars display at ~35–56 px but were being sent the entire
   upload (up to 4 MiB). A downscaled 256 px thumbnail is now generated on save
