@@ -10,3 +10,10 @@ from __future__ import annotations
 # (e.g. QT_QPA_PLATFORM=minimal) still win.
 import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+# Isolation: config.py persists a secret key into ~/.config/contact-list on its
+# first import when SECRET_KEY is unset. conftest loads before any test module
+# imports config/app, so setting a throwaway key here keeps the whole suite from
+# writing into the real user config dir — order-independent, unlike a guard in a
+# single test module. setdefault lets a real CI SECRET_KEY still win.
+os.environ.setdefault("SECRET_KEY", "test-key-not-persisted")
