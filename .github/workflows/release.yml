@@ -21,6 +21,9 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
+      # appimagetool validates the bundled .desktop via desktop-file-validate,
+      # which isn't preinstalled on the headless runner (it is on desktop Linux).
+      - run: sudo apt-get update && sudo apt-get install -y desktop-file-utils
       - run: pip install -r requirements.txt pyinstaller
       - run: bash packaging/build-linux.sh
       - uses: actions/upload-artifact@v4
