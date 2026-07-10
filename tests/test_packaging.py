@@ -1,5 +1,6 @@
 import os
 import sys
+import types
 
 import config
 import resources
@@ -41,3 +42,25 @@ def test_auth_command_from_source():
 
 def test_auth_command_when_frozen():
     assert sync_module._auth_command(True) == [sys.executable, '--google-auth']
+
+
+def test_launcher_single_instance_opens_browser(monkeypatch):
+    import launcher
+    opened = {}
+    monkeypatch.setattr(launcher, '_port_is_serving', lambda h, p: True)
+    monkeypatch.setattr(launcher.webbrowser, 'open', lambda url: opened.setdefault('url', url))
+    # If create_app is reached, fail — the already-serving path must short-circuit.
+    monkeypatch.setattr('app.create_app', lambda: (_ for _ in ()).throw(AssertionError('should not build app')))
+    assert launcher.main() == 0
+    assert opened['url'].endswith(':5002')
+
+
+def test_launcher_binds_loopback(monkeypatch):
+    import launcher
+    monkeypatch.setattr(launcher, '_port_is_serving', lambda h, p: False)
+    monkeypatch.setattr(launcher, '_open_when_ready', lambda port: None)
+    dummy = types.SimpleNamespace(run=lambda **kw: rec.update(kw))
+    rec = {}
+    monkeypatch.setattr('app.create_app', lambda: dummy)
+    assert launcher.main() == 0
+    assert rec['host'] == '127.0.0.1'
