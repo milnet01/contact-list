@@ -54,7 +54,7 @@ Pre-built launchers are attached to each [GitHub Release](https://github.com/mil
 
 - **Linux:** `Contact-List-x86_64.AppImage` — make it executable (`chmod +x`) and double-click (or run it). Opens the app in your browser.
 - **Windows:** `Contact-List.exe` — double-click. Windows SmartScreen may warn on an unsigned app: **More info → Run anyway**.
-- **macOS:** `Contact-List.dmg` — open it, drag **Contact List** to Applications, then launch. The first time, **right-click → Open** to get past Gatekeeper (the app is unsigned).
+- **macOS (Apple Silicon — M1/M2/M3 or newer):** `Contact-List.dmg` — open it, drag **Contact List** to Applications, then launch. The first time, **right-click → Open** to get past Gatekeeper (the app is unsigned). Intel Macs are not supported by this build.
 
 Your data (contacts, photos, settings) is stored privately under `~/.config/contact-list/`.
 
