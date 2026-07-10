@@ -23,8 +23,10 @@ files = [
     "db.py",
     "google_auth.py",
     "google_sync.py",
+    "launcher.py",
     "models.py",
     "phoneutil.py",
+    "resources.py",
     "settings.py",
     "routes",
 ]

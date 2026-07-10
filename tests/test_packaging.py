@@ -49,8 +49,12 @@ def test_launcher_single_instance_opens_browser(monkeypatch):
     opened = {}
     monkeypatch.setattr(launcher, '_port_is_serving', lambda h, p: True)
     monkeypatch.setattr(launcher.webbrowser, 'open', lambda url: opened.setdefault('url', url))
-    # If create_app is reached, fail — the already-serving path must short-circuit.
-    monkeypatch.setattr('app.create_app', lambda: (_ for _ in ()).throw(AssertionError('should not build app')))
+
+    def _should_not_build():
+        raise AssertionError('should not build app')
+
+    # The already-serving path must short-circuit before building the app.
+    monkeypatch.setattr('app.create_app', _should_not_build)
     assert launcher.main() == 0
     assert opened['url'].endswith(':5002')
 
