@@ -6,11 +6,11 @@ import sys
 
 from PyInstaller.utils.hooks import collect_all
 
-# PyInstaller resolves Analysis' `scripts`/`datas` source paths relative to the
-# .spec file's own directory (not the CWD it was invoked from), via the
-# SPECPATH global it injects when exec'ing this file. Anchor on the repo root
-# so 'launcher.py'/'templates'/'static'/'migrations' — which live one level up
-# from packaging/ — resolve regardless of the invoking CWD.
+# PyInstaller exposes the .spec file's directory as the SPECPATH global but does
+# NOT auto-resolve Analysis' relative source paths against it — bare relative
+# paths resolve against the invoking CWD. So we anchor EVERY source path
+# (entry script, datas, icons) on the repo root explicitly, making them resolve
+# regardless of the CWD PyInstaller was invoked from.
 ROOT = os.path.dirname(os.path.abspath(SPECPATH))  # noqa: F821 (injected by PyInstaller)
 
 datas = [
@@ -44,10 +44,12 @@ pyz = PYZ(a.pure)
 if sys.platform.startswith('win'):
     exe = EXE(
         pyz, a.scripts, a.binaries, a.datas, [],
-        name='Contact-List', console=False, icon='packaging/icon.ico',
+        name='Contact-List', console=False,
+        icon=os.path.join(ROOT, 'packaging', 'icon.ico'),
     )
 else:
-    _icon = 'packaging/icon.icns' if sys.platform == 'darwin' else 'packaging/contact-list.png'
+    _icon_name = 'icon.icns' if sys.platform == 'darwin' else 'contact-list.png'
+    _icon = os.path.join(ROOT, 'packaging', _icon_name)
     exe = EXE(
         pyz, a.scripts, [], exclude_binaries=True,
         name='Contact-List', console=False, icon=_icon,
@@ -56,5 +58,6 @@ else:
     if sys.platform == 'darwin':
         app = BUNDLE(
             coll, name='Contact List.app',
-            icon='packaging/icon.icns', bundle_identifier='com.contactlist.app',
+            icon=os.path.join(ROOT, 'packaging', 'icon.icns'),
+            bundle_identifier='com.contactlist.app',
         )

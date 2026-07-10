@@ -27,15 +27,18 @@ RUNTIME_URL="https://github.com/AppImage/type2-runtime/releases/download/continu
 RUNTIME_SHA256="1cc49bcf1e2ccd593c379adb17c9f85a36d619088296504de95b1d06215aebbf"
 
 mkdir -p "$TOOLS"
-if [ ! -f "$APPIMAGETOOL" ]; then
-  curl -fL --retry 3 -m 120 "$APPIMAGETOOL_URL" -o "$APPIMAGETOOL"
-  echo "${APPIMAGETOOL_SHA256}  ${APPIMAGETOOL}" | sha256sum -c -
-  chmod +x "$APPIMAGETOOL"
-fi
-if [ ! -f "$RUNTIME" ]; then
-  curl -fL --retry 3 -m 120 "$RUNTIME_URL" -o "$RUNTIME"
-  echo "${RUNTIME_SHA256}  ${RUNTIME}" | sha256sum -c -
-fi
+
+# Download to <dest> if missing, then verify the sha256 on EVERY run (so a
+# truncated/partial cached file from a killed prior run is caught, not reused).
+fetch_verify() {  # fetch_verify <url> <dest> <sha256>
+  local url="$1" dest="$2" sha="$3"
+  [ -f "$dest" ] || curl -fL --retry 3 -m 120 "$url" -o "$dest"
+  echo "${sha}  ${dest}" | sha256sum -c -
+}
+
+fetch_verify "$APPIMAGETOOL_URL" "$APPIMAGETOOL" "$APPIMAGETOOL_SHA256"
+chmod +x "$APPIMAGETOOL"
+fetch_verify "$RUNTIME_URL" "$RUNTIME" "$RUNTIME_SHA256"
 
 bash packaging/make-icons.sh
 "$PY" -m PyInstaller --noconfirm packaging/contact-list.spec
