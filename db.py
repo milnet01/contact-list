@@ -5,6 +5,8 @@ import unicodedata
 
 from flask import current_app, g
 
+from resources import resource_path
+
 log = logging.getLogger(__name__)
 
 
@@ -63,7 +65,7 @@ def init_db() -> None:
         row['filename'] for row in db.execute('SELECT filename FROM schema_version')
     }
 
-    migrations_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'migrations')
+    migrations_dir = resource_path('migrations')
     migration_files = sorted(
         f for f in os.listdir(migrations_dir) if f.endswith('.sql')
     )

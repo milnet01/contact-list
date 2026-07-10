@@ -11,10 +11,15 @@ from flask import Flask, abort, g, render_template, request, session
 
 from config import Config, ensure_private_dir
 from db import close_db, init_db
+from resources import resource_path
 
 
 def create_app(test_config: dict | None = None) -> Flask:
-    app = Flask(__name__)
+    app = Flask(
+        __name__,
+        template_folder=resource_path('templates'),
+        static_folder=resource_path('static'),
+    )
 
     if test_config is None:
         app.config.from_object(Config)
