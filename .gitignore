@@ -12,9 +12,11 @@ build/
 credentials.json
 token.json
 .pytest_cache/
+.ci-venvs/
 
 # Local development / tooling artifacts (not part of the app)
 .claude/
+.superpowers/
 .audit_cache/
 audit_config.yaml
 docs/AUTOMATED_AUDIT_REPORT*
