@@ -1,6 +1,7 @@
 import logging
 import os
 import secrets
+import sys
 
 _CONFIG_DIR = os.path.expanduser('~/.config/contact-list')
 _log = logging.getLogger(__name__)
@@ -67,12 +68,18 @@ def _load_or_create_secret_key() -> str:
     return key
 
 
+def _default_db_path() -> str:
+    """Default DB location. Frozen: the persistent config dir (so contacts survive
+    quit). From source: next to the code, unchanged. Reads sys.frozen on each call
+    so tests can monkeypatch it; Config.DATABASE binds the result at import."""
+    if getattr(sys, 'frozen', False):
+        return os.path.join(_CONFIG_DIR, 'contacts.db')
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), 'contacts.db')
+
+
 class Config:
     SECRET_KEY = _load_or_create_secret_key()
-    DATABASE = os.environ.get(
-        'CONTACT_LIST_DB',
-        os.path.join(os.path.dirname(os.path.abspath(__file__)), 'contacts.db'),
-    )
+    DATABASE = os.environ.get('CONTACT_LIST_DB', _default_db_path())
     GOOGLE_CREDENTIALS_DIR = _CONFIG_DIR
     GOOGLE_CREDENTIALS_FILE = os.path.join(GOOGLE_CREDENTIALS_DIR, 'credentials.json')
     GOOGLE_TOKEN_FILE = os.path.join(GOOGLE_CREDENTIALS_DIR, 'token.json')
