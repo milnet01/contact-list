@@ -207,6 +207,12 @@ efficiency / coding standards every item must comply with.
   Kind: fix.
   Source: surfaced-during-CL-0047 cold-eyes 2026-07-05.
 
+- 📋 [CL-0049] **Standalone one-file launchers per OS (AppImage / .exe / .dmg) via PyInstaller + GitHub Actions.**
+  Design: docs/specs/2026-07-10-standalone-launchers-design.md. Freeze the Flask app with PyInstaller into one self-contained artefact per OS; GitHub Actions runners build all three (Linux/Windows/macOS can't cross-build), with local pre-flight builds on Linux (native) and Windows (Wine). Key code changes: frozen-aware data dir (~/.config/contact-list), resource_path helper for bundled templates/static/migrations, and --google-auth self-dispatch so OAuth works in the frozen binary. macOS ad-hoc-signed arm64 .dmg (unsigned/no-notarization out of scope). Cutting v1.0.0 is a separate follow-on.
+  **Layman:** A single download-and-run file for Linux, Windows, and Mac so anyone can use the app without installing Python or any dependencies.
+  Kind: package.
+  Source: user-request-2026-07-10.
+
 ## Audit & Review Follow-ups
 
 Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inline.
