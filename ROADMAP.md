@@ -212,6 +212,13 @@ efficiency / coding standards every item must comply with.
   **Layman:** A single download-and-run file for Linux, Windows, and Mac so anyone can use the app without installing Python or any dependencies.
   Kind: package.
   Source: user-request-2026-07-10.
+  Design spec signed off 2026-07-10 after /cold-eyes converged (6 loops, 2 cold reviewers/loop; polish-only at loop 6, zero CRITICAL/HIGH). Spec: docs/specs/2026-07-10-standalone-launchers-design.md. Pending user review before the implementation plan.
+
+- 📋 [CL-0050] **CHANGELOG [1.0.0] says "Initial public release" but was never tagged/published.**
+  Found during CL-0049 cold-eyes. CHANGELOG.md:166-169 has a dated [1.0.0] - 2026-06-30 section labelled "Initial public release", but there is no git tag, GitHub Release, or binary. Reconcile as part of the release follow-on (tagging): either the current [Unreleased] items fold into the real 1.0.0 first publish, or 1.0.0 is retroactively marked and the new work ships as 1.1.0.
+  **Layman:** The release notes claim version 1.0.0 was released, but it never actually was (no download exists). Reword when we cut the real first release.
+  Kind: doc-fix.
+  Source: cold-eyes-2026-07-10 (CL-0049 spec review).
 
 ## Audit & Review Follow-ups
 

@@ -1,7 +1,14 @@
 # Standalone one-file launchers for Linux / Windows / macOS (CL-0049)
 
-**Status:** Draft — pending `/cold-eyes` (per global rule 14, this design is run
-through the cold-eyes loop until clean before implementation).
+**Status:** Signed off (2026-07-10) — passed `/cold-eyes` to polish-convergence
+(6 loops, 2 independent cold reviewers per loop). Loops 1–3 cleared
+accuracy/consistency/completeness findings; loop 4 caught a self-introduced
+`create_app()`-outside-`try` regression (fixed, did not resurface); loop 5 caught
+a factual error 3 prior passes missed — the CHANGELOG already carries a `[1.0.0]`
+section, so §1/§8 were corrected; loop 6 returned **zero CRITICAL/HIGH**, with only
+polish left (stale "untracked" labels after the icon masters were committed, plus
+wording precision). No structural/mechanical/architectural findings remain. Pending
+user review before the implementation plan.
 
 ## 1. Problem & overview
 
@@ -187,15 +194,15 @@ frozen. This preserves the existing "auth runs in an isolated child process" des
 (the child spins its own `run_local_server` on a temp port and opens a browser for
 the OAuth redirect — we do **not** move that into the Flask worker).
 
-**Launcher dispatch (launcher.py, §3)** — before starting the server, check for the
-flag and delegate to the unchanged `google_auth.main()`:
+**Launcher dispatch (launcher.py, §3)** — the first thing `main()` does, before any
+server work, is check for the flag and delegate to the unchanged
+`google_auth.main()` (the full `main()` is in §3):
 
 ```python
-# launcher.py (frozen entrypoint)
-import sys
+# first lines of launcher.main() — see §3 for the whole function
 if getattr(sys, 'frozen', False) and '--google-auth' in sys.argv:
-    from google_auth import main
-    sys.exit(main())
+    from google_auth import main as auth_main
+    return auth_main()
 ```
 
 **authorize() command selection** — pick the child command based on frozen state:
@@ -213,6 +220,9 @@ def _auth_command(frozen: bool) -> list[str]:
 cmd = _auth_command(getattr(sys, 'frozen', False))
 result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
 ```
+
+`auth_script` (currently a function-local in `authorize()`, sync.py:51) is hoisted
+to a module-level constant so both `authorize()` and `_auth_command` reference it.
 
 `google_auth.py` itself is **unchanged** (its `main()` is imported by the frozen
 path and still run as a script from source). `google_auth.py` and `google_sync.py`
@@ -242,10 +252,11 @@ source. `launcher.py` responsibilities:
    and exit. This must come first, before any server work.
 2. **Frozen logging** — when frozen, first `ensure_private_dir(_CONFIG_DIR)` (0700)
    so the config dir exists, then attach a logging file handler writing to
-   `~/.config/contact-list/contact-list.log`. Because this runs before anything
-   else touches the dir, it also guarantees the dir exists for the subsequent
-   frozen `init_db()` that opens `contacts.db` there (§2.1). It then wraps the
-   whole server startup (`create_app()` + `app.run`) in a
+   `~/.config/contact-list/contact-list.log`. Running this before `create_app()`
+   guarantees the dir exists for the subsequent frozen `init_db()` that opens
+   `contacts.db` there (§2.1) — rather than relying on the conditional, lazy
+   secret-key/`PHOTOS_DIR` creation paths. It then wraps the whole server startup
+   (`create_app()` + `app.run`) in a
    `try/except` that calls `logging.exception(...)` on failure. A windowed app
    (§4.3 Windows / §4.4 macOS) has no console and its `sys.stderr` is `None` or
    `os.devnull`, so a bare file handler captures `logging.*` calls but **not** an
@@ -426,8 +437,8 @@ this is an explicit, stated limitation, revisited only on demand (§8).
 ### 4.5 Icon derivation (packaging/make-icons.sh)
 
 All OS icon formats derive from the single master `packaging/icon.png` (1254²,
-transparent corners, produced in this change from `packaging/icon-source.png` and
-committed as part of implementing this spec):
+transparent corners, produced from `packaging/icon-source.png` and already
+committed in b739943):
 
 - **`icon.ico`** (Windows) — multi-size (16/32/48/64/128/256) via Pillow
   (`Image.save('icon.ico', sizes=[...])`), which is already a dependency.
@@ -461,8 +472,8 @@ independent of the still-pending repo template edit specified here.)*
 
 ### 5.2 Committed vs generated assets
 
-Committed as part of implementing this spec, in two groups:
-- **Three `packaging/` masters that already exist on disk (currently untracked):**
+Icon assets by tracking status:
+- **Three `packaging/` masters — already committed (in b739943):**
   `packaging/icon-source.png` (raw generator output), `packaging/icon.png`
   (processed transparent master), `packaging/old-icon-flatblue.svg` (retired
   original, kept for provenance).
@@ -585,7 +596,7 @@ clearer than a matrix with heavy `if runner.os` branching) plus one release job:
 | `templates/base.html` (favicon `<link>`) | repoint `href` → `icon.png` and `type` → `image/png` (§5.1) | ~1 |
 | `static/icon.png` | **new** — committed favicon from master | asset |
 | `static/icon.svg` | **retire** — replaced by PNG favicon | — |
-| `packaging/icon-source.png`, `icon.png`, `old-icon-flatblue.svg` | **new** — committed masters (§5.2) | asset |
+| `packaging/icon-source.png`, `icon.png`, `old-icon-flatblue.svg` | **already committed** (b739943) — icon masters (§5.2) | asset |
 | `.gitignore` | add `packaging/.tools/` + generated `packaging/*.ico`/`*.icns`/`contact-list.png` (`dist/`, `build/` already ignored) | ~2 |
 | `README.md` | **new download/run section** — per-OS download, unblock steps, `credentials.json` note (§5.4) | ~20 |
 | `DESIGN.md` | §3 note, §7.1 cold-start note, §7.2 carve-out, new Packaging section (§7) | ~15 |
