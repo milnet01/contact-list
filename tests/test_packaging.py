@@ -30,3 +30,16 @@ def test_default_db_path_when_frozen(monkeypatch):
     monkeypatch.setattr(sys, 'frozen', True, raising=False)
     got = config._default_db_path()
     assert got == os.path.join(config._CONFIG_DIR, 'contacts.db')
+
+
+from routes import sync as sync_module
+
+
+def test_auth_command_from_source():
+    cmd = sync_module._auth_command(False)
+    assert cmd[0] == sys.executable
+    assert cmd[1].endswith('google_auth.py')
+
+
+def test_auth_command_when_frozen():
+    assert sync_module._auth_command(True) == [sys.executable, '--google-auth']

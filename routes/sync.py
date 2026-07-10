@@ -22,6 +22,18 @@ log = logging.getLogger(__name__)
 
 bp = Blueprint('sync', __name__)
 
+# Absolute path to the standalone auth script, used from source. Module-level so
+# both authorize() and _auth_command reference the same value.
+auth_script = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'google_auth.py')
+
+
+def _auth_command(frozen: bool) -> list[str]:
+    """argv for the Google-auth child. Frozen: re-invoke this binary with the flag
+    (launcher.py routes it to google_auth.main()). From source: run the .py."""
+    if frozen:
+        return [sys.executable, '--google-auth']
+    return [sys.executable, auth_script]
+
 
 @bp.route('/sync')
 def sync_page():
@@ -47,11 +59,11 @@ def authorize():
         flash('Google credentials file not found. See setup instructions.', 'error')
         return redirect(url_for('sync.sync_page'))
 
-    # Use InstalledAppFlow via the standalone auth script
-    auth_script = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'google_auth.py')
+    # Use InstalledAppFlow via the standalone auth script (or this binary, frozen)
+    cmd = _auth_command(getattr(sys, 'frozen', False))
     try:
         result = subprocess.run(
-            [sys.executable, auth_script],
+            cmd,
             capture_output=True, text=True, timeout=120,
         )
         if result.returncode == 0:
