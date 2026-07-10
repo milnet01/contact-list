@@ -207,12 +207,13 @@ efficiency / coding standards every item must comply with.
   Kind: fix.
   Source: surfaced-during-CL-0047 cold-eyes 2026-07-05.
 
-- 📋 [CL-0049] **Standalone one-file launchers per OS (AppImage / .exe / .dmg) via PyInstaller + GitHub Actions.**
+- ✅ [CL-0049] **Standalone one-file launchers per OS (AppImage / .exe / .dmg) via PyInstaller + GitHub Actions.**
   Design: docs/specs/2026-07-10-standalone-launchers-design.md. Freeze the Flask app with PyInstaller into one self-contained artefact per OS; GitHub Actions runners build all three (Linux/Windows/macOS can't cross-build), with local pre-flight builds on Linux (native) and Windows (Wine). Key code changes: frozen-aware data dir (~/.config/contact-list), resource_path helper for bundled templates/static/migrations, and --google-auth self-dispatch so OAuth works in the frozen binary. macOS ad-hoc-signed arm64 .dmg (unsigned/no-notarization out of scope). Cutting v1.0.0 is a separate follow-on.
   **Layman:** A single download-and-run file for Linux, Windows, and Mac so anyone can use the app without installing Python or any dependencies.
   Kind: package.
   Source: user-request-2026-07-10.
   Design spec signed off 2026-07-10 after /cold-eyes converged (6 loops, 2 cold reviewers/loop; polish-only at loop 6, zero CRITICAL/HIGH). Spec: docs/specs/2026-07-10-standalone-launchers-design.md. Pending user review before the implementation plan.
+  Resolved (2026-07-10): standalone launchers implemented across 10 TDD tasks + a whole-branch review, all on main. Code: resources.py (resource_path), frozen DB path (config.py), _auth_command dispatch (routes/sync.py), launcher.py entrypoint, favicon PNG. Packaging: contact-list.spec, make-icons.sh, build-linux.sh (AppImage; pre-fetches the AppImage runtime via curl + --runtime-file to dodge appimagetool's hanging downloader), build-windows.sh + wine-setup.sh (Wine pre-flight), build-macos.sh (CI-only). CI: .github/workflows/release.yml — dry-run built Linux+Windows+macOS all green on real runners (Linux needed desktop-file-utils). Verified: AppImage + Wine .exe launch and serve; frozen data lands in ~/.config/contact-list; frozen Google auth completes end-to-end. 364 tests green, ruff+mypy clean. Follow-on (separate): tag/publish the first release + reconcile CL-0050.
 
 - 📋 [CL-0050] **CHANGELOG [1.0.0] says "Initial public release" but was never tagged/published.**
   Found during CL-0049 cold-eyes. CHANGELOG.md:166-169 has a dated [1.0.0] - 2026-06-30 section labelled "Initial public release", but there is no git tag, GitHub Release, or binary. Reconcile as part of the release follow-on (tagging): either the current [Unreleased] items fold into the real 1.0.0 first publish, or 1.0.0 is retroactively marked and the new work ships as 1.1.0.
