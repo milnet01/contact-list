@@ -48,6 +48,18 @@ pip install -r requirements.txt
 python app.py
 ```
 
+## Download & run (no Python needed)
+
+Pre-built launchers are attached to each [GitHub Release](https://github.com/milnet01/contact-list/releases). Download the one for your OS — it carries everything it needs; nothing else to install.
+
+- **Linux:** `Contact-List-x86_64.AppImage` — make it executable (`chmod +x`) and double-click (or run it). Opens the app in your browser.
+- **Windows:** `Contact-List.exe` — double-click. Windows SmartScreen may warn on an unsigned app: **More info → Run anyway**.
+- **macOS:** `Contact-List.dmg` — open it, drag **Contact List** to Applications, then launch. The first time, **right-click → Open** to get past Gatekeeper (the app is unsigned).
+
+Your data (contacts, photos, settings) is stored privately under `~/.config/contact-list/`.
+
+**Google sync (optional)** additionally needs your own Google OAuth `credentials.json` placed in `~/.config/contact-list/` — see [Google Contacts sync](#google-contacts-sync-optional). The launcher does not ship Google credentials.
+
 ## Configuration
 
 All settings are read from environment variables (with sensible defaults):

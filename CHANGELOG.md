@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Standalone one-file launchers for Linux, Windows, and macOS.** (CL-0049)
+  Download a single file per OS from the GitHub Releases page and run it —
+  no Python or dependencies to install. Built automatically by GitHub Actions.
+
 - **Restart and Shutdown server buttons on the Settings page.** (CL-0046)
   For when the app is launched from the desktop icon with no terminal:
   Restart reloads the server with fresh code, Shutdown stops it. Both are

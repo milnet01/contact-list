@@ -58,6 +58,9 @@ explicitly because the sync code imports it directly (`google.oauth2` /
 `google.auth`) rather than relying on it transitively. `pytest` is a test-only
 dependency and does not affect the running app.
 
+PyInstaller, appimagetool, and the OS icon tools (CL-0049, §15) are build-time
+only, not runtime deps; the < 8 runtime budget is unaffected.
+
 ### Dependency Versioning Policy
 
 **Default: latest.** Every dependency tracks its latest stable release — for
@@ -287,6 +290,10 @@ These are **mandatory** for all current and future code.
 | Search (10k contacts) | < 200 ms |
 | Google sync (1000 contacts) | < 10 s |
 
+The `< 500 ms` cold-start target is a **source-mode** figure (`python app.py`);
+the frozen launchers' (CL-0049, §15) first-launch unpack — notably the Windows
+onefile every-launch extraction, ~1–2 s — is exempt.
+
 ### 7.2 Implementation Rules
 
 - **Pagination.** All list endpoints paginate (default 50, max 200 per page).
@@ -294,7 +301,7 @@ These are **mandatory** for all current and future code.
 - **Single SQLite connection per request.** Opened on first query, closed on teardown. No connection pooling needed for SQLite.
 - **Streaming responses** for any future CSV/vCard export (use generators, not full in-memory buffers).
 - **Google sync is batched.** Use `people.connections.list` with `pageSize=1000` and `syncToken` for incremental sync. Never fetch all contacts on every sync.
-- **No background threads or task queues** for application work in v1. Sync is user-triggered. *Exception (CL-0046):* a single short-lived daemon thread may defer a server restart/shutdown until the HTTP response has flushed — it does no application work and the process respawns a fresh child then exits milliseconds later. See `docs/specs/2026-07-05-server-restart-control.md`.
+- **No background threads or task queues** for application work in v1. Sync is user-triggered. *Exception (CL-0046):* a single short-lived daemon thread may defer a server restart/shutdown until the HTTP response has flushed — it does no application work and the process respawns a fresh child then exits milliseconds later. See `docs/specs/2026-07-05-server-restart-control.md`. This carve-out extends to the launcher's (CL-0049, §15) one-shot browser-open daemon thread — it opens the browser once after the socket is up, then does no further application work.
 - **Indexes** on all columns used in WHERE/ORDER BY (see schema above).
 
 ### 7.3 What to Avoid
@@ -482,6 +489,48 @@ counts shipped application modules only, not `tests/`. It was raised from the
 original < 50 KB when import/export/merge (CL-0022/0023/0024) landed (shipped
 app source is ~85 KB after those features); see
 `docs/specs/2026-07-01-import-export-merge-design.md` §7.
+
+---
+
+## 15. Packaging & Distribution (CL-0049)
+
+Standalone one-file launchers (`launcher.py`, PyInstaller) let a user run the app
+without installing Python. Spec: `docs/specs/2026-07-10-standalone-launchers-design.md`.
+
+**Frozen vs. source resource model.** `launcher.py` is the frozen entrypoint;
+`app.py`'s `if __name__ == '__main__'` block is unchanged for `python app.py`.
+Read-only resources (`templates/`, `static/`, `migrations/`) are resolved via a
+`resource_path()` helper that points at the PyInstaller extraction dir
+(`sys._MEIPASS`) when frozen and at the repo root from source — behaviour from
+source is byte-identical to today.
+
+**State location.** When frozen, **all** mutable state — the SQLite database,
+`photos/`, `token.json`, `credentials.json`, `secret_key`, and the new
+`contact-list.log` — lives under the existing private config dir,
+`~/.config/contact-list/`, never inside the ephemeral extraction directory. From
+source the database path is unchanged (next to the code).
+
+**Per-OS formats.**
+
+| OS | File | Mode |
+|----|------|------|
+| Linux | `Contact-List-x86_64.AppImage` | onedir (no per-launch unpack) |
+| Windows | `Contact-List.exe` | onefile (self-extracts each launch, ~1–2 s) |
+| macOS (Apple Silicon) | `Contact-List.dmg` | onedir `.app` bundle |
+
+**Signing posture — unsigned/ad-hoc, not notarized.** No paid code-signing or
+notarization is in scope. macOS ships **ad-hoc**-signed (required for Apple
+Silicon to execute the binary at all) and Gatekeeper still warns on first open —
+the user right-clicks → Open once. Windows ships fully unsigned and SmartScreen
+warns — the user clicks More info → Run anyway once. Both are documented in the
+README download section, not engineered away.
+
+**Config-dir lock is POSIX-only.** The `0700` permission on `~/.config/contact-list`
+(`ensure_private_dir`) is enforced on Linux and macOS. On **Windows**,
+`os.chmod` cannot set POSIX mode bits, so this lock is effectively a no-op there;
+per-user isolation instead rests on the OS's own user-profile ACLs (each user's
+home directory is already private to them by default). `ensure_private_dir`
+tolerates a filesystem that ignores POSIX modes (`except OSError`).
 
 ---
 
