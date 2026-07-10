@@ -16,10 +16,14 @@ mkdir -p "$TOOLS"
 
 command -v wine >/dev/null 2>&1 || { echo "wine is not installed" >&2; exit 1; }
 
+# --retry/-m give the one-time ~25 MB download resilience + a hard timeout (no
+# silent -s, so progress is visible for a slow fetch).
 [ -f "$TOOLS/$INST" ] || \
   curl -fL --retry 3 -m 300 "https://www.python.org/ftp/python/${PYVER}/${INST}" -o "$TOOLS/$INST"
 
-# Silent, per-user install with python.exe on PATH inside the prefix.
+# Silent, PER-USER install (InstallAllUsers=0): inside a Wine prefix a per-user
+# install needs no elevated "admin", lands in the prefix's user AppData, and puts
+# python.exe on PATH via PrependPath — verified sufficient for `wine python`.
 wine "$TOOLS/$INST" /quiet InstallAllUsers=0 PrependPath=1 Include_test=0
 wine python -m pip install --upgrade pip
 wine python -m pip install -r requirements.txt pyinstaller
