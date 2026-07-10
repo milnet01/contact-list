@@ -21,3 +21,10 @@ token.json
 audit_config.yaml
 docs/AUTOMATED_AUDIT_REPORT*
 docs/trend_snapshot_*
+
+# PyInstaller / AppImage build artefacts (regenerate via packaging/build-linux.sh)
+packaging/.tools/
+packaging/icon.ico
+packaging/icon.icns
+packaging/contact-list.png
+Contact-List-x86_64.AppImage
