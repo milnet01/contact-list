@@ -3,12 +3,10 @@ name: Release binaries
 on:
   push:
     tags: ['v*']
+  # A manual run is always a rehearsal: it builds all three launchers, but the
+  # release job is gated on a v* tag ref (see its `if:`), so workflow_dispatch
+  # never publishes a Release. Only pushing a v* tag releases.
   workflow_dispatch:
-    inputs:
-      dry_run:
-        description: 'Build all three without creating a Release'
-        type: boolean
-        default: true
 
 permissions:
   contents: read

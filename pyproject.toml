@@ -17,6 +17,10 @@ addopts = "-v"
 python_version = "3.12"
 warn_redundant_casts = true
 warn_unused_ignores = true
+# Ignore build outputs (present locally after a packaging build; absent in CI).
+# Without this, the bundled google/ copies under dist/ and build/ trip mypy's
+# duplicate-module check on a dev machine that has run packaging/build-linux.sh.
+exclude = '^(dist|build)/'
 files = [
     "app.py",
     "config.py",

@@ -11,6 +11,7 @@ app.py is unchanged; `python app.py` from source still works as before.
 from __future__ import annotations
 
 import logging
+import logging.handlers
 import os
 import socket
 import sys
@@ -47,7 +48,12 @@ def _install_file_logging() -> None:
     handler exists)."""
     from config import _CONFIG_DIR, ensure_private_dir
     ensure_private_dir(_CONFIG_DIR)
-    handler = logging.FileHandler(os.path.join(_CONFIG_DIR, 'contact-list.log'))
+    # Rotating so a long-lived desktop install's log (Werkzeug logs every request
+    # at INFO) can't grow without bound: 1 MB x 3 files.
+    handler = logging.handlers.RotatingFileHandler(
+        os.path.join(_CONFIG_DIR, 'contact-list.log'),
+        maxBytes=1_000_000, backupCount=3,
+    )
     handler.setFormatter(
         logging.Formatter('%(asctime)s %(levelname)s %(name)s: %(message)s')
     )
