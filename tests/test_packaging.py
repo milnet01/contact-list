@@ -4,6 +4,7 @@ import sys
 import config
 import resources
 from resources import resource_path
+from routes import sync as sync_module
 
 # Test isolation (SECRET_KEY) lives in tests/conftest.py so it applies before any
 # test module imports config/app.
@@ -30,9 +31,6 @@ def test_default_db_path_when_frozen(monkeypatch):
     monkeypatch.setattr(sys, 'frozen', True, raising=False)
     got = config._default_db_path()
     assert got == os.path.join(config._CONFIG_DIR, 'contacts.db')
-
-
-from routes import sync as sync_module
 
 
 def test_auth_command_from_source():
