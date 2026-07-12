@@ -17,6 +17,7 @@ datas = [
     (os.path.join(ROOT, 'templates'), 'templates'),
     (os.path.join(ROOT, 'static'), 'static'),
     (os.path.join(ROOT, 'migrations'), 'migrations'),
+    (os.path.join(ROOT, 'packaging', 'icon.png'), 'packaging'),
 ]
 binaries = []
 hiddenimports = []
