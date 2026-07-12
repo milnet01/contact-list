@@ -1,6 +1,6 @@
 """Self-restart / shutdown for the local dev server (CL-0046).
 
-The app is launched from a desktop icon (``run.sh`` → ``exec python app.py``,
+The app is launched from a desktop icon (``run.sh`` → ``exec python launcher.py``,
 ``debug=False`` so no reloader) with no terminal attached, so the user has no
 Ctrl-C. These helpers let the Settings page restart the process (reload code
 after an update) or stop it. Both are deferred onto a short-lived daemon thread
