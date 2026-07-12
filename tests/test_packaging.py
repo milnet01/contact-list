@@ -87,6 +87,20 @@ def test_launcher_uses_make_server_threaded_loopback(monkeypatch):
     assert rec['threaded'] is True  # locks in the anti-serialize guard (spec §5)
 
 
+def test_launcher_returns_1_when_server_bind_fails(monkeypatch):
+    import launcher
+    monkeypatch.setattr(launcher, '_port_is_serving', lambda h, p: False)
+    monkeypatch.setattr(launcher, '_open_when_ready', lambda port: None)
+    monkeypatch.setattr('app.create_app', lambda: object())
+
+    def fake_make_server(host, port, app, **kwargs):
+        raise OSError('address in use')
+
+    monkeypatch.setattr('werkzeug.serving.make_server', fake_make_server)
+
+    assert launcher.main() == 1
+
+
 def test_launcher_falls_back_to_headless_when_tray_fails(monkeypatch):
     import launcher
     monkeypatch.setattr(launcher, '_port_is_serving', lambda h, p: False)

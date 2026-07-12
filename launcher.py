@@ -89,14 +89,16 @@ def main() -> int:
     from werkzeug.serving import make_server
     try:
         app = create_app()
+        # The tray must own the main thread, so the server moves to a dedicated
+        # non-daemon thread via a stoppable handle. threaded=True preserves
+        # app.run()'s default concurrency (make_server defaults threaded=False;
+        # spec §5). The constructor binds the socket, so a bind failure (port in
+        # use) is caught here and returns 1, like create_app().
+        server = make_server('127.0.0.1', port, app, threaded=True)
     except Exception:
         logging.exception('Server startup failed')
         return 1
 
-    # The tray must own the main thread, so the server moves to a dedicated
-    # non-daemon thread via a stoppable handle. threaded=True preserves app.run()'s
-    # default concurrency (make_server defaults threaded=False; spec §5).
-    server = make_server('127.0.0.1', port, app, threaded=True)
     server_thread = threading.Thread(target=server.serve_forever)
     server_thread.start()
 
