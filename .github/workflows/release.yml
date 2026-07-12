@@ -24,7 +24,7 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y desktop-file-utils
       - run: pip install -r requirements.txt pyinstaller
       - run: bash packaging/build-linux.sh
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: linux
           path: Contact-List-x86_64.AppImage
@@ -39,7 +39,7 @@ jobs:
       - run: pip install -r requirements.txt pyinstaller
       - run: bash packaging/make-icons.sh
       - run: pyinstaller --noconfirm packaging/contact-list.spec
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: windows
           path: dist/Contact-List.exe
@@ -53,7 +53,7 @@ jobs:
           python-version: '3.12'
       - run: pip install -r requirements.txt pyinstaller
       - run: bash packaging/build-macos.sh
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: macos
           path: Contact-List.dmg
@@ -65,8 +65,8 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
-      - uses: softprops/action-gh-release@v2
+      - uses: actions/download-artifact@v8
+      - uses: softprops/action-gh-release@v3
         with:
           files: |
             linux/Contact-List-x86_64.AppImage
