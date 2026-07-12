@@ -222,6 +222,12 @@ efficiency / coding standards every item must comply with.
   Source: cold-eyes-2026-07-10 (CL-0049 spec review).
   Resolved (2026-07-12): folded [Unreleased] + the never-published [1.0.0] foundation into one [1.0.0] - 2026-07-12, tagged v1.0.0, and pushed. GitHub Actions built and published the first release with all three self-contained binaries (AppImage / .exe / .dmg). Added APP_VERSION to config.py (shown in footer) + packaging/check-version-drift.sh + .claude/bump.json recipe.
 
+- 📋 [CL-0052] **System-tray icon with right-click Open / Restart / Quit menu (cross-platform).**
+  Add a system-tray/menu-bar icon (via pystray) with a right-click menu: Open Contact List, Restart, Quit. Tray owns the main thread; the web server moves to a stoppable background-thread handle. Graceful fallback to today's headless behaviour where no tray is available. Scope: frozen app AND from-source (run.sh routes through launcher.py). Raises DESIGN.md §3 dep budget to 8 (pystray, justified like Pillow). Design: docs/specs/2026-07-12-system-tray-icon.md. Linux tray backend + AppImage bundling being grounded by a deep-research pass first (highest-risk area). Must pass /cold-eyes before implementation.
+  **Layman:** A little icon by the clock so you can open, restart, or quit the app without hunting for its window — on Windows, macOS, and Linux.
+  Kind: feature.
+  Source: user-request-2026-07-12.
+
 ## Audit & Review Follow-ups
 
 Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inline.
