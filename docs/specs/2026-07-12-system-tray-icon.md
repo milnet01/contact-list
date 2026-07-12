@@ -133,10 +133,14 @@ up. A tray icon **must own the main thread** (an OS requirement, strict on macOS
 AppKit), so:
 
 - Build a **stoppable server handle** with
-  `werkzeug.serving.make_server('127.0.0.1', port, app)` and run
+  `werkzeug.serving.make_server('127.0.0.1', port, app, threaded=True)` and run
   `server.serve_forever()` on a **dedicated non-daemon thread**. The handle is
   what lets Quit call `server.shutdown()` cleanly (a plain `app.run()` gives no
-  such handle). **Thread-lifecycle contract:** the thread is non-daemon so the
+  such handle). **`threaded=True` is required, not optional:** today's
+  `app.run(...)` runs threaded (Flask sets `threaded` default `True`), but
+  `make_server` defaults `threaded=False` — omitting it would silently serialize
+  every request (page + its static assets + the `_open_when_ready` poll) onto one
+  worker, a concurrency regression. This preserves current behaviour exactly. **Thread-lifecycle contract:** the thread is non-daemon so the
   process cannot exit while it is still serving; `server.shutdown()` makes
   `serve_forever()` return, after which the thread ends and we `join()` it — this
   is what makes Quit release the port with no orphaned thread (INV-1). In the
@@ -147,11 +151,9 @@ AppKit), so:
   unchanged).
 - Run the tray icon loop on the **main thread** (in `tray.py`, see §10). On Linux,
   set `os.environ.setdefault('PYSTRAY_BACKEND', 'appindicator')` **before**
-  importing pystray (§4.2). `setdefault` pins pystray's *auto*-selection to
-  appindicator so it can never silently fall through to the menuless `xorg`
-  backend, while still honouring a deliberate `PYSTRAY_BACKEND=…` the user
-  exported themselves — matching the §4.2 wording ("never *silently* fall
-  through") and INV-5.
+  importing pystray — this is the backend-forcing mechanism whose rationale §4.2
+  gives (pin auto-selection to appindicator; still honour a deliberate user
+  override).
 - **`run.sh`** is changed from `exec … python app.py` to `exec … python
   launcher.py` so the from-source path gets the same tray + startup logic. Because
   `launcher.py` now owns browser-open (`_open_when_ready`), the standalone
@@ -161,11 +163,34 @@ AppKit), so:
   created** (`run.sh:9-12`); an existing from-source user who pulls this update
   would launch a venv with no `pystray` and silently get headless (§7). So the
   run.sh change also moves the `pip install -r requirements.txt` to run on **every**
-  launch (idempotent and near-instant once satisfied), so the from-source tray
-  promise (§2.3) actually holds after an upgrade — not only on a fresh venv.
+  launch (idempotent — a small fixed startup cost of ~1–3 s while pip re-resolves,
+  no rebuild), so the from-source tray promise (§2.3) actually holds after an
+  upgrade — not only on a fresh venv. (This is the `run.sh` launch path, not the
+  DESIGN.md §7.1 `python app.py` cold-start target, so that budget is untouched.)
 - The **already-running second-launch** check (`_port_is_serving` → open browser
   → exit) is unchanged: the tray belongs to the first instance only; a second
   launch never creates a second icon.
+
+### `tray.py` interface
+
+The launcher↔tray boundary is one function, so the fallback (§7) is a plain
+try/except at the call site:
+
+```python
+# tray.py
+def run_tray(server, port: int) -> None:
+    """Build the icon from packaging/icon.png (§6.2) and run the pystray event
+    loop ON THE CALLING (main) thread — blocks until Quit. Wires the three menu
+    actions (Open/Restart/Quit) as below. Raises on any tray-init failure so the
+    caller can fall back to headless; never returns until the user Quits."""
+```
+
+`launcher.main()` calls it as: build the server handle + start its thread, then
+`try: run_tray(server, port)` / `except Exception: <log INFO + join server thread>`
+(§7). `run_tray` needs only the stoppable `server` handle (for Quit's
+`shutdown()`/`join()`) and the `port` (for Open's URL); Restart goes through
+`server_control` and needs neither. Keeping the surface this small is what lets
+INV-3 (tray failure ⇒ headless) be a single except-clause.
 
 ### Menu action semantics
 
@@ -181,10 +206,12 @@ AppKit), so:
   no duplicated spawn logic. (`schedule` waits `_FLUSH_DELAY_S` = 0.4 s to let an
   HTTP response flush; on the tray path there is no response to flush, so that
   delay is a harmless no-op — reuse still beats a parallel spawn path.)
-- **Quit** → `server.shutdown()` (unblocks `serve_forever`), `icon.stop()` (returns
-  control from `Icon.run()` on the main thread), then `join()` the non-daemon
-  server thread and return 0. Exits cleanly with the port released and no orphaned
-  thread (INV-1).
+- **Quit** — two steps on two threads, kept distinct: (1) the pystray **menu
+  callback** calls `server.shutdown()` (unblocks `serve_forever`) then
+  `icon.stop()` (which makes `run_tray`'s `Icon.run()` return); (2) back on the
+  **main thread**, once `run_tray` returns, `launcher.main()` `join()`s the
+  non-daemon server thread and returns 0. Exits cleanly with the port released and
+  no orphaned thread (INV-1).
 
 ## 6. Packaging / AppImage bundling
 
@@ -229,9 +256,13 @@ to `./venv/bin/python → python3 → python` (`build-linux.sh:5-10`) — it cre
 venv of its own**. The clean route is therefore to point the build at the system
 python3 that has `gi`, rather than the isolated setup-python. Concretely:
 `apt-get install python3-gi …`; install our deps + PyInstaller into that same
-system python3; then run the build with `PYTHON=/usr/bin/python3`. Either way the
-**build-interpreter choice is explicitly in scope** — likely reconfiguring or
-dropping the `setup-python` step. The Linux-first spike (§10 step 1) confirms the
+system python3; then run the build with `PYTHON=/usr/bin/python3`. **These two
+steps are hard-coupled:** `release.yml:25` currently `pip install`s the deps +
+PyInstaller into the *setup-python* interpreter, so pointing `$PYTHON` at system
+python3 **without** also relocating that `pip install` to system python3 yields an
+interpreter that has `gi` but not Flask/PyInstaller — the build breaks. So the
+`setup-python` step must be reconfigured or dropped, and the `pip install` target
+moved, **together** — the build-interpreter choice is explicitly in scope. The Linux-first spike (§10 step 1) confirms the
 exact incantation before we touch the other OSes; this is the single highest-risk
 item. **Plan-B if the spike fails:** if no build-interpreter arrangement can
 bundle a working `gi`/AppIndicator stack, the Linux AppImage **ships without a
