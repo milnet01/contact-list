@@ -111,7 +111,9 @@ def main() -> int:
         # Graceful fallback (INV-3): no tray → behave exactly as before. INFO, not
         # a warning: nobody is worse off. Join the server thread so we live as long
         # as the server does.
-        logging.info('system tray unavailable; running without an icon', exc_info=True)
+        logging.info(
+            'system tray unavailable or failed; running without an icon', exc_info=True
+        )
         server_thread.join()
         return 0
 
