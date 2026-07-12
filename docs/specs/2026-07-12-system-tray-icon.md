@@ -1,11 +1,25 @@
 # System-tray icon with Open / Restart / Quit (CL-0052)
 
-**Status:** DRAFT — design approved by the user (2026-07-12). The Linux backend
-selection (§4) and the AppImage bundling recipe (§6) are now finalised from a
-completed deep-research pass (run `wf_0fe49d44-bb6`, 24 confirmed claims / 21
-sources; key sources cited inline and listed in §11). Not yet implemented. Per
-global rule 14 this spec runs through `/cold-eyes` to convergence before any code
-is written.
+**Status:** REVIEWED — design approved by the user (2026-07-12); §4 (Linux backend)
+and §6 (AppImage bundling) finalised from a completed deep-research pass (run
+`wf_0fe49d44-bb6`, 24 confirmed claims / 21 sources; cited inline and in §11).
+**Cold-eyes converged** (2026-07-12) after 7 cold loops to polish-only — verdict
+"implementable as-is"; all substantive findings verified against source and fixed.
+Awaiting user sign-off, then implementation. Not yet implemented.
+
+<details><summary>Cold-eyes loop log</summary>
+
+| Loop | CRIT | HIGH | MED | LOW | INFO | Substantive fixes |
+|---|---|---|---|---|---|---|
+| 1 | 0 | 2 | 4 | 7 | 1 | phantom test-assertion; setdefault-vs-force; run.sh double browser-open; DESIGN.md budget 3-sites; §7.2 new thread-class |
+| 2 | 0 | 0 | 3 | 3 | 1 | INV-5 scoping; server-thread lifecycle; build-remedy accuracy |
+| 3 | 0 | 1 | 2 | 2 | 2 | test_launcher_binds_loopback rework; ROOT-anchored datas; stale docstring→§8 |
+| 4 | 0 | 2 | 3 | 2 | 3 | Open menu-item-only; stale-venv fix; §6.1 plan-B; launcher docstring+README→§8 |
+| 5 | 0 | 1 | 1 | 3 | 0 | tray image = committed icon.png (not git-ignored artifact); README lines→§8 |
+| 6 | 0 | 0 | 3 | 3 | 0 | make_server threaded=True; tray.py interface; §6.1 pip-target coupling |
+| 7 | 0 | 0 | 0 | 2 | 2 | none (polish only) → converged |
+
+</details>
 
 ## Contents
 
@@ -153,7 +167,9 @@ AppKit), so:
   set `os.environ.setdefault('PYSTRAY_BACKEND', 'appindicator')` **before**
   importing pystray — this is the backend-forcing mechanism whose rationale §4.2
   gives (pin auto-selection to appindicator; still honour a deliberate user
-  override).
+  override). **Load-order:** pystray is imported by `tray.py`, and its backend is
+  chosen at import time, so `launcher.py` must set the env var **before**
+  `import tray` (or `tray.py` must `import pystray` lazily inside `run_tray`).
 - **`run.sh`** is changed from `exec … python app.py` to `exec … python
   launcher.py` so the from-source path gets the same tray + startup logic. Because
   `launcher.py` now owns browser-open (`_open_when_ready`), the standalone
@@ -384,7 +400,9 @@ regardless.
   the packaged entry point (it is now also the from-source entry and runs the
   tray), and the `run.sh` description ("creates a venv, installs dependencies,
   launches the app, opens the browser" — it now installs on every launch and routes
-  through `launcher.py`).
+  through `launcher.py`). Also check the adjacent `app.py` project-layout line —
+  after the repoint both `app.py` and `launcher.py` are from-source entry points,
+  so disambiguate the two if the wording now reads as one.
 - **CHANGELOG.md** `[Unreleased]`: an Added entry.
 
 ## 9. Testing
@@ -409,11 +427,12 @@ regardless.
 - **Rework `test_launcher_binds_loopback`** (`tests/test_packaging.py:62-70`): it
   currently fakes `create_app()` with a `SimpleNamespace(run=…)` and asserts the
   launcher calls `app.run(host='127.0.0.1', …)`. The restructure replaces
-  `app.run()` with `make_server('127.0.0.1', port, app)` + `serve_forever()`, so
-  this test must move to asserting the launcher calls `make_server` with the
-  loopback host (spy on `make_server`, patch out the real thread/tray). This is
-  the one existing test the change *must* update; leaving it asserts a code path
-  that no longer exists.
+  `app.run()` with `make_server('127.0.0.1', port, app, threaded=True)` +
+  `serve_forever()`, so this test must move to asserting the launcher calls
+  `make_server` with the loopback host **and `threaded=True`** (spy on
+  `make_server`, patch out the real thread/tray) — locking in the anti-serialize
+  guard from §5. This is the one existing test the change *must* update; leaving it
+  asserts a code path that no longer exists.
 - The icon **actually rendering** cannot be unit-tested (needs a live desktop),
   same as `webbrowser.open` is not tested. Covered instead by the manual spike
   below. Likewise INV-1's *port actually freed after Quit* is verified in the
