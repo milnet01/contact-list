@@ -62,8 +62,8 @@ the browser tab.
 **`pystray`** (latest 0.19.5) — the standard cross-platform Python tray library.
 
 - Reuses **Pillow** (already a dependency, CL-0035) for the icon image.
-- Platform helpers pulled in per-OS: a PyObjC framework (macOS), nothing extra on
-  Windows. On Linux we drive the `appindicator` backend (§4.2), so `python-xlib`
+- Platform helpers pulled in per-OS: the PyObjC frameworks pystray needs on macOS
+  (Cocoa/Quartz), nothing extra on Windows. On Linux we drive the `appindicator` backend (§4.2), so `python-xlib`
   is installed as a transitive dep but stays **dormant** (the `xorg` backend is
   never selected). `six` is a transitive dep.
 
@@ -196,9 +196,9 @@ PyInstaller **6.3.0+ ships built-in hooks** for `gi.repository.AppIndicator3` an
 `gi.repository.AyatanaAppIndicator3`, plus a maintained PyGObject (`gi`) hook
 (updated through 6.13.0 for PyGObject 3.52) and GLib/Gio/DBus hooks [PyInstaller
 CHANGES]. These collect the GObject-Introspection `.typelib` files that a frozen
-app would otherwise fail to find ("Namespace AppIndicator3 not available"). We
-pin PyInstaller to a current release (already unpinned to latest in CI) so these
-hooks are present. **No hand-written GI hooks needed.**
+app would otherwise fail to find ("Namespace AppIndicator3 not available").
+PyInstaller is unpinned in CI (`release.yml:25` installs latest), so a current
+release with these hooks ships automatically. **No hand-written GI hooks needed.**
 
 What we still must arrange, in two places:
 
@@ -242,16 +242,24 @@ whole change.
 
 ### 6.2 PyInstaller spec additions
 
-- `datas`: reuse the **existing** `packaging/contact-list.png` (already the app
-  icon in `contact-list.spec:51-52`) as the tray image — add it **ROOT-anchored**
-  to match the spec file's own rule (every source path is `os.path.join(ROOT, …)`;
-  bare relative paths resolve against the invoking CWD, `contact-list.spec:9-13`):
-  `(os.path.join(ROOT, 'packaging', 'contact-list.png'), 'packaging')`, so it lands
-  at `<bundle>/packaging/contact-list.png` and resolves at runtime via
-  `resources.resource_path('packaging', 'contact-list.png')` (matching the
+- **Tray image = the committed master `packaging/icon.png`, not the generated
+  `contact-list.png`.** This is the one subtlety: `packaging/contact-list.png` is a
+  **build artifact** — git-ignored (`.gitignore`) and produced by
+  `make-icons.sh:19` from the committed source `packaging/icon.png`. `run.sh` never
+  runs `make-icons.sh`, so on a fresh from-source clone `contact-list.png` does not
+  exist and a tray that loaded it would fail → headless, silently breaking the
+  §2.3 from-source promise. So the tray loads **`packaging/icon.png`** (the
+  git-tracked master, always present both from source and in the bundle) and lets
+  Pillow downscale it in memory to the tray size.
+- `datas`: add the master **ROOT-anchored**, matching the spec file's own rule
+  (every source path is `os.path.join(ROOT, …)`; bare relative paths resolve
+  against the invoking CWD, `contact-list.spec:9-13`):
+  `(os.path.join(ROOT, 'packaging', 'icon.png'), 'packaging')`, so it lands at
+  `<bundle>/packaging/icon.png` and resolves at runtime via
+  `resources.resource_path('packaging', 'icon.png')` (matching the
   `resource_path(*parts)` signature in `resources.py`); from source the same call
-  finds it next to the code. The spike (§10) confirms it renders acceptably at
-  tray size; if not, a downscaled variant is generated then, not now (YAGNI).
+  finds the committed master next to the code. The spike (§10) confirms it renders
+  acceptably at tray size.
 - Rely on the **built-in** `gi.repository.AyatanaAppIndicator3` hook; add
   `gi.repository.AyatanaAppIndicator3` (and `AppIndicator3` as a secondary) to
   `hiddenimports` only if the spike shows the automatic collection misses them.
@@ -339,9 +347,13 @@ regardless.
   Post-change it is also the **from-source** entrypoint (`run.sh` uses it) and it
   runs the **tray on the main thread + server on a background thread** — update the
   docstring title and step 4 to match.
-- **README.md** — the tray is user-facing; add a short note on the tray icon and
-  its Open/Restart/Quit menu to the run/usage section (the existing README already
-  documents the download-and-run experience).
+- **README.md** — the tray is user-facing; besides adding a short note on the tray
+  icon and its Open/Restart/Quit menu to the run/usage section, fix the two lines
+  the restructure makes stale: the project-layout entry describing `launcher.py` as
+  the packaged entry point (it is now also the from-source entry and runs the
+  tray), and the `run.sh` description ("creates a venv, installs dependencies,
+  launches the app, opens the browser" — it now installs on every launch and routes
+  through `launcher.py`).
 - **CHANGELOG.md** `[Unreleased]`: an Added entry.
 
 ## 9. Testing
@@ -397,6 +409,8 @@ regardless.
 - **INV-2:** a second launch never creates a second icon.
 - **INV-3:** tray failure ⇒ headless server still runs (never a dead app).
 - **INV-4:** `python app.py` remains headless (no tray) so tests/CI are unaffected.
+  Guaranteed **structurally** — the tray lives only in `launcher.py`/`tray.py`, and
+  `app.py` is unchanged — so no test is added for it.
 - **INV-5:** any icon **we auto-select the backend for** carries the full
   Open/Restart/Quit menu — we never *ourselves* bring up a degraded/menuless icon
   (we default to `appindicator` and fall back to headless rather than to `xorg`;
