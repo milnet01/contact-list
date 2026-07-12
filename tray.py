@@ -9,12 +9,22 @@ Any tray-init failure raises so launcher.py can fall back to headless (INV-3).
 from __future__ import annotations
 
 import webbrowser
+from typing import TYPE_CHECKING, Protocol
 
 import server_control
 from resources import resource_path
 
+if TYPE_CHECKING:
+    from PIL.Image import Image
+    import pystray
 
-def _load_icon_image():
+
+class _ServerHandle(Protocol):
+    """The stoppable Werkzeug server handle the tray needs (launcher.py passes it)."""
+    def shutdown(self) -> None: ...
+
+
+def _load_icon_image() -> "Image":
     """Load the committed master icon (packaging/icon.png) via Pillow and let it
     downscale in memory. NOT the git-ignored generated contact-list.png, which is
     absent on a fresh from-source clone (spec §6.2)."""
@@ -31,12 +41,12 @@ def _restart() -> None:
     server_control.schedule('restart')
 
 
-def _quit(icon, server) -> None:
+def _quit(icon: "pystray.Icon", server: _ServerHandle) -> None:
     server.shutdown()  # unblocks serve_forever() on the server thread
     icon.stop()        # makes run_tray's Icon.run() return on the main thread
 
 
-def run_tray(server, port: int) -> None:
+def run_tray(server: _ServerHandle, port: int) -> None:
     """Build the icon and run the pystray event loop ON THE CALLING (main)
     thread — blocks until Quit. Raises on any tray-init failure so the caller can
     fall back to headless."""
