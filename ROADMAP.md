@@ -343,11 +343,12 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   Kind: doc-fix.
   Source: in-session-2026-07-04 (surfaced during CL-0035 cold-eyes).
 
-- 📋 [CL-0051] **Bump actions/upload-artifact and actions/download-artifact v4 → v5 in release.yml (Node 20 deprecation).**
+- ✅ [CL-0051] **Bump actions/upload-artifact and actions/download-artifact v4 → v5 in release.yml (Node 20 deprecation).**
   The v1.0.0 release run surfaced deprecation annotations: actions/upload-artifact@v4 (build-linux/windows/macos) and actions/download-artifact@v4 + softprops/action-gh-release@v2 (release job) target Node.js 20, force-run on Node 24 for now. Per DESIGN.md deps-latest policy, bump upload-artifact and download-artifact to @v5; re-check action-gh-release for a newer major. checkout@v7 / setup-python@v6 are already current.
   **Layman:** The release build works but GitHub warned that two of its helper steps use an old, soon-to-be-removed engine. Updating them now avoids a hard failure later.
   Kind: chore.
   Source: in-session-2026-07-12 (v1.0.0 release run annotations).
+  Resolved (2026-07-12): bumped upload-artifact v4→v7, download-artifact v4→v8, action-gh-release v2→v3 (all pure Node 20→24 runtime moves; verified against each major's release notes — no caller changes). workflow_dispatch rehearsal on main went green across all three OS build jobs with no Node 20 deprecation annotation remaining. checkout@v7 / setup-python@v6 already current.
 
 ## Efficiency & Refactoring
 
