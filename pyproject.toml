@@ -39,3 +39,8 @@ files = [
 [[tool.mypy.overrides]]
 module = ["google_auth_oauthlib.*", "googleapiclient.*"]
 ignore_missing_imports = true
+
+# pystray (CL-0052 tray icon) ships no type stubs or py.typed marker either.
+[[tool.mypy.overrides]]
+module = ["pystray.*"]
+ignore_missing_imports = true
