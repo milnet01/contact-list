@@ -215,11 +215,12 @@ efficiency / coding standards every item must comply with.
   Design spec signed off 2026-07-10 after /cold-eyes converged (6 loops, 2 cold reviewers/loop; polish-only at loop 6, zero CRITICAL/HIGH). Spec: docs/specs/2026-07-10-standalone-launchers-design.md. Pending user review before the implementation plan.
   Resolved (2026-07-10): standalone launchers implemented across 10 TDD tasks + a whole-branch review, all on main. Code: resources.py (resource_path), frozen DB path (config.py), _auth_command dispatch (routes/sync.py), launcher.py entrypoint, favicon PNG. Packaging: contact-list.spec, make-icons.sh, build-linux.sh (AppImage; pre-fetches the AppImage runtime via curl + --runtime-file to dodge appimagetool's hanging downloader), build-windows.sh + wine-setup.sh (Wine pre-flight), build-macos.sh (CI-only). CI: .github/workflows/release.yml — dry-run built Linux+Windows+macOS all green on real runners (Linux needed desktop-file-utils). Verified: AppImage + Wine .exe launch and serve; frozen data lands in ~/.config/contact-list; frozen Google auth completes end-to-end. 364 tests green, ruff+mypy clean. Follow-on (separate): tag/publish the first release + reconcile CL-0050.
 
-- 📋 [CL-0050] **CHANGELOG [1.0.0] says "Initial public release" but was never tagged/published.**
+- ✅ [CL-0050] **CHANGELOG [1.0.0] says "Initial public release" but was never tagged/published.**
   Found during CL-0049 cold-eyes. CHANGELOG.md:166-169 has a dated [1.0.0] - 2026-06-30 section labelled "Initial public release", but there is no git tag, GitHub Release, or binary. Reconcile as part of the release follow-on (tagging): either the current [Unreleased] items fold into the real 1.0.0 first publish, or 1.0.0 is retroactively marked and the new work ships as 1.1.0.
   **Layman:** The release notes claim version 1.0.0 was released, but it never actually was (no download exists). Reword when we cut the real first release.
   Kind: doc-fix.
   Source: cold-eyes-2026-07-10 (CL-0049 spec review).
+  Resolved (2026-07-12): folded [Unreleased] + the never-published [1.0.0] foundation into one [1.0.0] - 2026-07-12, tagged v1.0.0, and pushed. GitHub Actions built and published the first release with all three self-contained binaries (AppImage / .exe / .dmg). Added APP_VERSION to config.py (shown in footer) + packaging/check-version-drift.sh + .claude/bump.json recipe.
 
 ## Audit & Review Follow-ups
 
@@ -341,6 +342,12 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   **Layman:** One line in the design doc says the installed code should be under 20 MB, but it's already about 296 MB — the line is long out of date and misleading.
   Kind: doc-fix.
   Source: in-session-2026-07-04 (surfaced during CL-0035 cold-eyes).
+
+- 📋 [CL-0051] **Bump actions/upload-artifact and actions/download-artifact v4 → v5 in release.yml (Node 20 deprecation).**
+  The v1.0.0 release run surfaced deprecation annotations: actions/upload-artifact@v4 (build-linux/windows/macos) and actions/download-artifact@v4 + softprops/action-gh-release@v2 (release job) target Node.js 20, force-run on Node 24 for now. Per DESIGN.md deps-latest policy, bump upload-artifact and download-artifact to @v5; re-check action-gh-release for a newer major. checkout@v7 / setup-python@v6 are already current.
+  **Layman:** The release build works but GitHub warned that two of its helper steps use an old, soon-to-be-removed engine. Updating them now avoids a hard failure later.
+  Kind: chore.
+  Source: in-session-2026-07-12 (v1.0.0 release run annotations).
 
 ## Efficiency & Refactoring
 
