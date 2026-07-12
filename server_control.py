@@ -39,8 +39,10 @@ def schedule(action: str) -> None:
 def _run_after_delay(action: str) -> None:
     """Wait for the response to flush, then restart or shut down.
 
-    Restart spawns a **fresh, detached** ``python app.py`` and then exits this
-    one. We deliberately do NOT ``os.execv`` in place: Werkzeug's dev-server
+    Restart spawns a **fresh, detached** copy of the current entrypoint
+    (``launcher.py`` from source, or the frozen binary when frozen — it
+    respawns ``sys.argv[0]``) and then exits this one. We deliberately do NOT
+    ``os.execv`` in place: Werkzeug's dev-server
     listening socket is not close-on-exec, so it survives ``execve`` and the
     replacement image fails to re-bind the port ("Address already in use").
     ``subprocess.Popen`` defaults to ``close_fds=True``, so the child does NOT

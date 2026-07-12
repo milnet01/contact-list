@@ -357,10 +357,11 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   Source: in-session-2026-07-12 (v1.0.0 release run annotations).
   Resolved (2026-07-12): bumped upload-artifact v4→v7, download-artifact v4→v8, action-gh-release v2→v3 (all pure Node 20→24 runtime moves; verified against each major's release notes — no caller changes). workflow_dispatch rehearsal on main went green across all three OS build jobs with no Node 20 deprecation annotation remaining. checkout@v7 / setup-python@v6 already current.
 
-- 📋 [CL-0053] **Update `server_control.py:42` restart docstring — still says "python app.py", now stale since `run.sh` execs `launcher.py`.**
+- ✅ [CL-0053] **Update `server_control.py:42` restart docstring — still says "python app.py", now stale since `run.sh` execs `launcher.py`.**
   **Layman:** A code comment about restarting the server still names the old startup file; harmless but should be updated to match the new launcher.
   Kind: doc-fix.
   Source: in-session-2026-07-12 CL-0052 Task 5.
+  Resolved inline in CL-0052 Task 5 — the server_control.py restart docstring now describes the sys.argv[0] respawn accurately (launcher.py from source / frozen binary when frozen).
 
 ## Efficiency & Refactoring
 
