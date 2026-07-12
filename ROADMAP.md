@@ -227,6 +227,7 @@ efficiency / coding standards every item must comply with.
   **Layman:** A little icon by the clock so you can open, restart, or quit the app without hunting for its window — on Windows, macOS, and Linux.
   Kind: feature.
   Source: user-request-2026-07-12.
+  Progress (2026-07-12): deep-research pass complete (run wf_0fe49d44-bb6, 24 confirmed claims / 21 sources); §4/§6 finalised — Linux backend = pystray appindicator (SNI over DBus; xorg rejected, no menu), AppImage bundling via PyInstaller 6.3.0+ built-in GI hooks. Spec cold-eyes converged after 7 cold loops to polish-only (verdict "implementable as-is"); Status → REVIEWED. Awaiting user sign-off before writing-plans / implementation.
 
 ## Audit & Review Follow-ups
 
