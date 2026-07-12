@@ -87,6 +87,12 @@ Check at the start of a release cycle, or whenever touching a manifest/workflow:
 gh api repos/actions/checkout/releases/latest -q .tag_name   # a GitHub Action
 ```
 
+During that sweep, also revisit every row in the register below: if a release
+**newer than its "First broken at" version** now exists, re-test the feature
+against it. If it passes, delete the row and move to latest; if it still breaks,
+update "Latest available" / "Re-test when" so the row stays accurate. A held-back
+pin is never permanent — it lives only until a fixed upstream release lands.
+
 ### Dependency Exceptions & Breakage Register
 
 One row per dependency held below its latest release. Empty is the healthy state.
