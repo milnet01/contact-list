@@ -3,6 +3,12 @@ import os
 import secrets
 import sys
 
+# Single source of truth for the app version. Shown in the footer and bumped by
+# the /bump recipe (.claude/bump.json). The git release tag (v<APP_VERSION>) and
+# the top CHANGELOG heading must match this — packaging/check-version-drift.sh
+# enforces the lockstep.
+APP_VERSION = '1.0.0'
+
 _CONFIG_DIR = os.path.expanduser('~/.config/contact-list')
 _log = logging.getLogger(__name__)
 

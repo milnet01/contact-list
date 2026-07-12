@@ -7,7 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-07-12
+
+First public release. Bundles the full feature set built to date into
+self-contained one-file downloads for Linux, Windows, and macOS.
+
 ### Added
+
+- **Core contact manager — the foundation.**
+  Contact CRUD for individuals and companies (name, email, phone, notes),
+  user-defined custom fields per contact (EAV model, no schema changes),
+  search with type/letter filtering, sorting and pagination, duplicate
+  detection and review, and CSV export. Security-hardened throughout:
+  parameterized SQL, CSRF tokens on state-changing forms, Jinja2
+  autoescaping, a strict Content-Security-Policy, and localhost-only binding.
 
 - **Standalone one-file launchers for Linux, Windows, and macOS.** (CL-0049)
   Download a single file per OS from the GitHub Releases page and run it —
@@ -166,17 +179,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Harden redirect-target validation against the `/\` backslash and control-character open-redirect/header-splitting variants.**
 
 - **Persist the Flask secret key under the config dir so signed sessions and CSRF tokens survive restarts and multiple workers (was regenerated per process).**
-
-## [1.0.0] - 2026-06-30
-
-### Added
-- Initial public release of Contact List — a lightweight, self-hosted Flask
-  contact manager with SQLite storage.
-- Contact CRUD for individuals and companies with name, email, phone, and notes.
-- User-defined custom fields per contact (EAV model, no schema changes needed).
-- Search, type/letter filtering, sorting, and pagination on the contact list.
-- Duplicate detection and review.
-- CSV export of all contacts.
-- One-way (read-only) Google Contacts import via the Google People API.
-- Security hardening: parameterized SQL, CSRF tokens on state-changing forms,
-  Jinja2 autoescaping, and a strict Content-Security-Policy. Binds to localhost.

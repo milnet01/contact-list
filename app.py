@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from flask import Flask, abort, g, render_template, request, session
 
-from config import Config, ensure_private_dir
+from config import APP_VERSION, Config, ensure_private_dir
 from db import close_db, init_db
 from resources import resource_path
 
@@ -128,6 +128,7 @@ def create_app(test_config: dict | None = None) -> Flask:
         return {
             'csrf_token': csrf_token,
             'active_nav': request.path,
+            'app_version': APP_VERSION,
             'contact_count': contact_count(),
             'last_synced': last_synced(),
             'settings': getattr(g, 'settings', None) or settings_mod.SETTINGS_DEFAULTS,
