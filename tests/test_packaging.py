@@ -68,3 +68,10 @@ def test_launcher_binds_loopback(monkeypatch):
     monkeypatch.setattr('app.create_app', lambda: dummy)
     assert launcher.main() == 0
     assert rec['host'] == '127.0.0.1'
+
+
+def test_pystray_in_requirements():
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    with open(os.path.join(root, 'requirements.txt')) as f:
+        reqs = f.read()
+    assert 'pystray' in reqs

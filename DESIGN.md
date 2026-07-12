@@ -38,7 +38,7 @@ A lightweight, secure contact management application for storing, searching, and
 
 ### Dependency Budget
 
-Total pip dependencies must stay under **8 packages** (direct). No C-extension dependencies beyond what ships with Python — **with one authorised exception: Pillow** (for CL-0035 photo thumbnailing; the user lifted the ban specifically for that need). Every new dependency requires justification in a PR description.
+Total pip dependencies must stay at or under **8 packages** (direct). No C-extension dependencies beyond what ships with Python — **with one authorised exception: Pillow** (for CL-0035 photo thumbnailing; the user lifted the ban specifically for that need). pystray (CL-0052 tray icon) is **pure Python**, so it adds no C-extension pip dependency; its Linux appindicator backend relies on a GI/GTK3 stack that is a build-time bundling artifact carried in the AppImage (§15), not a declared dependency, so the "one authorised exception: Pillow" wording stands. Every new dependency requires justification in a PR description.
 
 ```
 # Runtime
@@ -49,17 +49,18 @@ google-auth-oauthlib>=1.0,<2.0
 google-auth-httplib2>=0.2,<1.0
 phonenumbers>=9.0,<10.0
 pillow>=12.0,<13.0
+pystray>=0.19,<0.20
 # Test-only (not counted against the runtime footprint)
 pytest>=9.0,<10.0
 ```
 
-Seven runtime packages (under the 8-direct budget); `google-auth` is listed
+Eight runtime packages (at the 8-direct budget); pystray provides the CL-0052 system-tray icon — core desktop UX, justified like the Pillow exception (its Linux backend = Ayatana AppIndicator via gi/GTK3 bundled into the AppImage; macOS = pyobjc-framework-Quartz; Windows = nothing extra; python-xlib ships transitively but the xorg backend is never selected). `google-auth` is listed
 explicitly because the sync code imports it directly (`google.oauth2` /
 `google.auth`) rather than relying on it transitively. `pytest` is a test-only
 dependency and does not affect the running app.
 
 PyInstaller, appimagetool, and the OS icon tools (CL-0049, §15) are build-time
-only, not runtime deps; the < 8 runtime budget is unaffected.
+only, not runtime deps; the 8-runtime budget is unaffected.
 
 ### Dependency Versioning Policy
 
