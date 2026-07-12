@@ -1,12 +1,15 @@
-"""Frozen (PyInstaller) entrypoint for Contact List.
+"""Entry point for Contact List — used by the frozen (PyInstaller) apps AND the
+from-source `./run.sh` (both route through here).
 
 Responsibilities, in order:
  1. If invoked with --google-auth (frozen only), run the OAuth flow and exit.
  2. If the app is already serving on the port, just open the browser and exit.
  3. When frozen, create the config dir and install a file log (no console).
- 4. Build the app, open the browser once the socket is up, run the server.
+ 4. Build the app, start the web server on a background thread, open the browser
+    once the socket is up, and run the system-tray icon on the main thread
+    (falling back to a headless server join where no tray is available).
 
-app.py is unchanged; `python app.py` from source still works as before.
+app.py is unchanged; `python app.py` from source stays a headless server (no tray).
 """
 from __future__ import annotations
 
@@ -77,14 +80,42 @@ def main() -> int:
     if getattr(sys, 'frozen', False):
         _install_file_logging()
 
+    # On Linux, pin pystray to the appindicator backend (SNI over DBus) BEFORE
+    # tray.py imports pystray (spec §4.2). setdefault honours an explicit user
+    # PYSTRAY_BACKEND override.
+    os.environ.setdefault('PYSTRAY_BACKEND', 'appindicator')
+
     from app import create_app
+    from werkzeug.serving import make_server
     try:
         app = create_app()
-        threading.Thread(target=_open_when_ready, args=(port,), daemon=True).start()
-        app.run(host='127.0.0.1', port=port, debug=False)
     except Exception:
         logging.exception('Server startup failed')
         return 1
+
+    # The tray must own the main thread, so the server moves to a dedicated
+    # non-daemon thread via a stoppable handle. threaded=True preserves app.run()'s
+    # default concurrency (make_server defaults threaded=False; spec §5).
+    server = make_server('127.0.0.1', port, app, threaded=True)
+    server_thread = threading.Thread(target=server.serve_forever)
+    server_thread.start()
+
+    threading.Thread(target=_open_when_ready, args=(port,), daemon=True).start()
+
+    try:
+        import tray
+        tray.run_tray(server, port)  # blocks on the main thread until Quit
+    except Exception:
+        # Graceful fallback (INV-3): no tray → behave exactly as before. INFO, not
+        # a warning: nobody is worse off. Join the server thread so we live as long
+        # as the server does.
+        logging.info('system tray unavailable; running without an icon', exc_info=True)
+        server_thread.join()
+        return 0
+
+    # Quit path: run_tray returned because on_quit called server.shutdown(); reap
+    # the now-finished server thread so the port is released (INV-1).
+    server_thread.join()
     return 0
 
 

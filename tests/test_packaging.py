@@ -1,6 +1,5 @@
 import os
 import sys
-import types
 
 import config
 import resources
@@ -59,15 +58,56 @@ def test_launcher_single_instance_opens_browser(monkeypatch):
     assert opened['url'].endswith(':5002')
 
 
-def test_launcher_binds_loopback(monkeypatch):
+def test_launcher_uses_make_server_threaded_loopback(monkeypatch):
     import launcher
     monkeypatch.setattr(launcher, '_port_is_serving', lambda h, p: False)
     monkeypatch.setattr(launcher, '_open_when_ready', lambda port: None)
-    dummy = types.SimpleNamespace(run=lambda **kw: rec.update(kw))
+    monkeypatch.setattr('app.create_app', lambda: object())
+
     rec = {}
-    monkeypatch.setattr('app.create_app', lambda: dummy)
+
+    class FakeServer:
+        def serve_forever(self):
+            return None
+
+        def shutdown(self):
+            pass
+
+    def fake_make_server(host, port, app, **kwargs):
+        rec['host'] = host
+        rec['threaded'] = kwargs.get('threaded')
+        return FakeServer()
+
+    monkeypatch.setattr('werkzeug.serving.make_server', fake_make_server)
+    # Tray returns immediately (as if Quit was pressed) → main() reaps the thread.
+    monkeypatch.setattr('tray.run_tray', lambda server, port: None)
+
     assert launcher.main() == 0
     assert rec['host'] == '127.0.0.1'
+    assert rec['threaded'] is True  # locks in the anti-serialize guard (spec §5)
+
+
+def test_launcher_falls_back_to_headless_when_tray_fails(monkeypatch):
+    import launcher
+    monkeypatch.setattr(launcher, '_port_is_serving', lambda h, p: False)
+    monkeypatch.setattr(launcher, '_open_when_ready', lambda port: None)
+    monkeypatch.setattr('app.create_app', lambda: object())
+
+    class FakeServer:
+        def serve_forever(self):
+            return None
+
+        def shutdown(self):
+            pass
+
+    monkeypatch.setattr('werkzeug.serving.make_server', lambda *a, **k: FakeServer())
+
+    def boom(server, port):
+        raise RuntimeError('no tray here')
+
+    monkeypatch.setattr('tray.run_tray', boom)
+    # Fallback must not raise and must still return 0 (headless server ran).
+    assert launcher.main() == 0
 
 
 def test_pystray_in_requirements():
