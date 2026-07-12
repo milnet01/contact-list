@@ -45,7 +45,9 @@ the browser tab.
    via `./run.sh`. `run.sh` is repointed to `launcher.py` (§5). Running
    `python app.py` directly stays a **headless server** (the plain app entrypoint
    the test suite imports via `create_app()`; the tray lives only in `launcher.py`)
-   so this change cannot destabilise the suite.
+   so the app-level tests are unaffected. The two *launcher*-level tests that
+   assert on the old `app.run()` path are reworked as part of this change (§9) —
+   the restructure touches `launcher.py`, so its tests move with it.
 4. **Menu = Open / Restart / Quit**, exactly (YAGNI — no status submenu, no
    settings shortcuts in v1).
 5. **New dependency `pystray` approved**, raising the DESIGN.md §3 direct-runtime
@@ -225,9 +227,11 @@ item.
 ### 6.2 PyInstaller spec additions
 
 - `datas`: reuse the **existing** `packaging/contact-list.png` (already the app
-  icon in `contact-list.spec:51`) as the tray image — add it as
-  `('packaging/contact-list.png', 'packaging')` so it lands at
-  `<bundle>/packaging/contact-list.png` and resolves at runtime via
+  icon in `contact-list.spec:51-52`) as the tray image — add it **ROOT-anchored**
+  to match the spec file's own rule (every source path is `os.path.join(ROOT, …)`;
+  bare relative paths resolve against the invoking CWD, `contact-list.spec:9-13`):
+  `(os.path.join(ROOT, 'packaging', 'contact-list.png'), 'packaging')`, so it lands
+  at `<bundle>/packaging/contact-list.png` and resolves at runtime via
   `resources.resource_path('packaging', 'contact-list.png')` (matching the
   `resource_path(*parts)` signature in `resources.py`); from source the same call
   finds it next to the code. The spike (§10) confirms it renders acceptably at
@@ -249,8 +253,9 @@ regardless.
 ## 7. Error handling & graceful fallback
 
 - **Tray unavailable** (import error, no display, backend init failure): catch,
-  log one `INFO`/`WARNING` line ("system tray unavailable; running without an
-  icon"), and fall back to **joining the server thread** — i.e. behave exactly as
+  log one `INFO` line ("system tray unavailable; running without an icon" —
+  `INFO`, not a warning: nobody is worse off), and fall back to **joining the
+  server thread** — i.e. behave exactly as
   today. The app is fully functional without the icon.
 - **Robust availability detection.** The research settled the right primitive:
   rather than hardcoding desktop-environment names (fragile — Electron's approach,
@@ -275,8 +280,9 @@ regardless.
 
 ## 8. Dependency & documentation changes
 
-- `requirements.txt`: add `pystray>=0.19,<0.20` (major-capped per the deps-latest
-  policy; 0.19.5 is current).
+- `requirements.txt`: add `pystray>=0.19,<0.20` (breaking-capped at the 0.x minor
+  per the deps-latest policy — for a 0.x package the minor is the breaking
+  boundary, unlike Pillow's true-major `<13.0`; 0.19.5 is current).
 - **DESIGN.md §3 — bump the budget to 8 in all three places it is stated**, or
   they will drift out of sync: the cap prose (`DESIGN.md:41` "must stay under **8
   packages**" → "must stay at or under **8 packages**"), the running count
@@ -308,6 +314,10 @@ regardless.
   owns the main thread ⇒ the HTTP server runs on one dedicated long-lived
   background thread; no shared mutable app state crosses threads beyond the server
   socket"), not as "analogous to CL-0046".
+- **`server_control.py` module docstring** (`server_control.py:3`) currently
+  narrates the launch path as "``run.sh`` → ``exec python app.py``". Repointing
+  `run.sh` to `launcher.py` (§5) makes that stale — update the docstring's launch-
+  path line in the same change so the respawn narration stays accurate.
 - **CHANGELOG.md** `[Unreleased]`: an Added entry.
 
 ## 9. Testing
@@ -329,6 +339,14 @@ regardless.
   building the app; confirm it still passes after the launcher restructure, so no
   second tray icon is ever created. No new test needed unless the restructure moves
   the guard.
+- **Rework `test_launcher_binds_loopback`** (`tests/test_packaging.py:62-70`): it
+  currently fakes `create_app()` with a `SimpleNamespace(run=…)` and asserts the
+  launcher calls `app.run(host='127.0.0.1', …)`. The restructure replaces
+  `app.run()` with `make_server('127.0.0.1', port, app)` + `serve_forever()`, so
+  this test must move to asserting the launcher calls `make_server` with the
+  loopback host (spy on `make_server`, patch out the real thread/tray). This is
+  the one existing test the change *must* update; leaving it asserts a code path
+  that no longer exists.
 - The icon **actually rendering** cannot be unit-tested (needs a live desktop),
   same as `webbrowser.open` is not tested. Covered instead by the manual spike
   below.
