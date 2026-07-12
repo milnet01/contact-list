@@ -20,7 +20,17 @@ datas = [
     (os.path.join(ROOT, 'packaging', 'icon.png'), 'packaging'),
 ]
 binaries = []
-hiddenimports = []
+# pystray's Linux appindicator backend loads these GObject-Introspection
+# namespaces dynamically at runtime, so PyInstaller's static scan misses them and
+# doesn't collect their typelibs. DBus is the critical one: pystray/_util/
+# notify_dbus.py does `gi.require_version('DBus', '1.0')`, and without the bundled
+# DBus-1.0.typelib the tray dies with "Namespace DBus not available" and falls
+# back to headless (CL-0052). Listing them makes PyInstaller's built-in gi hooks
+# collect each namespace's typelib (+ libs). Harmless on Windows/macOS (no gi).
+hiddenimports = [
+    'gi.repository.DBus',
+    'gi.repository.AyatanaAppIndicator3',
+]
 
 # These load submodules dynamically and/or ship package data the import scan
 # misses; collect_all gathers modules + data + dylibs. Finalise empirically:
