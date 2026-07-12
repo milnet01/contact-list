@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **System-tray icon with an Open / Restart / Quit menu (CL-0052).**
+  A small icon appears near your clock (Windows, macOS, and Linux). Right-click
+  it to open the app in your browser, restart it, or quit — no need to keep the
+  browser tab open. Where a desktop has no system tray, the app runs without the
+  icon, exactly as before.
+
 ## [1.0.0] - 2026-07-12
 
 First public release. Bundles the full feature set built to date into

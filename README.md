@@ -70,6 +70,11 @@ The app opens in your browser automatically. Your contacts, photos, and settings
 stored privately under `~/.config/contact-list/`. To use Google sync you'll also add your
 own `credentials.json` there — see [Google Contacts sync](#google-contacts-sync-optional).
 
+A small **system-tray icon** also appears (a Contact List icon near your clock).
+Right-click it for **Open Contact List**, **Restart**, and **Quit** — a persistent
+control point that doesn't depend on having the browser tab open. Where a desktop
+has no system tray, the app simply runs without the icon.
+
 ### Option 2 — Run from source (for developers)
 
 Requirements: **Python 3.12 or newer**.
@@ -80,8 +85,9 @@ cd contact-list
 ./run.sh
 ```
 
-`run.sh` creates a virtual environment, installs dependencies, launches the app, and opens
-your browser at `http://localhost:5002`. Or do it by hand:
+`run.sh` creates a virtual environment, installs/updates dependencies on each launch, and
+starts the app (via `launcher.py`, which opens your browser at `http://localhost:5002` and
+shows the tray icon). Or do it by hand:
 
 ```bash
 python3 -m venv venv
@@ -137,8 +143,8 @@ Python 3.12 and 3.13) — handy before pushing.
 ## Project layout
 
 ```
-launcher.py       Entry point for the packaged one-file apps (starts server + opens browser)
-app.py            Flask app factory and from-source entry point
+launcher.py       Entry point for the packaged apps AND ./run.sh (starts server, opens browser, runs the tray icon)
+app.py            Flask app factory; headless server when run directly (python app.py — no tray)
 config.py         Environment-based configuration
 db.py             SQLite connection management
 models.py         Data access layer (plain functions, no ORM)
