@@ -8,10 +8,10 @@ Any tray-init failure raises so launcher.py can fall back to headless (INV-3).
 """
 from __future__ import annotations
 
-import webbrowser
 from typing import TYPE_CHECKING, Protocol
 
 import server_control
+from browser import open_url
 from resources import resource_path
 
 if TYPE_CHECKING:
@@ -33,7 +33,7 @@ def _load_icon_image() -> "Image":
 
 
 def _open(port: int) -> None:
-    webbrowser.open(f'http://127.0.0.1:{port}')
+    open_url(f'http://127.0.0.1:{port}')
 
 
 def _restart() -> None:

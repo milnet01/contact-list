@@ -47,7 +47,7 @@ def test_launcher_single_instance_opens_browser(monkeypatch):
     import launcher
     opened = {}
     monkeypatch.setattr(launcher, '_port_is_serving', lambda h, p: True)
-    monkeypatch.setattr(launcher.webbrowser, 'open', lambda url: opened.setdefault('url', url))
+    monkeypatch.setattr(launcher, 'open_url', lambda url: opened.setdefault('url', url))
 
     def _should_not_build():
         raise AssertionError('should not build app')

@@ -23,6 +23,7 @@ warn_unused_ignores = true
 exclude = '^(dist|build)/'
 files = [
     "app.py",
+    "browser.py",
     "config.py",
     "db.py",
     "google_auth.py",

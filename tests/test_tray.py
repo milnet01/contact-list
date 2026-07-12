@@ -3,7 +3,7 @@ import tray
 
 def test_open_opens_browser_at_port(monkeypatch):
     opened = {}
-    monkeypatch.setattr(tray.webbrowser, 'open', lambda url: opened.setdefault('url', url))
+    monkeypatch.setattr(tray, 'open_url', lambda url: opened.setdefault('url', url))
     tray._open(5002)
     assert opened['url'] == 'http://127.0.0.1:5002'
 

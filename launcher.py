@@ -20,7 +20,8 @@ import socket
 import sys
 import threading
 import time
-import webbrowser
+
+from browser import open_url
 
 _OPEN_DEADLINE_S = 15.0
 
@@ -39,7 +40,7 @@ def _open_when_ready(port: int) -> None:
     start = time.monotonic()
     while time.monotonic() - start < _OPEN_DEADLINE_S:
         if _port_is_serving('127.0.0.1', port):
-            webbrowser.open(f'http://127.0.0.1:{port}')
+            open_url(f'http://127.0.0.1:{port}')
             return
         time.sleep(0.1)
 
@@ -74,7 +75,7 @@ def main() -> int:
     port = Config.PORT
 
     if _port_is_serving('127.0.0.1', port):
-        webbrowser.open(f'http://127.0.0.1:{port}')
+        open_url(f'http://127.0.0.1:{port}')
         return 0
 
     if getattr(sys, 'frozen', False):
