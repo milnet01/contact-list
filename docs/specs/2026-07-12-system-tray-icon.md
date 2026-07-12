@@ -26,8 +26,10 @@ already having the page open.
 
 This change adds a **system-tray / menu-bar icon** with a right-click menu:
 
-- **Open Contact List** — open the browser to `http://127.0.0.1:5002` (also the
-  left-click default action where the OS supports one).
+- **Open Contact List** — open the browser to `http://127.0.0.1:5002`. This is a
+  **menu item only**, not a left-click default action: the chosen Linux
+  `appindicator` backend has no default-action support (§4.2), so for one
+  consistent cross-platform behaviour we wire Open as a menu entry on every OS.
 - **Restart** — relaunch the app with fresh code/state (reuses the CL-0046
   restart mechanism).
 - **Quit** — stop the web server and remove the icon, exiting the process.
@@ -45,9 +47,10 @@ the browser tab.
    via `./run.sh`. `run.sh` is repointed to `launcher.py` (§5). Running
    `python app.py` directly stays a **headless server** (the plain app entrypoint
    the test suite imports via `create_app()`; the tray lives only in `launcher.py`)
-   so the app-level tests are unaffected. The two *launcher*-level tests that
-   assert on the old `app.run()` path are reworked as part of this change (§9) —
-   the restructure touches `launcher.py`, so its tests move with it.
+   so the app-level tests are unaffected. One *launcher*-level test
+   (`test_launcher_binds_loopback`) asserts on the old `app.run()` path and is
+   reworked as part of this change (§9); the single-instance test only needs
+   re-confirming (it short-circuits before the server starts).
 4. **Menu = Open / Restart / Quit**, exactly (YAGNI — no status submenu, no
    settings shortcuts in v1).
 5. **New dependency `pystray` approved**, raising the DESIGN.md §3 direct-runtime
@@ -153,7 +156,13 @@ AppKit), so:
   launcher.py` so the from-source path gets the same tray + startup logic. Because
   `launcher.py` now owns browser-open (`_open_when_ready`), the standalone
   `xdg-open` line currently in `run.sh` (`run.sh:15`) is **removed** in the same
-  change — otherwise `./run.sh` would open the browser twice.
+  change — otherwise `./run.sh` would open the browser twice. **Stale-venv fix:**
+  `run.sh` today pip-installs `requirements.txt` **only when the venv is first
+  created** (`run.sh:9-12`); an existing from-source user who pulls this update
+  would launch a venv with no `pystray` and silently get headless (§7). So the
+  run.sh change also moves the `pip install -r requirements.txt` to run on **every**
+  launch (idempotent and near-instant once satisfied), so the from-source tray
+  promise (§2.3) actually holds after an upgrade — not only on a fresh venv.
 - The **already-running second-launch** check (`_port_is_serving` → open browser
   → exit) is unchanged: the tray belongs to the first instance only; a second
   launch never creates a second icon.
@@ -172,8 +181,10 @@ AppKit), so:
   no duplicated spawn logic. (`schedule` waits `_FLUSH_DELAY_S` = 0.4 s to let an
   HTTP response flush; on the tray path there is no response to flush, so that
   delay is a harmless no-op — reuse still beats a parallel spawn path.)
-- **Quit** → `server.shutdown()` (unblocks `serve_forever`), `icon.stop()`, then
-  return 0. Exits cleanly with no orphaned server thread.
+- **Quit** → `server.shutdown()` (unblocks `serve_forever`), `icon.stop()` (returns
+  control from `Icon.run()` on the main thread), then `join()` the non-daemon
+  server thread and return 0. Exits cleanly with the port released and no orphaned
+  thread (INV-1).
 
 ## 6. Packaging / AppImage bundling
 
@@ -216,13 +227,18 @@ interpreter* has to be one that can import `gi`. `build-linux.sh` already expose
 the hook: it runs `"$PY" -m PyInstaller` where `$PY` is `${PYTHON:-}` falling back
 to `./venv/bin/python → python3 → python` (`build-linux.sh:5-10`) — it creates **no
 venv of its own**. The clean route is therefore to point the build at the system
-python3 that has `gi` (e.g. `apt-get install python3-gi …`, then run the build
-with `PYTHON=/usr/bin/python3` and install our deps + PyInstaller into that same
-system python3), rather than the isolated setup-python. Either way the
+python3 that has `gi`, rather than the isolated setup-python. Concretely:
+`apt-get install python3-gi …`; install our deps + PyInstaller into that same
+system python3; then run the build with `PYTHON=/usr/bin/python3`. Either way the
 **build-interpreter choice is explicitly in scope** — likely reconfiguring or
 dropping the `setup-python` step. The Linux-first spike (§10 step 1) confirms the
 exact incantation before we touch the other OSes; this is the single highest-risk
-item.
+item. **Plan-B if the spike fails:** if no build-interpreter arrangement can
+bundle a working `gi`/AppIndicator stack, the Linux AppImage **ships without a
+tray** (the runtime headless fallback of §7 becomes the permanent Linux
+behaviour), and the tray feature lands on Windows/macOS only until the Linux
+bundling is solved — the feature degrades on one platform rather than blocking the
+whole change.
 
 ### 6.2 PyInstaller spec additions
 
@@ -318,6 +334,14 @@ regardless.
   narrates the launch path as "``run.sh`` → ``exec python app.py``". Repointing
   `run.sh` to `launcher.py` (§5) makes that stale — update the docstring's launch-
   path line in the same change so the respawn narration stays accurate.
+- **`launcher.py` module docstring** (`launcher.py:1-10`) opens with "Frozen
+  (PyInstaller) entrypoint" and lists responsibility 4 as "run the server".
+  Post-change it is also the **from-source** entrypoint (`run.sh` uses it) and it
+  runs the **tray on the main thread + server on a background thread** — update the
+  docstring title and step 4 to match.
+- **README.md** — the tray is user-facing; add a short note on the tray icon and
+  its Open/Restart/Quit menu to the run/usage section (the existing README already
+  documents the download-and-run experience).
 - **CHANGELOG.md** `[Unreleased]`: an Added entry.
 
 ## 9. Testing
@@ -349,7 +373,9 @@ regardless.
   that no longer exists.
 - The icon **actually rendering** cannot be unit-tested (needs a live desktop),
   same as `webbrowser.open` is not tested. Covered instead by the manual spike
-  below.
+  below. Likewise INV-1's *port actually freed after Quit* is verified in the
+  spike (relaunch succeeds), not by a unit test — the unit test asserts Quit
+  **calls** `server.shutdown()` + `join()`, which is the observable proxy.
 
 ## 10. Implementation order (de-risk Linux first)
 
