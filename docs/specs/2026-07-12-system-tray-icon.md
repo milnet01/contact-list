@@ -129,9 +129,15 @@ AppKit), so:
 
 - Build a **stoppable server handle** with
   `werkzeug.serving.make_server('127.0.0.1', port, app)` and run
-  `server.serve_forever()` on a **dedicated background thread**. The handle is
+  `server.serve_forever()` on a **dedicated non-daemon thread**. The handle is
   what lets Quit call `server.shutdown()` cleanly (a plain `app.run()` gives no
-  such handle).
+  such handle). **Thread-lifecycle contract:** the thread is non-daemon so the
+  process cannot exit while it is still serving; `server.shutdown()` makes
+  `serve_forever()` return, after which the thread ends and we `join()` it — this
+  is what makes Quit release the port with no orphaned thread (INV-1). In the
+  **headless fallback** (§7) there is no tray on the main thread, so the main
+  thread simply `join()`s this server thread and the process lives exactly as long
+  as the server does.
 - Open the browser when the socket is ready (existing `_open_when_ready` logic,
   unchanged).
 - Run the tray icon loop on the **main thread** (in `tray.py`, see §10). On Linux,
@@ -161,7 +167,9 @@ AppKit), so:
   `launcher.py` (and the frozen entrypoint already is `launcher.py`), the restart
   is tray-capable automatically and brings up a fresh icon. The tray's Restart
   action therefore just calls `server_control.schedule('restart')` — no refactor,
-  no duplicated spawn logic.
+  no duplicated spawn logic. (`schedule` waits `_FLUSH_DELAY_S` = 0.4 s to let an
+  HTTP response flush; on the tray path there is no response to flush, so that
+  delay is a harmless no-op — reuse still beats a parallel spawn path.)
 - **Quit** → `server.shutdown()` (unblocks `serve_forever`), `icon.stop()`, then
   return 0. Exits cleanly with no orphaned server thread.
 
@@ -197,25 +205,33 @@ libgtk-3-0                         # appindicator backend links GTK3 at runtime
 ```
 
 **Gotcha (the one the spike must nail):** `python3-gi` installs into the system
-Python, but the release workflow's `actions/setup-python` step (`release.yml:19`,
-pinned to 3.12) builds under a *different* interpreter that can't see it, and
-PyGObject has **no pip wheel** (a `pip install PyGObject` needs `libcairo2-dev`,
-`libgirepository1.0-dev`, `pkg-config` and a compiler). Resolving this is **not**
-a matter of adding an `apt-get install` — it **reconfigures or replaces the
-`setup-python` step**: either build with the distro's `python3` (which already has
-`gi`) instead of the pinned setup-python, or create the build venv with
-`--system-site-packages` so it inherits system `gi`. The interpreter choice in
-`packaging/build-linux.sh` / the workflow is therefore explicitly **in scope** for
-this change. The Linux-first spike (§10 step 1) confirms the exact incantation
-before we touch the other OSes; this is the single highest-risk item.
+Python (`/usr/bin/python3`), but the release workflow's `actions/setup-python`
+step (`release.yml:19-21`, pinned to 3.12) builds under a *different*, isolated
+interpreter that can't see it — and PyGObject has **no pip wheel** (a `pip install
+PyGObject` needs `libcairo2-dev`, `libgirepository1.0-dev`, `pkg-config` and a
+compiler). So this is **not** solved by an `apt-get install` alone; the *build
+interpreter* has to be one that can import `gi`. `build-linux.sh` already exposes
+the hook: it runs `"$PY" -m PyInstaller` where `$PY` is `${PYTHON:-}` falling back
+to `./venv/bin/python → python3 → python` (`build-linux.sh:5-10`) — it creates **no
+venv of its own**. The clean route is therefore to point the build at the system
+python3 that has `gi` (e.g. `apt-get install python3-gi …`, then run the build
+with `PYTHON=/usr/bin/python3` and install our deps + PyInstaller into that same
+system python3), rather than the isolated setup-python. Either way the
+**build-interpreter choice is explicitly in scope** — likely reconfiguring or
+dropping the `setup-python` step. The Linux-first spike (§10 step 1) confirms the
+exact incantation before we touch the other OSes; this is the single highest-risk
+item.
 
 ### 6.2 PyInstaller spec additions
 
-- `datas`: add the tray icon PNG as `('packaging/contact-list.png', 'packaging')`
-  so it lands at `<bundle>/packaging/contact-list.png` and resolves at runtime via
+- `datas`: reuse the **existing** `packaging/contact-list.png` (already the app
+  icon in `contact-list.spec:51`) as the tray image — add it as
+  `('packaging/contact-list.png', 'packaging')` so it lands at
+  `<bundle>/packaging/contact-list.png` and resolves at runtime via
   `resources.resource_path('packaging', 'contact-list.png')` (matching the
   `resource_path(*parts)` signature in `resources.py`); from source the same call
-  finds it next to the code.
+  finds it next to the code. The spike (§10) confirms it renders acceptably at
+  tray size; if not, a downscaled variant is generated then, not now (YAGNI).
 - Rely on the **built-in** `gi.repository.AyatanaAppIndicator3` hook; add
   `gi.repository.AyatanaAppIndicator3` (and `AppIndicator3` as a secondary) to
   `hiddenimports` only if the spike shows the automatic collection misses them.
@@ -337,9 +353,11 @@ regardless.
 - **INV-2:** a second launch never creates a second icon.
 - **INV-3:** tray failure ⇒ headless server still runs (never a dead app).
 - **INV-4:** `python app.py` remains headless (no tray) so tests/CI are unaffected.
-- **INV-5:** if an icon is shown at all, it carries the full Open/Restart/Quit
-  menu — we never render a degraded/menuless icon (guaranteed by forcing the
-  `appindicator` backend and falling back to headless rather than to `xorg`; §4.2).
+- **INV-5:** any icon **we auto-select the backend for** carries the full
+  Open/Restart/Quit menu — we never *ourselves* bring up a degraded/menuless icon
+  (we default to `appindicator` and fall back to headless rather than to `xorg`;
+  §4.2). An explicit user `PYSTRAY_BACKEND=xorg` override is out of scope — their
+  informed choice, not a path this design produces.
 
 ## 11. Sources (deep-research pass `wf_0fe49d44-bb6`)
 
