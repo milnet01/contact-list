@@ -84,12 +84,26 @@ for ver in $CI_PYTHONS; do
 
     echo "########## Python ${ver} ($("$py" --version 2>&1)) ##########"
     venv="$VENV_ROOT/py${ver}"
+
+    # CI builds a FRESH environment every run; reusing a venv here would drift
+    # from that. Most importantly, a dependency REMOVED from requirements.txt
+    # lingers in an existing venv — so the code still imports it locally and
+    # fails in CI. Stamp the venv with what produced it and rebuild when that
+    # changes, which keeps the common case fast without the stale-env class of
+    # false pass.
+    stamp="$venv/.ci-stamp"
+    want="$("$py" -c 'import sys;print(sys.version)' 2>&1)|${DEV_TOOLS[*]}|$(sha256sum requirements.txt | cut -d' ' -f1)"
+    if [ -d "$venv" ] && [ "$(cat "$stamp" 2>/dev/null)" != "$want" ]; then
+        echo "    inputs changed since this venv was built — rebuilding it"
+        rm -rf "$venv"
+    fi
     if [ ! -d "$venv" ]; then
         "$py" -m venv "$venv"
     fi
     "$venv/bin/python" -m pip install --quiet --upgrade pip
     "$venv/bin/pip" install --quiet -r requirements.txt
     "$venv/bin/pip" install --quiet "${DEV_TOOLS[@]}"
+    printf '%s' "$want" > "$stamp"
 
     run_step "[$ver] Lint (ruff)"       "$venv/bin/ruff" check .
     run_step "[$ver] Type-check (mypy)" "$venv/bin/mypy"
