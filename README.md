@@ -4,9 +4,10 @@ A lightweight, self-hosted contact manager. Store, search, and organise the peop
 companies in your life on **your own computer** — with optional two-way sync to your
 Google Contacts.
 
-It runs as a small local web app: start it and it opens in your browser at
-`http://localhost:5002`. Everything lives in a single file on your machine, and nothing
-leaves your computer except the Google sync you choose to run.
+It runs as a small local web app at `http://localhost:5002`. Start it and it sits quietly
+in your system tray — click the icon and choose **Open Contact List** when you want the
+page. Everything lives in a single file on your machine, and nothing leaves your computer
+except the Google sync you choose to run.
 
 - 🔒 **Private by design** — localhost-only, your data stays on your machine.
 - 💻 **Runs anywhere** — one-file downloads for Linux, Windows, and macOS; no Python needed.
@@ -66,18 +67,40 @@ completely self-contained, so there's nothing else to install.
 | **Windows** | `Contact-List.exe` | Double-click. If SmartScreen warns about an unknown app, choose **More info → Run anyway**. |
 | **macOS** (Apple Silicon — M1/M2/M3 or newer) | `Contact-List.dmg` | Open it, drag **Contact List** to Applications, then launch. The first time, **right-click → Open** to get past Gatekeeper. Intel Macs aren't supported by this build. |
 
-The app opens in your browser automatically. Your contacts, photos, and settings are
-stored privately under `~/.config/contact-list/`. To use Google sync you'll also add your
-own `credentials.json` there — see [Google Contacts sync](#google-contacts-sync-optional).
+Your contacts, photos, and settings are stored privately under
+`~/.config/contact-list/`. To use Google sync you'll also add your own
+`credentials.json` there — see [Google Contacts sync](#google-contacts-sync-optional).
 
-A small **system-tray icon** also appears (a Contact List icon near your clock).
-Right-click it for **Open Contact List**, **Restart**, and **Quit** — a persistent
-control point that doesn't depend on having the browser tab open. Where a desktop
-has no system tray, the app simply runs without the icon.
+Starting the app puts a small **system-tray icon** near your clock and otherwise stays
+out of your way — **it does not throw a browser tab at you**. Click the icon for
+**Open Contact List**, **Restart**, and **Quit**: a persistent control point that
+doesn't depend on having a browser tab open. Launching the app a second time while
+it's already running also just opens the page.
+
+Where a desktop has no system tray at all (GNOME, unless you've added an AppIndicator
+extension), there'd be no icon to click — so in that case the app opens your browser on
+startup instead, rather than leaving you with no way to reach it.
 
 ### Option 2 — Run from source (for developers)
 
 Requirements: **Python 3.12 or newer**.
+
+**Linux only — for the tray icon**, also install the system GTK/AppIndicator packages.
+They can't come from `pip` (PyGObject has no binary wheel), so `run.sh` builds its
+virtual environment with `--system-site-packages` to borrow the system's copies. Without
+them everything still works; you just get no icon.
+
+```bash
+# openSUSE (python313 → match your system Python's version)
+sudo zypper install python313-gobject typelib-1_0-Gtk-3_0 typelib-1_0-Gio-2_0 \
+    girepository-1_0 typelib-1_0-AyatanaAppIndicator3-0_1 libayatana-appindicator3-1
+
+# Debian / Ubuntu
+sudo apt install python3-gi gir1.2-gtk-3.0 gir1.2-glib-2.0 gir1.2-freedesktop \
+    gir1.2-ayatanaappindicator3-0.1 libayatana-appindicator3-1 libgtk-3-0
+```
+
+*Downloaded releases need none of this* — the AppImage carries its own copy.
 
 ```bash
 git clone https://github.com/milnet01/contact-list.git
@@ -86,8 +109,8 @@ cd contact-list
 ```
 
 `run.sh` creates a virtual environment, installs/updates dependencies on each launch, and
-starts the app (via `launcher.py`, which opens your browser at `http://localhost:5002` and
-shows the tray icon). Or do it by hand:
+starts the app (via `launcher.py`, which shows the tray icon; it opens no browser unless
+the tray is unavailable). Or do it by hand:
 
 ```bash
 python3 -m venv venv
@@ -145,7 +168,7 @@ Python 3.12 and 3.13) — handy before pushing.
 ## Project layout
 
 ```
-launcher.py       Entry point for the packaged apps AND ./run.sh (starts server, opens browser, runs the tray icon)
+launcher.py       Entry point for the packaged apps AND ./run.sh (starts server, runs the tray icon)
 app.py            Flask app factory; headless server when run directly (python app.py — no tray)
 config.py         Environment-based configuration
 db.py             SQLite connection management

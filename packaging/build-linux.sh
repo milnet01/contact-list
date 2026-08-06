@@ -9,6 +9,31 @@ if [ -z "$PY" ]; then
   done
 fi
 
+# PyInstaller can only bundle what the BUILD interpreter can import. Without this
+# check the build "succeeds" while logging "Hidden import 'gi.repository.DBus' not
+# found" and ships an AppImage with no tray icon (CL-0057). Runs before the ~100 MB
+# of tool downloads below so a doomed build fails in a second, not a minute.
+# The probe mirrors every require_version() pystray actually makes: Gtk 3.0 and
+# Gio 2.0 / DBus 1.0 (via pystray/_util/notify_dbus.py — DBus is the one commit
+# 3c817fc already had to fix), then AppIndicator3 with AyatanaAppIndicator3 as the
+# fallback, in that order. Checking only Ayatana would reject a host carrying the
+# older typelib, on which the tray works fine.
+if [ -z "$PY" ]; then
+  echo "error: no Python interpreter found (tried \$PYTHON, ./venv/bin/python, python3, python)." >&2
+  exit 1
+fi
+# Capture stderr rather than discarding it: the interpreter's last line is what
+# NAMES the missing namespace ("ValueError: Namespace DBus not available").
+if ! gi_err=$("$PY" -c "import gi
+for ns, ver in (('Gtk','3.0'), ('Gio','2.0'), ('DBus','1.0')): gi.require_version(ns, ver)
+try: gi.require_version('AppIndicator3','0.1')
+except ValueError: gi.require_version('AyatanaAppIndicator3','0.1')" 2>&1); then
+  echo "error: $PY cannot load the GI typelibs pystray needs — the AppImage would have no tray icon." >&2
+  echo "       ${gi_err##*$'\n'}" >&2
+  echo "       Install the GI stack (see README), or point \$PYTHON at an interpreter that has it." >&2
+  exit 1
+fi
+
 TOOLS="packaging/.tools"
 APPIMAGETOOL="$TOOLS/appimagetool-x86_64.AppImage"
 # Pin a specific release + checksum so a moved/altered download fails loudly.

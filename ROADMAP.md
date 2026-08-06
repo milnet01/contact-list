@@ -409,7 +409,7 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   Kind: investigate.
   Source: in-session-2026-07-12 CL-0052 verification.
 
-- 📋 [CL-0057] **The tray icon is a CI-release-only feature: both the from-source and the local-build paths ship without it.**
+- ✅ [CL-0057] **The tray icon is a CI-release-only feature: both the from-source and the local-build paths ship without it.**
   The GI/AppIndicator stack is installed in exactly ONE place —
   .github/workflows/release.yml:26-27 (apt gir1.2-ayatanaappindicator3-0.1,
   python3-gi, GTK) plus its --system-site-packages build venv at line 36,
@@ -440,6 +440,7 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   Kind: fix.
   Source: in-session-2026-08-06 (CL-0056 hand-verification; root cause corrected by the user 2026-08-06 — the earlier diagnosis wrongly named packaging/build-linux.sh).
   Progress (2026-08-06): specced as docs/specs/2026-08-06-tray-delivery-and-page-opening.md (umbrella with CL-0060), accepted after /cold-eyes converged by cap — 3 loops, 2 cold lanes each, 60 findings verified and closed. User chose option (a): --system-site-packages in run.sh (with a one-time rebuild of the existing gi-less venv) plus a loud GI pre-flight in packaging/build-linux.sh, and the distro prerequisite documented. The build script creates no venv of its own, so the flag lands only in run.sh. Prerequisite packages installed on this machine and the approach proven end to end: a --system-site-packages venv running launcher.py registered a real tray item on the session bus (Id 'contact-list', Status Active). Note for the implementer: the pre-flight must probe Gtk 3.0, Gio 2.0 AND DBus 1.0 plus either indicator typelib — DBus is what commit 3c817fc already fixed once — and release.yml's apt list must gain gir1.2-gtk-3.0 and the freedesktop typelib in the same commit, or the new gate can turn a release red.
+  Resolved (2026-08-06): run.sh builds its venv with --system-site-packages (rebuilding an existing one once, guarded on both the pyvenv.cfg marker AND the base interpreter still running), plus --ignore-installed at creation so our pinned Flask/Pillow stay in the venv rather than being borrowed from the distro. build-linux.sh gained a pre-flight probing every namespace pystray needs (Gtk 3.0, Gio 2.0, DBus 1.0, AppIndicator3-or-Ayatana), which captures stderr so the failure names the missing typelib. release.yml gained gir1.2-gtk-3.0 + gir1.2-freedesktop so the new gate cannot redden a release on a transitive-dependency change. VERIFIED on real artefacts, not inferred: ./run.sh rebuilt the venv and registered a tray item on the session bus, and a locally built AppImage did the same with no ImportError in its log and no 'Hidden import gi.repository.DBus' line in the build. Follow-up CL-0061 filed for 60 spurious PyInstaller hidden-import errors the gi-capable venv introduces (noise, not breakage).
 
 - 📋 [CL-0058] **Spec INV-6 cites app.py:211 for the loopback bind; the line has moved.**
   docs/specs/2026-07-10-standalone-launchers-design.md INV-6 says
@@ -450,7 +451,7 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   Kind: doc-fix.
   Source: in-session-2026-08-06 (CL-0056).
 
-- 💭 [CL-0060] **Open question: should a manager-started server open a browser at all?**
+- ✅ [CL-0060] **Open question: should a manager-started server open a browser at all?**
   launcher.py:106 fires the browser-open on EVERY start that binds,
   including one driven by an external process manager. Deliberate as of
   CL-0056: the user ruled it out of scope ("the manager's problem to solve,
@@ -467,6 +468,39 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   Kind: investigate.
   Source: in-session-2026-08-06 (user's open decision, recorded before context clear).
   Resolved (2026-08-06): decided by the user and specced in docs/specs/2026-08-06-tray-delivery-and-page-opening.md. The site is NOT opened automatically — "I don't want the site automatically opened. That is why I wanted the tray icon or LWSM to be able to open the page." The startup auto-open (_open_when_ready + _OPEN_DEADLINE_S) is deleted outright. Two narrow exceptions survive, both user-initiated or last-resort: the single-instance hand-off still opens on a second launch (the user confirmed one instance at a time), and a start whose TRAY FAILS opens the browser, because the review found that without it a frozen windowed build on a tray-less desktop (GNOME without an extension) would have no icon, no tab and no visible URL — _emit no-ops when console=False — leaving a running server the user cannot reach. Crucially this needs NO new signal: the managed path returns before the tray block, so LWSM_MANAGED still gates only the tray icon and nothing was built on an unauthenticated variable. Locked by INV-4, INV-8 and INV-9.
+  Resolved (2026-08-06): _open_when_ready and _OPEN_DEADLINE_S deleted along with the daemon poll thread; the surviving open sits inside the tray-failure except branch only. A start whose tray comes up opens nothing (INV-4); a start whose tray fails opens the page (INV-8), because a frozen windowed build has no console to print its URL to and would otherwise be unreachable; a managed start opens nothing either way (INV-9), since it returns before the tray block. No new env var or flag was needed, so nothing is gated on the forgeable LWSM_MANAGED beyond the tray icon. VERIFIED with the browser-open recorded rather than merely unobserved: both ./run.sh and the built AppImage opened nothing on a normal start.
+
+- 📋 [CL-0061] **The gi-capable build venv makes PyInstaller emit 60 spurious "Hidden import not found" errors.**
+  Introduced by CL-0057, verified on a real build 2026-08-06. Not breakage: the
+  artefact is correct (dist/Contact-List/_internal/google/auth/__init__.py is
+  present, and the built AppImage serves and registers its tray), so this is a
+  diagnostics problem, not a functional one.
+
+  Cause: `google` is a NAMESPACE package. Once run.sh creates the venv with
+  --system-site-packages, google.__path__ gains /usr/lib64/python3.13/
+  site-packages/google as its FIRST entry, and that directory has no `auth`
+  subpackage. PyInstaller resolves the explicit hiddenimports entries against
+  that first path, fails, and logs "ERROR: Hidden import 'google.auth' not
+  found" plus 59 more. At runtime Python's namespace machinery searches every
+  path entry, so `import google.auth` works (confirmed from ./venv/bin/python),
+  and PyInstaller still collects the package via the normal dependency graph
+  from google_sync.py, which is why the bundle is complete.
+
+  Why it matters despite being harmless: CL-0057 itself was diagnosed by
+  spotting ONE "ERROR: Hidden import 'gi.repository.DBus' not found" line in
+  build output. Sixty false ones of the same shape make the next real one
+  invisible. That DBus line is now gone (verified: the hidden import analyses
+  cleanly), so the regression this replaces is fixed, but the signal it lived
+  in is degraded.
+
+  Likely fix: give PyInstaller the venv's site-packages ahead of the system one
+  (a --paths argument, or pathex in packaging/contact-list.spec) so the
+  namespace package resolves venv-first. Verify by counting "ERROR: Hidden
+  import" lines in a clean build: 60 today, expected 0. Do NOT "fix" it by
+  dropping --system-site-packages, which would reintroduce CL-0057.
+  **Layman:** The AppImage builds correctly, but the build now prints 60 scary-looking errors that are not real — and that noise could hide a genuine one next time.
+  Kind: fix.
+  Source: in-session-2026-08-06 (CL-0057 implementation, found by reading the build log).
 
 ## Efficiency & Refactoring
 

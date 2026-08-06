@@ -61,7 +61,6 @@ def test_launcher_single_instance_opens_browser(monkeypatch):
 def test_launcher_uses_make_server_threaded_loopback(monkeypatch):
     import launcher
     monkeypatch.setattr(launcher, '_port_is_serving', lambda h, p: False)
-    monkeypatch.setattr(launcher, '_open_when_ready', lambda port: None)
     monkeypatch.setattr('app.create_app', lambda: object())
 
     rec = {}
@@ -90,7 +89,6 @@ def test_launcher_uses_make_server_threaded_loopback(monkeypatch):
 def test_launcher_returns_1_when_server_bind_fails(monkeypatch):
     import launcher
     monkeypatch.setattr(launcher, '_port_is_serving', lambda h, p: False)
-    monkeypatch.setattr(launcher, '_open_when_ready', lambda port: None)
     monkeypatch.setattr('app.create_app', lambda: object())
 
     def fake_make_server(host, port, app, **kwargs):
@@ -104,8 +102,10 @@ def test_launcher_returns_1_when_server_bind_fails(monkeypatch):
 def test_launcher_falls_back_to_headless_when_tray_fails(monkeypatch):
     import launcher
     monkeypatch.setattr(launcher, '_port_is_serving', lambda h, p: False)
-    monkeypatch.setattr(launcher, '_open_when_ready', lambda port: None)
     monkeypatch.setattr('app.create_app', lambda: object())
+    # Since CL-0060 this branch opens the browser as a last-resort fallback, so the
+    # stub is required — without it every run of the suite spawns a real window.
+    monkeypatch.setattr(launcher, 'open_url', lambda url: None)
 
     class FakeServer:
         def serve_forever(self):

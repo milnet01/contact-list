@@ -22,12 +22,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Starting the app no longer opens a browser tab; the tray icon is the way in** (CL-0060)
+  A start whose tray icon appears now opens nothing. Two cases still open the page: launching a second copy while one is already running, and a start where the tray could not appear at all (a desktop with no system tray) — without that fallback the app would be running with no icon, no tab and no visible address.
+
 - **A busy port that `PORT` named explicitly is now a failure, not a hand-off** (CL-0056)
   When `PORT` names a port and something already holds it, the launcher
   exits non-zero and opens no browser instead of handing off to the
   existing instance. Without `PORT` the hand-off is unchanged.
 
 ### Fixed
+
+- **System-tray icon now appears when running from source or from a self-built AppImage, not only in CI-built releases** (CL-0057)
+  The GI/AppIndicator stack was installed only in the release workflow, so ./run.sh and a local packaging/build-linux.sh both produced a tray-less app — the latter exiting 0 while logging "Hidden import 'gi.repository.DBus' not found". run.sh now builds its venv with --system-site-packages (rebuilding an existing venv once, since the flag is fixed at creation), and build-linux.sh refuses to build under an interpreter that cannot load the GI typelibs rather than silently shipping without a tray. Linux from-source users need a few distro packages — see the README.
 
 - **A non-numeric `CONTACT_LIST_PORT` no longer crashes at startup** (CL-0056)
   It warned nowhere and raised an unhandled `ValueError` while importing

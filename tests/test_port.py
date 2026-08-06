@@ -27,7 +27,14 @@ class _FakeServer:
 
 def _stub_startup(monkeypatch, bound: dict) -> None:
     """Let launcher.main() run its full startup path without binding a socket,
-    creating the real app, or opening a browser. Records what make_server got."""
+    creating the real app, or opening a browser. Records what make_server got.
+
+    The open_url stub matters since CL-0060: main()'s tray-failure branch now opens
+    a real browser, so a caller that lets the tray raise would spawn a window on
+    every test run. run_tray is deliberately NOT stubbed here — every caller that
+    reaches the tray block sets its own, and two of them do so *before* calling this
+    helper, where a stub here would silently overwrite theirs.
+    """
     def fake_make_server(host, port, app, **kwargs):
         bound['host'] = host
         bound['port'] = port
@@ -36,7 +43,7 @@ def _stub_startup(monkeypatch, bound: dict) -> None:
     monkeypatch.setattr(werkzeug.serving, 'make_server', fake_make_server)
     monkeypatch.setattr(app_module, 'create_app', lambda: object())
     monkeypatch.setattr(launcher, '_port_is_serving', lambda host, port, **kw: False)
-    monkeypatch.setattr(launcher, '_open_when_ready', lambda port: None)
+    monkeypatch.setattr(launcher, 'open_url', lambda url: None)
 
 
 # --------------------------------------------------------------------------

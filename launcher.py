@@ -5,9 +5,11 @@ Responsibilities, in order:
  1. If invoked with --google-auth (frozen only), run the OAuth flow and exit.
  2. If the app is already serving on the port, just open the browser and exit.
  3. When frozen, create the config dir and install a file log (no console).
- 4. Build the app, start the web server on a background thread, open the browser
-    once the socket is up, and run the system-tray icon on the main thread
-    (falling back to a headless server join where no tray is available).
+ 4. Build the app, start the web server on a background thread, and run the
+    system-tray icon on the main thread. A normal start opens NO browser (CL-0060) —
+    the tray icon's "Open Contact List" is the way in. Where the tray cannot start
+    at all, the server still runs headless and the browser is opened as a fallback,
+    because otherwise nothing would be able to reach it.
 
 app.py is unchanged; `python app.py` from source stays a headless server (no tray).
 """
@@ -19,11 +21,8 @@ import os
 import socket
 import sys
 import threading
-import time
 
 from browser import open_url
-
-_OPEN_DEADLINE_S = 15.0
 
 
 def _port_is_serving(host: str, port: int, timeout: float = 0.25) -> bool:
@@ -32,17 +31,6 @@ def _port_is_serving(host: str, port: int, timeout: float = 0.25) -> bool:
             return True
     except OSError:
         return False
-
-
-def _open_when_ready(port: int) -> None:
-    """Poll the loopback port and open the browser once it accepts a connection.
-    Bounded so a server that never binds doesn't spin the thread forever."""
-    start = time.monotonic()
-    while time.monotonic() - start < _OPEN_DEADLINE_S:
-        if _port_is_serving('127.0.0.1', port):
-            open_url(f'http://127.0.0.1:{port}')
-            return
-        time.sleep(0.1)
 
 
 def _install_file_logging() -> None:
@@ -135,8 +123,6 @@ def main() -> int:
     server_thread = threading.Thread(target=server.serve_forever)
     server_thread.start()
 
-    threading.Thread(target=_open_when_ready, args=(port,), daemon=True).start()
-
     if os.environ.get('LWSM_MANAGED') == '1':
         # Presentation hint only: a managed run shows no tray icon and serves
         # headless, logging as normal (CL-0056). Taken BEFORE the try so the
@@ -152,12 +138,20 @@ def main() -> int:
         import tray
         tray.run_tray(server, port)  # blocks on the main thread until Quit
     except Exception:
-        # Graceful fallback (INV-3): no tray → behave exactly as before. INFO, not
-        # a warning: nobody is worse off. Join the server thread so we live as long
-        # as the server does.
+        # Graceful fallback: no tray → still serve. INFO, not a warning: nobody is
+        # worse off (2026-07-12-system-tray-icon.md INV-3).
         logging.info(
             'system tray unavailable or failed; running without an icon', exc_info=True
         )
+        # No icon means no way in, so open the page after all rather than leave a
+        # running server the user cannot reach — on a frozen windowed build the
+        # "Listening on" line above may go nowhere (stdout is None). This is the ONLY
+        # start-path open that survives CL-0060, and it is deliberately inside the
+        # except: a working tray opens nothing. make_server already bound the socket,
+        # so no readiness poll is needed. A managed run returned above and never
+        # reaches here.
+        open_url(f'http://127.0.0.1:{port}')
+        # Join the server thread so we live as long as the server does.
         server_thread.join()
         return 0
 
