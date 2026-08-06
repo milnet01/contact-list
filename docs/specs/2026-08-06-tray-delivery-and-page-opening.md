@@ -7,6 +7,12 @@
 
 **Blocker for:** CL-0059 (a *visible* tray icon with working Open / Restart / Quit).
 
+**Contents:** 1. Goal · 2. Problem · 3. Scope decisions · 4. Design
+(4.1 `run.sh` · 4.2 `--ignore-installed` · 4.3 build pre-flight · 4.4 `launcher.py` ·
+4.5 distro prerequisite · 4.6 release workflow) · 5. Invariants (INV-1…9) ·
+6. Failure modes · 7. Tests · 8. Alternatives · 9. Out of scope · 10. Resource cost ·
+11. What checks this · 12. Cross-doc impact · 13. Cold-eyes loop log
+
 *Layman:* the icon near the clock will now appear whichever way you start the app,
 and the app will stop throwing a browser tab at you on every launch — you open the
 page when you want it, from that icon. The one exception is a desktop with no tray
@@ -17,8 +23,8 @@ the app.
 
 After this ships, starting Contact List any of the three supported ways — `./run.sh`
 from source, an AppImage you built yourself with `packaging/build-linux.sh`, or a
-downloaded release — puts a working tray icon in the system tray, and **no first
-start opens a web browser**.
+downloaded release — puts a working tray icon in the system tray, and **no start
+whose tray comes up opens a web browser**. (Two narrow exceptions, both below.)
 
 The two host-Python paths (`./run.sh` and a local build) reach that state by
 borrowing the host's GI/GTK stack, so they need the §4.5 distro packages; where
@@ -102,7 +108,7 @@ worse — remove the tab before the icon works and there is no way in at all.
 
 | # | Decision | Who, when |
 |---|---|---|
-| 1 | Fix CL-0057 by making the *runtime* interpreters gi-capable — `--system-site-packages` in both `run.sh` and `packaging/build-linux.sh` — and document the distro prerequisite. | User, 2026-08-06, choosing over "declare the tray release-build-only". |
+| 1 | Fix CL-0057 by making the interpreters that actually run and build the app gi-capable, and document the distro prerequisite — rather than declaring the tray release-build-only. **In practice that is `--system-site-packages` in `run.sh` (§4.1) plus a loud GI pre-flight in `packaging/build-linux.sh` (§4.3)**: the build script creates no venv of its own, so there is nothing there to pass the flag to; it inherits `run.sh`'s venv or an interpreter named by `$PYTHON`. | User, 2026-08-06, choosing over "declare the tray release-build-only"; mechanism refined by the author once §4.3 was written. |
 | 2 | Do **not** make the graceful tray fallback (`2026-07-12-system-tray-icon.md` INV-3) louder. It stays an INFO log. | User, 2026-08-06, explicitly declining the "do both" option. |
 | 3 | The **unconditional** startup auto-open is removed outright, not suppressed behind a flag. A start whose tray comes up opens nothing. (Decision 6 below adds the one exception, agreed later the same day.) | User, 2026-08-06. |
 | 4 | The single-instance hand-off keeps opening the browser **when the port came from the default chain** (`CONTACT_LIST_PORT` → 5002): launching a second time while one is serving opens the page and exits 0. Where `PORT` named the port it still exits non-zero opening nothing, unchanged from CL-0056. *"I agree on 1, it should only allowed to have one instance running at a time."* | User, 2026-08-06. |
@@ -161,12 +167,12 @@ Both halves of the guard were executed before being written here. `"$VENV_DIR/bi
 exits 0 on a healthy venv and non-zero on one whose `pyvenv.cfg` and `bin/python`
 were repointed at an absent interpreter — the 3.13 → 3.14 case of §6.
 
-**Linux only in effect.** `run.sh` is also the from-source path on macOS, where
-`--system-site-packages` would expose whatever the system or Homebrew Python
-carries and reopen §4.2's shadowing question. The `--ignore-installed` step closes
-it there for the same reason it does on Linux, and macOS needs no GI stack at all
-(`pystray` selects a native backend), so the change is inert rather than harmful.
-No macOS packaging change is in scope (§9).
+**Harmless on macOS, where no GI stack is needed — but not inert.** `run.sh` is also
+the from-source path on macOS, and `--system-site-packages` there exposes whatever
+the system or Homebrew Python carries, reopening §4.2's shadowing question. The
+`--ignore-installed` step closes it for the same reason it does on Linux. macOS
+needs no GI stack at all (`pystray` selects a native backend), so the change buys
+nothing there and costs nothing either. No macOS packaging change is in scope (§9).
 
 ### 4.2 Why `--ignore-installed` at creation
 
@@ -206,10 +212,22 @@ distro-supplied copy if one already satisfies it. The remedy is
 `rm -rf venv && ./run.sh`, and INV-2's *breaks when* clause carries the case. Doing
 it per-launch instead was rejected in §8 on cost.
 
-**CI is unaffected in both directions.** `local-ci.sh` builds its own per-Python
-environments under `.ci-venvs/`, explicitly "separate from the project's `./venv`
-used to run the app", and the release workflow makes its own `build-venv`. Nothing
-in §4.1 changes what either resolves.
+**Nothing in §4.1 reaches CI.** `local-ci.sh` builds its own per-Python environments
+under `.ci-venvs/`, explicitly "separate from the project's `./venv` used to run the
+app", and the release workflow makes its own `build-venv`. Editing `run.sh` changes
+neither.
+
+**But the release workflow already has this exposure independently, and this spec
+does not close it.** `release.yml` creates `build-venv` with `--system-site-packages`
+and then runs `pip install -r requirements.txt pyinstaller` **without**
+`--ignore-installed` — the exact combination §4.2 exists to warn about. It is benign
+today only because `ubuntu-latest` carries no system Flask to shadow with, which is a
+fact about one runner image rather than an invariant, in a project whose policy keeps
+runner images on latest. Recorded as an **accepted risk with a named re-test
+trigger**: whenever the runner image is bumped, re-check whether the release AppImage
+still bundles the pinned Flask/Pillow rather than a distro copy. Adding
+`--ignore-installed` there would close it outright and is the obvious follow-up, but
+it is a release-pipeline change beyond this spec's two roadmap items (§9).
 
 ### 4.3 `packaging/build-linux.sh` — build under a gi-capable interpreter
 
@@ -236,17 +254,26 @@ if [ -z "$PY" ]; then
   echo "error: no Python interpreter found (tried \$PYTHON, ./venv/bin/python, python3, python)." >&2
   exit 1
 fi
-if ! "$PY" -c "import gi
+if ! err=$("$PY" -c "import gi
 for ns, ver in (('Gtk','3.0'), ('Gio','2.0'), ('DBus','1.0')): gi.require_version(ns, ver)
 try: gi.require_version('AppIndicator3','0.1')
-except ValueError: gi.require_version('AyatanaAppIndicator3','0.1')" 2>/dev/null; then
+except ValueError: gi.require_version('AyatanaAppIndicator3','0.1')" 2>&1); then
   echo "error: $PY cannot load the GI typelibs pystray needs — the AppImage would have no tray icon." >&2
-  echo "       Install the GI stack (see README) and rebuild ./venv via ./run.sh." >&2
+  echo "       ${err##*$'\n'}" >&2   # the interpreter's own last line, which NAMES the namespace
+  echo "       Install the GI stack (see README), or point \$PYTHON at an interpreter that has it." >&2
   exit 1
 fi
 ```
 
-### 4.3.1 The typelibs pystray requires — the authoritative list
+**Capture stderr, do not discard it.** INV-6 requires the failure to *name* the
+missing typelib, and `2>/dev/null` throws away the one line that does. Taking the
+interpreter's last stderr line gives exactly that, verified on 2026-08-06:
+`ValueError: Namespace NoSuchTypelib not available` for a missing typelib, and
+`ModuleNotFoundError: No module named 'gi'` where PyGObject is absent entirely. The
+remedy line avoids naming `./run.sh` unconditionally, because `$PY` may have come
+from `$PYTHON` or the system `python3` rather than from `./venv` (§6).
+
+#### 4.3.1 The typelibs pystray requires — the authoritative list
 
 Taken from the installed package, not from memory
 (`grep -rn require_version venv/lib/python3.13/site-packages/pystray/`):
@@ -322,9 +349,8 @@ Two consequences worth stating, because they are what make this cheap:
   already was; this one is too. Nothing is left on a daemon thread, so the
   swallowed-assertion and race hazards that dogged the old design are gone, and the
   tests in §7 need neither a sleep nor a thread-safe recorder.
-- **`LWSM_MANAGED=1` still opens nothing.** It returns from `main` *before* the tray
-  block, so a managed server neither shows an icon nor opens a page — unchanged from
-  CL-0056, and still the only thing that variable gates.
+- **`LWSM_MANAGED=1` still opens nothing** — it returns from `main` before the tray
+  block ever runs. §3's consequence paragraph owns the reasoning; INV-9 locks it.
 
 Everything else in `main` is untouched, and three things are explicitly preserved:
 
@@ -366,16 +392,43 @@ each typelib to its owning package with `rpm -qf /usr/lib64/girepository-1.0/<NS
 `python313-gobject`; a machine on a newer system Python needs the matching one, so
 the README wording must not hard-code the digits.
 
-**Debian/Ubuntu: use the list the release workflow already proves works** —
+**Debian/Ubuntu: start from the list the release workflow already proves works** —
 `python3-gi gir1.2-ayatanaappindicator3-0.1 libayatana-appindicator3-1
-libgirepository-1.0-1 gir1.2-glib-2.0 libgtk-3-0`. Note that `libgtk-3-0` is the
-shared library, not the `Gtk-3.0` **typelib** that `gi.require_version('Gtk','3.0')`
-needs; CI works today because the Ayatana GI package pulls the Gtk and freedesktop
-typelibs in transitively. That is a working arrangement resting on someone else's
-dependency graph, so the README should name `gir1.2-gtk-3.0` explicitly alongside
-it. **This row was not verified on a Debian machine** — unlike the openSUSE table
-above, it is inferred from `release.yml` plus the transitive argument, and the
-implementer should confirm it on Ubuntu before it reaches the README.
+libgirepository-1.0-1 gir1.2-glib-2.0 libgtk-3-0` — but that list is **incomplete as
+written**, and §4.6 explains why that now matters more than it used to. Two of the
+four namespaces have no package naming them:
+
+- `libgtk-3-0` is the shared **library**, not the `Gtk-3.0` **typelib** that
+  `gi.require_version('Gtk','3.0')` reads. The typelib package is `gir1.2-gtk-3.0`.
+- Nothing in the list owns `DBus-1.0` at all — on Debian that typelib ships in the
+  freedesktop GI package (`gir1.2-freedesktop`).
+
+CI works today only because the Ayatana GI package pulls both in transitively. That
+is a working arrangement resting on someone else's dependency graph — the same shape
+this spec refuses elsewhere — so both should be named explicitly.
+
+**This row was not verified on a Debian machine.** Unlike the openSUSE table above,
+which was resolved package-by-package with `rpm -qf`, it is inferred from
+`release.yml` plus the transitive argument. The implementer should confirm the two
+package names on Ubuntu (`dpkg -S /usr/lib/*/girepository-1.0/Gtk-3.0.typelib` and
+the same for `DBus-1.0.typelib`) before either reaches the README or the workflow.
+
+### 4.6 The release workflow must be updated in the same change
+
+§4.3's pre-flight runs in CI too, because the release job invokes the same script.
+That converts today's *implicit* transitive dependency into a **hard release-blocking
+gate**: if a future `ubuntu-latest` image, or an Ayatana package revision, stops
+pulling `Gtk-3.0.typelib` or `DBus-1.0.typelib` transitively, the release build
+starts failing at the pre-flight instead of silently shipping a tray-less AppImage.
+
+That is the intended behaviour — failing loudly is the whole point of §4.3 — but it
+means the workflow's apt step must stop relying on the transitive pull. Verified
+2026-08-06: `.github/workflows/release.yml`'s install step names
+`gir1.2-ayatanaappindicator3-0.1 libayatana-appindicator3-1 libgirepository-1.0-1
+gir1.2-glib-2.0 python3-gi libgtk-3-0` and **neither `gir1.2-gtk-3.0` nor a
+freedesktop typelib package**. Add both there, in the same commit that adds the
+pre-flight; otherwise this spec ships a gate whose only protection against a red
+release is luck.
 
 Absent these packages, §4.1 still works and the app still runs — it falls back to
 headless exactly as today (INV-7). Only `build-linux.sh` treats their absence as
@@ -407,9 +460,8 @@ fatal, and only at build time.
   system Python already satisfies a dependency — Flask and Pillow are named
   directly in `requirements.txt`, Jinja2 and Werkzeug arrive transitively, and all
   four are satisfied by the system Python on this machine today. **Also breaks for
-  any dependency added to `requirements.txt` after the venv was built**, since the
-  per-launch `pip install` runs without `--ignore-installed`; remedy is
-  `rm -rf venv && ./run.sh` (§4.2).
+  any dependency added to `requirements.txt` after the venv was built** — see §4.2,
+  which owns that limit and its remedy.
 
 - **INV-3** — `run.sh` rebuilds a venv that is unusable for either reason — its
   `pyvenv.cfg` lacks `include-system-site-packages = true`, or its base interpreter
@@ -505,8 +557,9 @@ fatal, and only at build time.
 | The system Python has `gi` + the typelib | Packages not installed | Tray import fails → INV-7 headless fallback, INFO log. App works, no icon. |
 | The venv's base Python matches the system one | System Python upgrades 3.13 → 3.14 and the old interpreter is removed | The venv directory still exists and its `pyvenv.cfg` still says `include-system-site-packages = true`, so **neither the marker check nor the venv-missing branch fires**. §4.1's second guard — `"$VENV_DIR/bin/python" -c ''` — is what catches this: the orphaned interpreter fails to run, the venv is rebuilt, and `--system-site-packages` then points at the new version's site-packages. |
 | A distro package shadows a pinned dep | Only if §4.2's `--ignore-installed` is skipped | INV-2 fails; the app runs on distro copies. This is the pre-fix behaviour, so it degrades to today rather than to broken. |
-| The tray is the only way in | Tray fails on a desktop with no tray support at all (GNOME without an AppIndicator extension is the common case) | **The browser opens** (INV-8, decision 6). This is the case that made the fallback necessary: on a frozen windowed build `launcher.py::_emit` writes nothing — `packaging/contact-list.spec` sets `console=False`, so `sys.stdout`/`sys.stderr` are `None` — meaning the `Listening on http://127.0.0.1:<port>` line reaches no one. Without the fallback the user would have no icon, no tab and no visible address: a running server that cannot be reached. |
+| The tray is the only way in | Tray fails on a desktop with no tray support at all (GNOME without an AppIndicator extension is the common case) | **The browser opens** (INV-8, decision 6). This is the case that made the fallback necessary: on a frozen windowed build `launcher.py::_emit` can write nothing — `packaging/contact-list.spec` sets `console=False`, and `_emit`'s own docstring notes such a build *can* have `sys.stdout`/`sys.stderr` as `None`, in which case it no-ops — so the `Listening on http://127.0.0.1:<port>` line may reach no one. Without the fallback the user would have no icon, no tab and no visible address: a running server that cannot be reached. |
 | The user wants the page and the tray is fine | Any normal start | Nothing opens. The tray icon's *Open Contact List*, an external manager, or a second launch (INV-5) are the ways in. |
+| A manager starts a frozen build | `LWSM_MANAGED=1` on an AppImage | No tray (by request), no browser (INV-9), and the `Listening on` line may reach no one (`console=False`). This is **not** the unreachable case above: the manager chose the port — it either set `PORT` or accepted the 5002 default — so it already knows the URL and owns the job of opening it. Nothing to add. |
 | `build-linux.sh` runs where `./venv` was never built | Fresh clone, build before first run | Interpreter search falls through to the system `python3`, which on this machine passes §4.3's probe (it owns the typelibs) and then fails at `"$PY" -m PyInstaller` with `No module named PyInstaller` — the system Python has neither PyInstaller nor Flask. Passing the pre-flight is not the same as being able to build. Remedy: run `./run.sh` once first, or export `PYTHON=`. |
 
 ## 7. Tests
@@ -519,19 +572,31 @@ Two edits to the existing suite are mandatory, and only the first fails loudly.
 `AttributeError` from `monkeypatch.setattr`, so the omission fails loudly at test
 time rather than passing silently.
 
-**2. Stub `launcher.open_url` in every test that drives the tray to failure — this
-one fails SILENTLY and noisily in the wrong sense.** Decision 6 puts a real
-`open_url` call inside the `except` branch, so any test that makes `tray.run_tray`
-raise and does not stub `open_url` will **launch an actual web browser** on every
-suite run. `grep -n run_tray tests/*.py` finds four sites; the one that raises and
-does not stub `open_url` is
-`tests/test_packaging.py::test_launcher_falls_back_to_headless_when_tray_fails`
-(it monkeypatches `tray.run_tray` to a `boom` that raises `RuntimeError`). Nothing
-in the assertion notices — the test still returns 0 and still passes — so this is
-caught by reading the diff, not by the suite. Add the stub there as part of this
-change; the two `tests/test_port.py` sites already carry an `open_url` patch, and
-`tests/test_packaging.py`'s other site stubs `run_tray` to a no-op and never reaches
-the branch.
+**2. Stub `launcher.open_url` in every test that lets the tray block RAISE — this one
+passes silently while launching a real browser.** Decision 6 puts a real `open_url`
+call inside the `except`, so a test that drives `tray.run_tray` to raise without
+stubbing `open_url` spawns an actual browser window on every suite run, while still
+returning 0 and still passing. Nothing in the suite notices; it is caught by reading
+the diff.
+
+**The set at risk is "tests that reach the tray block", which is not the same as
+"tests that mention `run_tray`."** Audited 2026-08-06 against the current suite:
+
+| Test | Reaches the tray block? | Safe today? |
+|---|---|---|
+| `test_packaging.py::test_launcher_falls_back_to_headless_when_tray_fails` | yes — stubs `run_tray` to a `boom` that raises | **NO — needs the `open_url` stub added** |
+| `test_packaging.py::test_launcher_uses_make_server_threaded_loopback` | yes — stubs `run_tray` to a no-op | yes, never raises |
+| `test_port.py::test_lwsm_managed_skips_the_tray` | no — `LWSM_MANAGED=1` returns first | yes |
+| `test_port.py::test_tray_runs_unless_lwsm_managed_is_1` | yes — stubs `run_tray` to a recorder | yes, never raises |
+
+So exactly **one** existing test needs the new stub. Note that `test_port.py`'s
+shared `_stub_startup` helper stubs `_port_is_serving`, `create_app`, `make_server`
+and `_open_when_ready` but **not** `run_tray` — it is safe only because each caller
+that reaches the tray block stubs `run_tray` itself. Once step 1 deletes the
+`_open_when_ready` line from that helper, any *new* test using it without its own
+`run_tray` stub will hang on a gi-capable machine. Adding a `run_tray` no-op and an
+`open_url` recorder to `_stub_startup` itself is the cheaper long-term shape and is
+recommended, though not required for the four tests above.
 
 | Invariant | Test | Status |
 |---|---|---|
@@ -550,12 +615,22 @@ been swallowed by `threading.excepthook` and the run would stay green (verified
 open raced `main()`'s return. Neither applies now. Record `open_url` into a list and
 assert on it after `main()` returns; no sleep, no recorder locking.
 
-**Seeing INV-4 fail against pre-fix code** is a one-time author step and needs the
-`_port_is_serving` stub to return `False` first (the single-instance check) and
-`True` afterwards, so the pre-fix poll thread finds a listener and opens. With the
-sibling tests' constant `False`, pre-fix code never reaches `open_url` and the test
-passes vacuously. Record the red run's output in the commit message; a test that has
-only ever been green is a test nobody has seen work.
+**Seeing INV-4 fail against pre-fix code** is a one-time author step, and it is the
+one place the old race still bites — the *pre-fix* code being raced is exactly the
+daemon-thread design decision 6 deletes. Two things are needed:
+
+- Stub `_port_is_serving` to return `False` first (the single-instance check) and
+  `True` afterwards, so the pre-fix poll thread finds a listener and opens. With the
+  sibling tests' constant `False`, pre-fix code never reaches `open_url` and the run
+  is green for the wrong reason.
+- **Wait for the recorder rather than asserting immediately** — poll it for up to a
+  second after `main()` returns before concluding nothing was opened. Without that,
+  the daemon thread may not have run yet and the red is intermittent, which would
+  read as "the test does not detect the bug".
+
+Record the red run's output in the commit message; a test that has only ever been
+green is a test nobody has seen work. Neither point applies to the shipped test,
+which has no thread to wait for.
 
 New tests go inside `tests/conftest.py`'s existing protection — it sets
 `QT_QPA_PLATFORM=offscreen` and `SECRET_KEY` via `os.environ.setdefault` before any
@@ -566,9 +641,10 @@ Baseline before this change: `400 tests collected` (`pytest tests/ -q --collect-
 
 ## 8. Alternatives considered (and rejected)
 
-- **Declare the tray a release-build-only feature** and make the INV-3 fallback say
-  so out loud. Rejected by the user, 2026-08-06: it fixes the honesty of the message
-  without fixing the feature, and leaves CL-0059 permanently unshippable from source.
+- **Declare the tray a release-build-only feature** and make the graceful fallback
+  (`2026-07-12-system-tray-icon.md` INV-3, this spec's INV-7) say so out loud.
+  Rejected by the user, 2026-08-06: it fixes the honesty of the message without
+  fixing the feature, and leaves CL-0059 permanently unshippable from source.
 - **`pip install PyGObject` into the isolated venv.** No binary wheel exists; it
   builds from source against `libgirepository` headers, needs a compiler, and would
   add a direct dependency against DESIGN.md §3's budget of <8. It also would not
@@ -580,8 +656,7 @@ Baseline before this change: `400 tests collected` (`pytest tests/ -q --collect-
 - **`--ignore-installed` on every launch** rather than at creation. It would close
   §4.2's later-added-dependency hole outright, but it reinstalls the full dependency
   tree on every single launch, defeating the idempotent per-launch sync `run.sh` is
-  built around (measured: 0.68 s as a no-op today). Rejected on cost; the hole is
-  documented in INV-2 with `rm -rf venv` as its remedy.
+  built around (measured: 0.68 s as a no-op today). Rejected on cost.
 - **Suppress the auto-open only under an external manager.** This was CL-0060's
   original framing. Superseded by decision 3 — the user does not want it on any
   path, which is both simpler and avoids inventing the trustworthy signal
@@ -668,11 +743,17 @@ return — fails the suite instead of shipping.
   unreachable). The `Changed` entry must carry the exception — a flat "no longer
   opens a browser" would read as a bug the first time a user on a tray-less desktop
   sees a tab.
+- **`.github/workflows/release.yml`** — the apt install step gains `gir1.2-gtk-3.0`
+  and the freedesktop typelib package, in the **same commit** as §4.3's pre-flight.
+  §4.6 owns why: the pre-flight gates the release job, and the two typelibs it
+  demands are currently pulled in only transitively. Skipping this is how the spec
+  ships a red release.
 - **ROADMAP** — CL-0057 and CL-0060 flip to shipped; CL-0059 loses its blocker.
 
 ## 13. Cold-eyes loop log
 
 | Loop | Date | Lanes | CRIT | HIGH | MED | LOW | Outcome |
 |------|------|-------|------|------|-----|-----|---------|
+| 3 | 2026-08-06 | 2 | 1 | 3 | 5 | 8 | All 17 verified, 0 unverified, all fixed. **Converged by cap** (`--max-loops` 3). Dimensions: dim 2×4, dim 5×3, dim 7×3, dim 1×2, dim 6×2, dim 4×1, dim 10×1, dim 15×1. Origin split: ~12 fix collateral from loop 2's additions, ~5 draft defects — the sweep-harder signal, so this loop ended with consolidation (three-times-stated facts in §4.2/INV-2/§8 and §3/§4.4 reduced to one home plus pointers) rather than a fourth dispatch. The CRITICAL was self-inflicted and caught by executing the spec's own code: loop 2's probe redirected stderr to `/dev/null`, discarding the `ValueError: Namespace <X> not available` line INV-6 requires it to report — it now captures stderr and echoes the interpreter's last line (verified in both the missing-typelib and missing-PyGObject shapes). Also: decision 1 still promised `--system-site-packages` in `build-linux.sh`, which creates no venv (corrected to name the pre-flight); §4.3's gate applies to the release job, whose apt list names neither `gir1.2-gtk-3.0` nor a DBus typelib and works only transitively — now §4.6 plus a §12 assignment; `release.yml`'s own `--system-site-packages` build-venv lacks `--ignore-installed`, recorded as an accepted risk with a runner-image-bump re-test trigger; and §7 described the at-risk test set by the wrong predicate (audited into a four-row table, conclusion unchanged: exactly one test needs the new stub). |
 | 2 | 2026-08-06 | 2 | 2 | 3 | 5 | 8 | All 18 verified, 0 unverified. 17 fixed; 1 surfaced to the user as a design decision and answered, becoming decision 6 + INV-8 + INV-9. Dimensions: dim 2×5, dim 4×4, dim 5×3, dim 10×3, dim 15×2, dim 7×1. Origin split: ~10 fix collateral from loop 1, ~8 draft defects. The decisive finding was **not a doc defect**: with the auto-open gone, a frozen windowed build whose tray fails has no icon, no tab and no visible URL (`_emit` writes nothing when `console=False`), i.e. an unreachable running app — the user chose to keep the open as a tray-failure fallback. That answer also removed the daemon thread entirely, dissolving loop 1's swallowed-assertion and race problems. Also corrected: §4.3's probe omitted `DBus`/`Gio` (the very typelibs CL-0052 shipped commit `3c817fc` for, and the one named in the error string INV-6 forbids), §1 applied the distro prerequisite to downloaded releases against `DESIGN.md` §3, INV-1 tested Ayatana-only while §4.3 accepted either indicator, and `test_launcher_falls_back_to_headless_when_tray_fails` would have launched a real browser on every suite run. Orchestrator error recorded: the loop-2 packet carried a stale 377-line count (the doc was 503), which both lanes flagged. |
 | 1 | 2026-08-06 | 2 | 1 | 6 | 8 | 10 | All 25 verified, 0 unverified, all fixed. Dimensions: dim 2×6, dim 6×6, dim 4×4, dim 7×4, dim 5×2, dim 9×1, dim 10×1, dim 15×1. Two of the draft's own prescriptions were executed and found wrong: the §4.3 pre-flight checked `AyatanaAppIndicator3` only, but `pystray._appindicator` probes `AppIndicator3` first (would have failed a working host); and §4.1's rebuild guard missed a venv orphaned by a system-Python upgrade, which §6 wrongly called handled. Also corrected: an `INV-3`/`INV-6` label collision with borrowed invariants, INV-4's test contract omitting the `tray.run_tray` stub (would hang on exactly the machines this change creates), INV-4's pre-fix red run being vacuous, INV-7 claiming "no traceback" against `exc_info=True`, and a resource figure wrong by 6× (400 KB → measured 2.5 MB). |
