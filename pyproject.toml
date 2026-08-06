@@ -9,6 +9,15 @@
 line-length = 100
 target-version = "py312"
 
+[tool.ruff.lint]
+# Ruff's historical default set, stated explicitly rather than inherited (CL-0062).
+# Ruff 0.16 widened its implicit default, so an unset `select` silently changed the
+# lint contract on a routine tool bump: 0.15 passed clean, 0.16 raised 35 findings
+# across 16 rules nobody had opted into. Pinning the set keeps tool upgrades a
+# version decision instead of a code-review decision. Widening it is deliberate
+# work, tracked as CL-0062 — not something a dependency bump should do by itself.
+select = ["E4", "E7", "E9", "F"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-v"

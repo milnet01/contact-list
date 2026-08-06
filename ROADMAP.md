@@ -502,6 +502,39 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   Kind: fix.
   Source: in-session-2026-08-06 (CL-0057 implementation, found by reading the build log).
 
+- 📋 [CL-0062] **Decide which of ruff 0.16's 35 newly-flagged findings to adopt.**
+  Context: pyproject.toml had no [tool.ruff.lint] select, so ruff used its
+  implicit default. Ruff 0.16 widened that default, so the routine bump from
+  0.15.21 to 0.16.1 turned a clean run into 35 findings across 16 rules that
+  nobody had opted into. Resolved on 2026-08-06 by stating the historical set
+  (E4, E7, E9, F) explicitly, so the tool tracks latest while the lint contract
+  is a deliberate choice. Verified the explicit set still catches real defects
+  (F401 unused import, F821 undefined name).
+
+  This item is the follow-up question that split off: WHICH of the wider rules
+  do we actually want? Counts from `ruff check . --output-format=concise` at
+  0.16.1 with select unset:
+
+    7 I001      import block un-sorted
+    5 RUF059    unused unpacked variable
+    5 BLE001    blind `except Exception` — worth a careful look, launcher.py's
+                tray fallback is deliberately blind and should stay that way
+    4 DTZ011    `date.today()` without a timezone
+    2 UP037     redundant quotes in a type annotation
+    2 UP017     `datetime.UTC` alias available
+    2 LOG015    logging call on the root logger
+    1 each      UP012, S310, RUF100, RUF012, PLW1510, LOG014, FURB162, EXE001, B017
+
+  Some look genuinely valuable (S310 flags a URL open, DTZ011 naive datetimes).
+  Others would fight deliberate design — BLE001 against the tray fallback is the
+  clear case. Treat this as a review of each rule family, adopting per-rule with
+  a `# noqa` plus reason where the current code is right, NOT as a bulk autofix:
+  13 are auto-fixable and 7 more need --unsafe-fixes, which is exactly the shape
+  that quietly changes behaviour.
+  **Layman:** A newer version of our code checker suggests 35 improvements it never used to mention. Worth reading through and picking the ones we want, rather than accepting or ignoring them wholesale.
+  Kind: refactor.
+  Source: in-session-2026-08-06 (dependency sweep; surfaced by the ruff 0.15 to 0.16 bump).
+
 ## Efficiency & Refactoring
 
 Performance and code-health opportunities surfaced during the 2026-06-30 review.

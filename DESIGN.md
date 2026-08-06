@@ -81,11 +81,40 @@ newer than the broken one ships we re-test and move forward rather than staying
 pinned indefinitely. An undocumented downgrade or below-latest pin is a policy
 violation.
 
-Check at the start of a release cycle, or whenever touching a manifest/workflow:
+**A pin that caps below latest is an exception even when it looks like ordinary
+prudence.** A compatible-release cap (`~=`) on a *minor* version — `ruff~=0.15.0`
+admits 0.15.x and excludes 0.16 — holds the dependency back exactly as a hard pin
+does. Cap the **major** only (`~=2.1`, `<4.0`) so patches and minors flow in
+automatically, and raise the cap promptly once a new major is vetted. Found
+2026-08-06: `ruff~=0.15.0` had silently capped ruff two minors behind with no
+register row.
+
+**Check at the start of a release cycle, or whenever touching a manifest or
+workflow.** All four scopes, because three of them are invisible to `pip`:
 
 ```bash
-./venv/bin/pip list --outdated                              # pip packages
-gh api repos/actions/checkout/releases/latest -q .tag_name   # a GitHub Action
+# 1. Runtime + test pip packages.
+#    --local is REQUIRED: run.sh builds ./venv with --system-site-packages so the
+#    tray can import the system PyGObject (CL-0057), and without --local this
+#    reports every package on the machine — 158 rows of unrelated system tooling
+#    instead of our 8, which is how a real result gets missed.
+./venv/bin/pip list --outdated --local
+
+# 2. Dev/CI tools — pinned in ci.yml and mirrored in local-ci.sh's DEV_TOOLS,
+#    NOT in requirements.txt, so step 1 never sees them.
+curl -fsS https://pypi.org/pypi/ruff/json | python3 -c 'import json,sys;print(json.load(sys.stdin)["info"]["version"])'
+curl -fsS https://pypi.org/pypi/mypy/json | python3 -c 'import json,sys;print(json.load(sys.stdin)["info"]["version"])'
+
+# 3. Every GitHub Action and runner image used by any workflow.
+grep -rh "uses:\|runs-on:" .github/workflows/ | sort -u
+for r in actions/checkout actions/setup-python actions/upload-artifact \
+         actions/download-artifact softprops/action-gh-release; do
+  echo "$r $(gh api "repos/$r/releases/latest" -q .tag_name)"
+done
+
+# 4. The Python runtime itself — the CI matrix in ci.yml must include the
+#    current stable release, and local-ci.sh's CI_PYTHONS must match it.
+gh api repos/python/cpython/tags -q '.[].name' | grep -E '^v3\.[0-9]+\.[0-9]+$' | head -3
 ```
 
 During that sweep, also revisit every row in the register below: if a release
@@ -96,11 +125,37 @@ pin is never permanent — it lives only until a fixed upstream release lands.
 
 ### Dependency Exceptions & Breakage Register
 
-One row per dependency held below its latest release. Empty is the healthy state.
+One row per dependency held below its latest release. **Empty is the healthy
+state, and it is the state today.**
+
+A row is *only* for a version we cannot take. A newer release that changes
+behaviour we can absorb — by adjusting our own config or code — is not an
+exception and gets no row: fix our side and move to latest. The 2026-08-06 ruff
+bump is the worked example. 0.16 widened ruff's implicit default rule set, so an
+unset `select` turned a clean run into 35 findings. Pinning ruff to 0.15 would
+have been the wrong answer; stating the rule set explicitly in `pyproject.toml`
+was the right one, and ruff now tracks latest with the lint contract chosen
+deliberately (CL-0062 tracks reviewing the wider set).
 
 | Dependency | Pinned to | Latest available | First broken at | Symptom / what breaks | Re-test when | Noted |
 |------------|-----------|------------------|-----------------|-----------------------|--------------|-------|
-| _None_ | — | — | — | All dependencies track their latest release. Audited 2026-07-04: flask 3.1.3, google-api-python-client 2.198.0, google-auth 2.55.1, google-auth-oauthlib 1.4.0, google-auth-httplib2 0.4.0, phonenumbers 9.0.34, pillow 12.3.0, pytest 9.1.1, ruff 0.15.20, mypy 2.1.0; actions/checkout@v7 (v7.0.0), actions/setup-python@v6 (v6.3.0). | — | 2026-07-04 |
+| _None_ | — | — | — | Every dependency tracks its latest release. | — | — |
+
+**Last full sweep: 2026-08-06.** All four scopes checked, everything at latest:
+
+- **Runtime + test:** flask 3.1.3, google-api-python-client 2.198.0, google-auth
+  2.56.3, google-auth-oauthlib 1.4.0, google-auth-httplib2 0.4.1, phonenumbers
+  9.0.36, pillow 12.3.0, pystray 0.19.5, pytest 9.1.1.
+- **Dev/CI tools:** `ruff~=0.16.1` (was `~=0.15.0` — an undocumented below-latest
+  cap, corrected), `mypy~=2.1` (admits the current 2.3.0).
+- **Actions:** checkout@v7 (v7.0.1), setup-python@v7 (was @v6, a full major
+  behind — bumped in both `ci.yml` and `release.yml`), upload-artifact@v7
+  (v7.0.1), download-artifact@v8 (v8.0.1), softprops/action-gh-release@v3
+  (v3.0.2). Runner images all `*-latest`.
+- **Python runtime:** CI matrix is 3.12 / 3.13 / **3.14** (3.14 added this sweep;
+  current stable is 3.14.7). `local-ci.sh`'s `CI_PYTHONS` mirrors it. Note that
+  3.12 and 3.14 are not installed on the current dev machine, so a local run
+  mirrors only the 3.13 job and says so loudly.
 
 ---
 

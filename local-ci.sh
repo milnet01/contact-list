@@ -23,9 +23,11 @@ APP_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$APP_DIR"
 
 # Keep in lockstep with ci.yml's matrix.python-version.
-CI_PYTHONS="3.12 3.13"
+CI_PYTHONS="3.12 3.13 3.14"
 # Keep in lockstep with ci.yml's dev-tool pins (ruff + mypy; not app runtime deps).
-DEV_TOOLS=("ruff~=0.15.0" "mypy~=2.1")
+# These cap the MAJOR/MINOR only so a breaking release can't land unreviewed; raise
+# them promptly once a new one is vetted (DESIGN.md §3 — dependencies track latest).
+DEV_TOOLS=("ruff~=0.16.1" "mypy~=2.1")
 
 VENV_ROOT="$APP_DIR/.ci-venvs"
 failures=0

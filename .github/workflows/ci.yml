@@ -15,13 +15,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.12", "3.13"]
+        python-version: ["3.12", "3.13", "3.14"]
 
     steps:
       - uses: actions/checkout@v7
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
@@ -33,7 +33,7 @@ jobs:
           pip install -r requirements.txt
           # ruff + mypy are CI/dev tools, not app runtime deps, so they live
           # here rather than in requirements.txt. Config is in pyproject.toml.
-          pip install 'ruff~=0.15.0' 'mypy~=2.1'
+          pip install 'ruff~=0.16.1' 'mypy~=2.1'
 
       - name: Lint (ruff)
         run: ruff check .
