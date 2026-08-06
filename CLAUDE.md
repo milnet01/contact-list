@@ -36,7 +36,22 @@ JS. No ORM. Google import is in `google_sync.py` / `google_auth.py`.
 ```bash
 ./run.sh                         # create venv, install, launch on :5002
 python -m pytest tests/ -v       # run the test suite
+./local-ci.sh                    # ruff + mypy + pytest, the CI matrix
 ```
+
+### Verifying a launch by hand
+
+- **Wait for the port, never for a duration.** `run.sh` pip-installs on every
+  launch, so a fixed `sleep` gives a false negative on a server that was
+  starting perfectly. Poll instead:
+  `for _ in $(seq 90); do ss -ltn "sport = :$1" | grep -q LISTEN && break; sleep 1; done`
+- **Background the server** (`./run.sh &`). A foreground launch never returns,
+  so anything written after it on its own line never runs.
+- **Intercept the browser-open** rather than letting it spray tabs — and to
+  prove a path opens *no* browser, you need it recorded, not merely unobserved.
+  Two different mechanisms (`browser.py`): from source it is stdlib
+  `webbrowser`, so `BROWSER='/path/to/recorder %s'` catches it; when frozen it
+  shells out to `xdg-open`, so put a fake `xdg-open` first on `PATH`.
 
 ## Privileged commands
 

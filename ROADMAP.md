@@ -449,6 +449,23 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   Kind: doc-fix.
   Source: in-session-2026-08-06 (CL-0056).
 
+- 💭 [CL-0060] **Open question: should a manager-started server open a browser at all?**
+  launcher.py:106 fires the browser-open on EVERY start that binds,
+  including one driven by an external process manager. Deliberate as of
+  CL-0056: the user ruled it out of scope ("the manager's problem to solve,
+  not yours") and specifically forbade suppressing it via LWSM_MANAGED,
+  which may change only whether the tray icon appears -- it is
+  unauthenticated, trivially forged and inherited by children, so gating
+  anything else on it is a security smell. The decision is the user's and
+  is still open; if it lands as "no browser under management", it needs its
+  OWN signal, not LWSM_MANAGED. Do not implement either way without asking.
+  Evidence available: pointing BROWSER at a recording script during CL-0056
+  verification showed exactly one open per managed start (see CLAUDE.md
+  "Verifying a launch by hand" for the technique).
+  **Layman:** When an external tool starts the app, a browser window pops up. Whether that should happen is still undecided.
+  Kind: investigate.
+  Source: in-session-2026-08-06 (user's open decision, recorded before context clear).
+
 ## Efficiency & Refactoring
 
 Performance and code-health opportunities surfaced during the 2026-06-30 review.
