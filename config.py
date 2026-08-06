@@ -74,6 +74,75 @@ def _load_or_create_secret_key() -> str:
     return key
 
 
+DEFAULT_PORT = 5002
+# PORT is how an automated process manager names a port, and a manager never has
+# a good reason to ask for a privileged one. CONTACT_LIST_PORT (a human choosing
+# a port for their own program) keeps its original range: none (CL-0056).
+PORT_MIN = 1024
+PORT_MAX = 65535
+
+
+class PortError(ValueError):
+    """An environment-supplied port the server cannot honour.
+
+    Raised by :func:`resolve_port` only — never at import of this module, since
+    app.py imports config at module level and a raise there is an import-time
+    traceback in the test suite as well as at runtime.
+    """
+
+
+def _contact_list_port() -> int:
+    """``CONTACT_LIST_PORT`` → 5002, the human-facing knob.
+
+    Any integer is accepted (no range check — unchanged behaviour). A
+    non-integer warns and falls back instead of raising, because this runs at
+    import of config where a traceback helps nobody; previously it was an
+    unhandled ValueError.
+    """
+    raw = os.environ.get('CONTACT_LIST_PORT')
+    if not raw:
+        return DEFAULT_PORT
+    try:
+        return int(raw)
+    except ValueError:
+        _log.warning(
+            'CONTACT_LIST_PORT=%r is not a number; falling back to %d', raw, DEFAULT_PORT
+        )
+        return DEFAULT_PORT
+
+
+def resolve_port(default: int | None = None) -> tuple[int, bool]:
+    """Resolve the port to bind. Precedence: ``PORT`` → ``default`` (which the
+    callers pass as ``Config.PORT``, i.e. ``CONTACT_LIST_PORT`` → 5002).
+
+    Returns ``(port, explicit)``; ``explicit`` is True only when ``PORT`` supplied
+    the value, which is what lets the launcher treat "the port I was told to use
+    is busy" as a failure rather than a hand-off (CL-0056).
+
+    Exactly three cases, mutually exclusive:
+      * ``PORT`` valid (integer in [1024, 65535]) → that port, explicit.
+      * ``PORT`` absent (unset or empty) → ``default``, not explicit.
+      * ``PORT`` present but malformed or out of range → :class:`PortError`.
+        Never a silent fall back: a manager that asked for port 80 and was given
+        5002 without being told has been lied to.
+    """
+    raw = os.environ.get('PORT')
+    if raw is None or raw == '':
+        return (DEFAULT_PORT if default is None else default), False
+    try:
+        port = int(raw)
+    except ValueError:
+        raise PortError(
+            f'PORT={raw!r} is not a number '
+            f'(expected an integer {PORT_MIN}-{PORT_MAX})'
+        ) from None
+    if not PORT_MIN <= port <= PORT_MAX:
+        raise PortError(
+            f'PORT={raw!r} is out of range (expected {PORT_MIN}-{PORT_MAX})'
+        )
+    return port, True
+
+
 def _default_db_path() -> str:
     """Default DB location. Frozen: the persistent config dir (so contacts survive
     quit). From source: next to the code, unchanged. Reads sys.frozen on each call
@@ -93,7 +162,9 @@ class Config:
     # Contact photos are stored as files here (not blobs in the DB), 0700 like
     # the token dir. Only the file extension is recorded in the DB (CL-0026).
     PHOTOS_DIR = os.path.join(_CONFIG_DIR, 'photos')
-    PORT = int(os.environ.get('CONTACT_LIST_PORT', 5002))
+    # The CONTACT_LIST_PORT → 5002 fallback. PORT overrides it at the bind site
+    # via resolve_port(); it does not replace it (CL-0056).
+    PORT = _contact_list_port()
     CONTACTS_PER_PAGE = 50
     MAX_CONTACTS_PER_PAGE = 200
     # Hard ceiling on any request body (Flask returns 413 past it). Bounds both

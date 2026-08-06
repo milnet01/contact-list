@@ -677,15 +677,26 @@ at minimum that the job is green) **before** pushing a real `v*` tag.
   Nothing user-supplied enters the child argv (the flag is a constant; the child
   reads only files under `~/.config/contact-list`). *(Testable: argv selection
   under monkeypatched `sys.frozen`.)*
-- **INV-4** When the launcher detects the app already serving on `127.0.0.1:PORT`
-  it does **not** start a second server: it opens the browser to the existing
-  instance and exits 0. This is best-effort, not a hard mutual-exclusion — any
-  listener on `PORT` is treated as our instance (foreign-service edge accepted,
-  §3), and two near-simultaneous launches can still race so the loser exits with
-  "address in use". In the normal server-startup path the browser is opened only
-  **after** the socket accepts a connection. *(Testable: monkeypatched
-  `_port_is_serving` → `main()` opens the browser and returns 0 without running
-  the app; §10.)*
+- **INV-4** When the launcher detects the app already serving on
+  `127.0.0.1:<port>` it does **not** start a second server. What happens next
+  depends on *who chose the port* (CL-0056):
+  - **The port came from the default chain** (`CONTACT_LIST_PORT` → 5002, i.e.
+    the `PORT` env var was unset or empty): the browser opens on the existing
+    instance and the launcher exits 0 — a hand launch finding its own app
+    already running. This is best-effort, not a hard mutual-exclusion — any
+    listener is treated as our instance (foreign-service edge accepted, §3).
+  - **The port was named explicitly via `PORT`**: the launcher exits **non-zero
+    and opens no browser**. An external process manager asked for one specific
+    port and did not get it; that is a failure to report, not a hand-off. Handing
+    off here would hide a bound-nothing start behind exit 0 and point the user's
+    browser at an unidentified local service.
+
+  Either way two near-simultaneous launches can still race, so the loser exits
+  with "address in use". In the normal server-startup path the browser is opened
+  only **after** the socket accepts a connection. *(Testable: monkeypatched
+  `_port_is_serving` → with `PORT` unset `main()` opens the browser and returns 0
+  without running the app; with `PORT` set it returns non-zero and opens nothing —
+  `tests/test_port.py`; §10.)*
 - **INV-5** No new **runtime** dependency is added: PyInstaller, appimagetool, and
   the icon tools are build-time only and never enter `requirements.txt`, so the
   DESIGN.md §3 runtime budget (<8 packages) is intact. *(Structural — verified by

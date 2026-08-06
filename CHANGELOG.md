@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`LWSM_MANAGED=1` runs without the system-tray icon** (CL-0056)
+  Headless, logging to stdout as normal. A presentation hint only — it
+  affects nothing but whether the icon appears.
+
+- **`PORT` environment variable for an external process manager** (CL-0056)
+  Precedence is `PORT` → `CONTACT_LIST_PORT` → 5002. `PORT` must be an
+  integer in 1024–65535; an invalid value is a startup error naming the
+  value and a non-zero exit, never a silent fall back to another port.
+  Unset or empty means "not supplied" and changes nothing. Every path
+  that binds now prints `Listening on http://127.0.0.1:<port>` to stdout.
+
+### Changed
+
+- **A busy port that `PORT` named explicitly is now a failure, not a hand-off** (CL-0056)
+  When `PORT` names a port and something already holds it, the launcher
+  exits non-zero and opens no browser instead of handing off to the
+  existing instance. Without `PORT` the hand-off is unchanged.
+
+### Fixed
+
+- **A non-numeric `CONTACT_LIST_PORT` no longer crashes at startup** (CL-0056)
+  It warned nowhere and raised an unhandled `ValueError` while importing
+  `config`; it now logs a warning and uses 5002. Its accepted range is
+  unchanged.
+
 ## [1.1.0] - 2026-07-12
 
 ### Added

@@ -104,7 +104,9 @@ All settings are read from environment variables, with sensible defaults:
 |----------|---------|-------------|
 | `SECRET_KEY` | random per run | Flask session signing key. Set it to keep sessions stable across restarts. |
 | `CONTACT_LIST_DB` | `contacts.db` next to the app (source) / under `~/.config/contact-list/` (downloaded app) | Path to the SQLite database file. |
+| `PORT` | unset | Port for an external process manager to bind. Must be an integer 1024–65535; anything else is a startup error (the app exits non-zero rather than silently using another port). Overrides `CONTACT_LIST_PORT`. Unset or empty means "not supplied" and changes nothing. |
 | `CONTACT_LIST_PORT` | `5002` | Port the local server listens on. |
+| `LWSM_MANAGED` | unset | Set to `1` to run without the system-tray icon (headless, logging to stdout). Anything else, including unset, shows the tray as normal. A presentation hint only — it grants nothing and changes nothing else. |
 
 The database is created automatically on first run and is never committed to the
 repository.

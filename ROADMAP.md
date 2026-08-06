@@ -230,6 +230,23 @@ efficiency / coding standards every item must comply with.
   Progress (2026-07-12): deep-research pass complete (run wf_0fe49d44-bb6, 24 confirmed claims / 21 sources); §4/§6 finalised — Linux backend = pystray appindicator (SNI over DBus; xorg rejected, no menu), AppImage bundling via PyInstaller 6.3.0+ built-in GI hooks. Spec cold-eyes converged after 7 cold loops to polish-only (verdict "implementable as-is"); Status → REVIEWED. Awaiting user sign-off before writing-plans / implementation.
   Shipped in v1.1.0 (2026-07-12). Cross-platform system-tray icon (Open/Restart/Quit) via pystray; server moved to a stoppable background thread, tray owns the main thread; graceful headless fallback. Verified on KDE Wayland (tray icon + menu + Quit work). Two verification-found bugs fixed en route: frozen browser-open LD_LIBRARY_PATH leak (browser.py open_url), and the missing DBus GI typelib (hiddenimports). Reviewed per-task + final whole-branch (Ready to merge).
 
+- ✅ [CL-0056] **PORT and LWSM_MANAGED env vars for an external process manager.**
+  config.resolve_port() resolves PORT -> CONTACT_LIST_PORT -> 5002 and is
+  called at both bind sites (launcher.py, app.py __main__), so the value
+  reaching make_server/app.run is the derived one. PORT must be an integer
+  in [1024, 65535]; an invalid value exits non-zero naming the value rather
+  than falling back silently. CONTACT_LIST_PORT keeps its behaviour and its
+  (absent) range, and no longer raises at import on a non-integer. Every
+  binding path prints "Listening on http://127.0.0.1:&lt;port&gt;" to stdout (a
+  print, not a log — the frozen path logs to a file). INV-4's
+  single-instance hand-off is split: PORT-supplied + busy exits non-zero
+  with no browser; PORT absent is unchanged. LWSM_MANAGED=1 skips the tray
+  only (branch taken before the tray try/except so the fallback log stays
+  truthful); it gates nothing else.
+  **Layman:** An external tool can now tell the app which port to use and ask it to run without its taskbar icon, without anyone editing the code.
+  Kind: feature.
+  Source: user-request-2026-08-06.
+
 ## Audit & Review Follow-ups
 
 Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inline.
@@ -375,6 +392,29 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   **Layman:** When the app is started from a terminal on some Linux desktops, GTK prints two harmless "couldn't load module" notes; you never see them launching from the desktop icon.
   Kind: investigate.
   Source: in-session-2026-07-12 CL-0052 verification.
+
+- 📋 [CL-0057] **From-source ./run.sh never shows the tray icon (no gi in the venv).**
+  Verified pre-existing on an unmodified tree (git stash) 2026-08-06:
+  ./run.sh logs "system tray unavailable or failed" with
+  ImportError: this platform is not supported: No module named 'gi'.
+  run.sh:9-11 creates a plain venv, so the system PyGObject/AppIndicator
+  stack is invisible to it; packaging/build-linux.sh already uses
+  --system-site-packages for the release build (a32547b), which is why
+  the AppImage tray works and the source path's does not. INV-3's
+  headless fallback makes it silent. Options: --system-site-packages in
+  run.sh, or document the apt/zypper prerequisite in README.
+  **Layman:** Running the app from the source folder silently starts without its taskbar icon, because a library it needs isn't installed in the local Python environment.
+  Kind: fix.
+  Source: in-session-2026-08-06 (CL-0056 hand-verification).
+
+- 📋 [CL-0058] **Spec INV-6 cites app.py:211 for the loopback bind; the line has moved.**
+  docs/specs/2026-07-10-standalone-launchers-design.md INV-6 says
+  "matching app.py:211"; the app.run call is at app.py:230 after CL-0056
+  (was 217 before it). Pre-existing drift — the citation was already
+  stale before this change. Left alone to stay in lane.
+  **Layman:** A design document points at a line number in the code that has since shifted, so a reader following the reference lands in the wrong place.
+  Kind: doc-fix.
+  Source: in-session-2026-08-06 (CL-0056).
 
 ## Efficiency & Refactoring
 

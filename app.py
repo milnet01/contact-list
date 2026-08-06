@@ -210,8 +210,22 @@ def create_app(test_config: dict | None = None) -> Flask:
 
 
 if __name__ == '__main__':
+    import sys
+
+    from config import PortError, resolve_port
+
     app = create_app()
+    # PORT (a process manager) overrides CONTACT_LIST_PORT → 5002; an invalid
+    # PORT exits non-zero rather than falling back silently (CL-0056). Resolved
+    # here rather than in the Config class body so a bad value is a clear error
+    # at startup, not an import-time traceback.
+    try:
+        port, _ = resolve_port(app.config['PORT'])
+    except PortError as exc:
+        print(f'error: {exc}', file=sys.stderr, flush=True)
+        sys.exit(2)
+    print(f'Listening on http://127.0.0.1:{port}', flush=True)
     # Bind the literal loopback address, not 'localhost' — the latter can
     # resolve to ::1 or, under an unusual /etc/hosts, a broader interface.
     # Matches the localhost-only contract in DESIGN.md §6.3 (CL-0021).
-    app.run(host='127.0.0.1', port=app.config['PORT'], debug=False)
+    app.run(host='127.0.0.1', port=port, debug=False)

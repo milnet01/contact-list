@@ -66,15 +66,43 @@ def _install_file_logging() -> None:
     root.addHandler(handler)
 
 
+def _emit(msg: str, *, err: bool = False) -> None:
+    """Write one line to the console, if there is one.
+
+    A frozen windowed build (packaging/contact-list.spec sets console=False) can
+    have sys.stdout/sys.stderr as None, where a bare print() raises. Deliberately
+    a print and not a log: on the frozen path _install_file_logging() sends
+    logging to a file, which is nowhere a process manager reads — and at
+    port-resolution time it has not even run yet.
+    """
+    stream = sys.stderr if err else sys.stdout
+    if stream is not None:
+        print(msg, file=stream, flush=True)
+
+
 def main() -> int:
     if getattr(sys, 'frozen', False) and '--google-auth' in sys.argv:
         from google_auth import main as auth_main
         return auth_main()
 
-    from config import Config
-    port = Config.PORT
+    from config import Config, PortError, resolve_port
+    try:
+        port, port_explicit = resolve_port(Config.PORT)
+    except PortError as exc:
+        _emit(f'error: {exc}', err=True)
+        return 2
 
     if _port_is_serving('127.0.0.1', port):
+        if port_explicit:
+            # PORT named this port and something else already holds it. The
+            # caller asked for a specific port and did not get it — that is a
+            # failure, not a hand-off, so no browser and a non-zero exit
+            # (spec INV-4). The INV-4 hand-off below is for a hand launch only.
+            _emit(
+                f'error: PORT={port} is already in use by another process',
+                err=True,
+            )
+            return 1
         open_url(f'http://127.0.0.1:{port}')
         return 0
 
@@ -100,10 +128,25 @@ def main() -> int:
         logging.exception('Server startup failed')
         return 1
 
+    # make_server prints no banner (unlike app.run), so this is the only URL line
+    # on the path a process manager runs.
+    _emit(f'Listening on http://127.0.0.1:{port}')
+
     server_thread = threading.Thread(target=server.serve_forever)
     server_thread.start()
 
     threading.Thread(target=_open_when_ready, args=(port,), daemon=True).start()
+
+    if os.environ.get('LWSM_MANAGED') == '1':
+        # Presentation hint only: a managed run shows no tray icon and serves
+        # headless, logging as normal (CL-0056). Taken BEFORE the try so the
+        # fallback below keeps logging the truth — nothing here failed. Nothing
+        # else is conditioned on this variable: it is unauthenticated and
+        # trivially forged, so it may change only whether an icon appears.
+        # No quit path without a tray is correct — a managed server must be
+        # stoppable only by its manager.
+        server_thread.join()
+        return 0
 
     try:
         import tray
