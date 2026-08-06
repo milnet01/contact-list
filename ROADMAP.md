@@ -237,7 +237,7 @@ efficiency / coding standards every item must comply with.
   in [1024, 65535]; an invalid value exits non-zero naming the value rather
   than falling back silently. CONTACT_LIST_PORT keeps its behaviour and its
   (absent) range, and no longer raises at import on a non-integer. Every
-  binding path prints "Listening on http://127.0.0.1:&lt;port&gt;" to stdout (a
+  binding path prints "Listening on http://127.0.0.1:<port>" to stdout (a
   print, not a log — the frozen path logs to a file). INV-4's
   single-instance hand-off is split: PORT-supplied + busy exits non-zero
   with no browser; PORT absent is unchanged. LWSM_MANAGED=1 skips the tray
@@ -245,6 +245,22 @@ efficiency / coding standards every item must comply with.
   truthful); it gates nothing else.
   **Layman:** An external tool can now tell the app which port to use and ask it to run without its taskbar icon, without anyone editing the code.
   Kind: feature.
+  Source: user-request-2026-08-06.
+
+- 📋 [CL-0059] **A working tray icon with Open / Restart / Quit, on the paths users actually run.**
+  Requested 2026-08-06. NOTE for whoever picks this up: the menu itself is
+  already written and shipped — tray.py:55-61 builds exactly "Open Contact
+  List" (opens http://127.0.0.1:<port>), "Restart" (server_control.schedule)
+  and "Quit" (server.shutdown + icon.stop), delivered by CL-0052. Do NOT
+  rebuild it. The gap is delivery, not the feature: verified 2026-08-06 that
+  the icon appears on NEITHER the from-source run NOR a locally built
+  AppImage, because the GI/AppIndicator stack is installed only in the
+  release workflow (CL-0057). Fix CL-0057 first, then confirm this one by
+  observing a real icon rather than by reading tray.py. Acceptance: an icon
+  is visible near the clock after ./run.sh on a stock desktop, its three
+  items do what they say, and Quit releases the port (INV-1).
+  **Layman:** The app should show an icon near the clock with options to open it in the browser, restart it, or shut it down — and that icon needs to actually turn up, not just exist in the code.
+  Kind: fix.
   Source: user-request-2026-08-06.
 
 ## Audit & Review Follow-ups
@@ -393,19 +409,36 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   Kind: investigate.
   Source: in-session-2026-07-12 CL-0052 verification.
 
-- 📋 [CL-0057] **From-source ./run.sh never shows the tray icon (no gi in the venv).**
-  Verified pre-existing on an unmodified tree (git stash) 2026-08-06:
-  ./run.sh logs "system tray unavailable or failed" with
-  ImportError: this platform is not supported: No module named 'gi'.
-  run.sh:9-11 creates a plain venv, so the system PyGObject/AppIndicator
-  stack is invisible to it; packaging/build-linux.sh already uses
-  --system-site-packages for the release build (a32547b), which is why
-  the AppImage tray works and the source path's does not. INV-3's
-  headless fallback makes it silent. Options: --system-site-packages in
-  run.sh, or document the apt/zypper prerequisite in README.
-  **Layman:** Running the app from the source folder silently starts without its taskbar icon, because a library it needs isn't installed in the local Python environment.
+- 📋 [CL-0057] **The tray icon is a CI-release-only feature: both the from-source and the local-build paths ship without it.**
+  The GI/AppIndicator stack is installed in exactly ONE place —
+  .github/workflows/release.yml:26-27 (apt gir1.2-ayatanaappindicator3-0.1,
+  python3-gi, GTK) plus its --system-site-packages build venv at line 36,
+  all added by a32547b, which touched no packaging script.
+  packaging/build-linux.sh contains no --system-site-packages at all; its
+  only venv reference is line 7, `for c in ./venv/bin/python python3
+  python`, which picks the same gi-less ./venv that run.sh:9-11 creates.
+  CI escapes this only because it exports PYTHON=build-venv/bin/python.
+  So BOTH non-CI paths lose the tray:
+   - From source: ./run.sh logs "system tray unavailable or failed" with
+     ImportError: this platform is not supported: No module named 'gi'.
+     Verified pre-existing on an unmodified tree (git stash) 2026-08-06.
+   - Local AppImage: `bash packaging/build-linux.sh` exits 0 while logging
+     "ERROR: Hidden import 'gi.repository.DBus' not found" and the same for
+     AyatanaAppIndicator3; the resulting .AppImage serves normally, opens
+     the browser, registers NO StatusNotifierItem on the session bus, and
+     writes the same ImportError to ~/.config/contact-list/contact-list.log.
+     Verified on a built artefact 2026-08-06, not inferred.
+  Consequence for the spec: §10's local-build verification step ("launch the
+  resulting .AppImage from a clean environment") cannot confirm the tray —
+  it never appears there — so it is not a usable pre-release check for
+  CL-0052's feature, and INV-3's silent fallback hides all of this.
+  Decide between: (a) --system-site-packages in run.sh AND build-linux.sh
+  (+ document the apt/zypper prerequisite), or (b) declare the tray a
+  release-build-only feature and make INV-3's fallback say so out loud
+  instead of logging at INFO. Blocks CL-0059.
+  **Layman:** The taskbar icon only exists in the version built by the release robot. Run the app from the source folder, or build it yourself, and it silently starts with no icon at all.
   Kind: fix.
-  Source: in-session-2026-08-06 (CL-0056 hand-verification).
+  Source: in-session-2026-08-06 (CL-0056 hand-verification; root cause corrected by the user 2026-08-06 — the earlier diagnosis wrongly named packaging/build-linux.sh).
 
 - 📋 [CL-0058] **Spec INV-6 cites app.py:211 for the loopback bind; the line has moved.**
   docs/specs/2026-07-10-standalone-launchers-design.md INV-6 says
