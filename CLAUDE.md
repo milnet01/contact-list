@@ -36,8 +36,20 @@ JS. No ORM. Google import is in `google_sync.py` / `google_auth.py`.
 ```bash
 ./run.sh                         # create venv, install, launch on :5002
 python -m pytest tests/ -v       # run the test suite
-./local-ci.sh                    # ruff + mypy + pytest, the CI matrix
+./local-ci.sh                    # ruff + mypy + pytest across the FULL Python matrix
+git config core.hooksPath .githooks   # once per clone: run local CI before every push
 ```
+
+**`./local-ci.sh` must be green before any push**, and `.githooks/pre-push`
+enforces it once `core.hooksPath` is set. It mirrors `ci.yml` exactly — same
+Python matrix, same dev-tool pins, same three checks in the same order — and
+fetches any matrix Python the machine lacks via `uv`, so a local pass really
+does mean all jobs. A version it cannot obtain is a **failure**, not a warning:
+a green light that silently skipped a third of the matrix is worse than none.
+
+Documentation-only pushes (every changed file a `*.md` or under `docs/`) skip it
+automatically — no code changed, so there is nothing for CI to catch.
+`SKIP_LOCAL_CI=1 git push` is the emergency override.
 
 ### Verifying a launch by hand
 

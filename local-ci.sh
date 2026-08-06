@@ -14,13 +14,21 @@
 #     identical — it exits non-zero iff any check under any version fails.
 #   - Each matrix Python runs in its own cached venv under .ci-venvs/ (a fresh,
 #     isolated env like CI), separate from the project's ./venv used to run the app.
-#   - A matrix Python that isn't installed locally can't be run: it is reported as
-#     a loud WARNING (with an install hint) so you know the local run does not yet
-#     fully mirror CI, rather than being silently skipped.
+#
+# Getting the matrix interpreters: a distro usually ships exactly one Python, so
+# most of the matrix would otherwise be unrunnable here. `uv` fetches any CPython
+# without root, which is what lets this script cover the whole matrix rather than
+# just the system version. It is resolved in this order:
+#   1. python<ver> on PATH (a distro or pyenv install)
+#   2. `uv python find <ver>`  — already fetched
+#   3. `uv python install <ver>` — fetch it now, once, then reuse
+# If a version cannot be obtained at all, the run FAILS rather than passing with a
+# warning: a green light that silently skipped a third of the matrix is worse than
+# no green light, and that is exactly what shipped the 3.12/3.14 gap.
 set -uo pipefail
 
 APP_DIR="$(cd "$(dirname "$0")" && pwd)"
-cd "$APP_DIR"
+cd "$APP_DIR" || exit 1
 
 # Keep in lockstep with ci.yml's matrix.python-version.
 CI_PYTHONS="3.12 3.13 3.14"
@@ -31,7 +39,26 @@ DEV_TOOLS=("ruff~=0.16.1" "mypy~=2.1")
 
 VENV_ROOT="$APP_DIR/.ci-venvs"
 failures=0
-missing=""
+unobtainable=""
+
+# uv installs to ~/.local/bin, which isn't always on a non-login shell's PATH.
+export PATH="$HOME/.local/bin:$PATH"
+
+resolve_python() {  # resolve_python <version> -> prints an interpreter path, or nothing
+    local ver="$1" p
+    if command -v "python${ver}" >/dev/null 2>&1; then
+        command -v "python${ver}"; return 0
+    fi
+    command -v uv >/dev/null 2>&1 || return 1
+    if p=$(uv python find "$ver" 2>/dev/null) && [ -x "$p" ]; then
+        echo "$p"; return 0
+    fi
+    # Not present yet — fetch it once (a ~35 MB download), then re-resolve.
+    echo "    fetching CPython ${ver} via uv (one-time)..." >&2
+    uv python install "$ver" >&2 2>/dev/null || return 1
+    p=$(uv python find "$ver" 2>/dev/null) && [ -x "$p" ] && { echo "$p"; return 0; }
+    return 1
+}
 
 run_step() {  # run_step "<label>" <command...>
     local label="$1"; shift
@@ -46,12 +73,12 @@ run_step() {  # run_step "<label>" <command...>
 }
 
 for ver in $CI_PYTHONS; do
-    py="python${ver}"
-    if ! command -v "$py" >/dev/null 2>&1; then
-        echo "!!! WARNING: $py is not installed — cannot mirror CI's Python ${ver} job."
-        echo "    Install it (e.g. 'sudo zypper install python${ver//./}') to fully match CI."
+    if ! py=$(resolve_python "$ver"); then
+        echo "!!! ERROR: cannot obtain Python ${ver} — CI's ${ver} job is NOT mirrored."
+        echo "    Install uv (https://docs.astral.sh/uv/) so this script can fetch it,"
+        echo "    or install python${ver} yourself."
         echo
-        missing="$missing $ver"
+        unobtainable="$unobtainable $ver"
         continue
     fi
 
@@ -73,9 +100,9 @@ if [ "$failures" -ne 0 ]; then
     echo "CI FAILED: $failures step(s) failed — fix before pushing."
     exit 1
 fi
-if [ -n "$missing" ]; then
-    echo "CI PASSED for installed versions, but these CI matrix Python(s) are NOT installed"
-    echo "locally:$missing — the local run does not fully mirror CI until they are installed."
-    exit 0
+if [ -n "$unobtainable" ]; then
+    echo "CI INCOMPLETE: could not obtain Python(s):$unobtainable — those matrix jobs did"
+    echo "NOT run, so this is not a mirror of CI. Treat as a failure, not a pass."
+    exit 1
 fi
 echo "CI PASSED: all checks green across the full Python matrix ($CI_PYTHONS)."

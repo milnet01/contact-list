@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+# Run local-ci.sh before every push, so CI failures are caught here rather than
+# minutes later in a GitHub email.
+#
+# Enable once per clone (it is NOT automatic — git ignores .githooks by default):
+#     git config core.hooksPath .githooks
+#
+# Skipped for documentation-only pushes: if every changed file is a *.md or lives
+# under docs/, no code can have broken, so the ~2 minute matrix run is wasted time.
+# Anything else — including a workflow, a script, or pyproject.toml — runs it.
+#
+# Escape hatch for a genuine emergency:  SKIP_LOCAL_CI=1 git push
+# Use it knowing you are pushing untested code; the next CI email is on you.
+set -uo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+Z40="0000000000000000000000000000000000000000"
+
+if [ "${SKIP_LOCAL_CI:-}" = "1" ]; then
+    echo "pre-push: SKIP_LOCAL_CI=1 — skipping local CI. Pushing untested."
+    exit 0
+fi
+
+# Collect every file changed by the commits being pushed. git feeds the hook
+# "<local ref> <local sha> <remote ref> <remote sha>" lines on stdin.
+changed=""
+while read -r _local_ref local_sha _remote_ref remote_sha; do
+    [ "$local_sha" = "$Z40" ] && continue          # branch deletion — nothing to check
+    if [ "$remote_sha" = "$Z40" ]; then
+        # New branch: diff against origin/HEAD's tip if we know it, else the
+        # commit's own parent. Falls back to running CI when neither resolves.
+        base=$(git merge-base "$local_sha" origin/main 2>/dev/null) || base=""
+    else
+        base="$remote_sha"
+    fi
+    if [ -z "$base" ]; then
+        changed="RUN_ANYWAY"
+        break
+    fi
+    changed="$changed$(git diff --name-only "$base" "$local_sha" 2>/dev/null)"$'\n'
+done
+
+# Nothing being pushed (e.g. already up to date) — let git get on with it.
+if [ -z "${changed//[[:space:]]/}" ]; then
+    exit 0
+fi
+
+if [ "$changed" != "RUN_ANYWAY" ]; then
+    # Docs-only? Every non-empty line must be a .md file or live under docs/.
+    code_files=$(printf '%s' "$changed" | grep -v '^[[:space:]]*$' \
+                 | grep -vE '(\.md$|^docs/)' || true)
+    if [ -z "$code_files" ]; then
+        echo "pre-push: documentation-only push — skipping local CI."
+        exit 0
+    fi
+    echo "pre-push: code changed, running local CI:"
+    printf '%s\n' "$code_files" | sed 's/^/    /' | head -20
+fi
+
+echo
+if "$REPO_ROOT/local-ci.sh"; then
+    echo "pre-push: local CI green — pushing."
+    exit 0
+fi
+
+cat >&2 <<'MSG'
+
+pre-push: LOCAL CI FAILED — push aborted.
+
+Fix the failures above and try again. If you genuinely must push anyway:
+    SKIP_LOCAL_CI=1 git push
+MSG
+exit 1
