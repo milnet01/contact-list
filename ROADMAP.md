@@ -439,6 +439,7 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   **Layman:** The taskbar icon only exists in the version built by the release robot. Run the app from the source folder, or build it yourself, and it silently starts with no icon at all.
   Kind: fix.
   Source: in-session-2026-08-06 (CL-0056 hand-verification; root cause corrected by the user 2026-08-06 — the earlier diagnosis wrongly named packaging/build-linux.sh).
+  Progress (2026-08-06): specced as docs/specs/2026-08-06-tray-delivery-and-page-opening.md (umbrella with CL-0060), accepted after /cold-eyes converged by cap — 3 loops, 2 cold lanes each, 60 findings verified and closed. User chose option (a): --system-site-packages in run.sh (with a one-time rebuild of the existing gi-less venv) plus a loud GI pre-flight in packaging/build-linux.sh, and the distro prerequisite documented. The build script creates no venv of its own, so the flag lands only in run.sh. Prerequisite packages installed on this machine and the approach proven end to end: a --system-site-packages venv running launcher.py registered a real tray item on the session bus (Id 'contact-list', Status Active). Note for the implementer: the pre-flight must probe Gtk 3.0, Gio 2.0 AND DBus 1.0 plus either indicator typelib — DBus is what commit 3c817fc already fixed once — and release.yml's apt list must gain gir1.2-gtk-3.0 and the freedesktop typelib in the same commit, or the new gate can turn a release red.
 
 - 📋 [CL-0058] **Spec INV-6 cites app.py:211 for the loopback bind; the line has moved.**
   docs/specs/2026-07-10-standalone-launchers-design.md INV-6 says
@@ -465,6 +466,7 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   **Layman:** When an external tool starts the app, a browser window pops up. Whether that should happen is still undecided.
   Kind: investigate.
   Source: in-session-2026-08-06 (user's open decision, recorded before context clear).
+  Resolved (2026-08-06): decided by the user and specced in docs/specs/2026-08-06-tray-delivery-and-page-opening.md. The site is NOT opened automatically — "I don't want the site automatically opened. That is why I wanted the tray icon or LWSM to be able to open the page." The startup auto-open (_open_when_ready + _OPEN_DEADLINE_S) is deleted outright. Two narrow exceptions survive, both user-initiated or last-resort: the single-instance hand-off still opens on a second launch (the user confirmed one instance at a time), and a start whose TRAY FAILS opens the browser, because the review found that without it a frozen windowed build on a tray-less desktop (GNOME without an extension) would have no icon, no tab and no visible URL — _emit no-ops when console=False — leaving a running server the user cannot reach. Crucially this needs NO new signal: the managed path returns before the tray block, so LWSM_MANAGED still gates only the tray icon and nothing was built on an unauthenticated variable. Locked by INV-4, INV-8 and INV-9.
 
 ## Efficiency & Refactoring
 

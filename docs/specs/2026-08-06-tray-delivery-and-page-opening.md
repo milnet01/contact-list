@@ -1,6 +1,9 @@
 # Deliver the tray icon everywhere, and stop opening the page by itself (CL-0057, CL-0060)
 
-**Status:** spec draft (2026-08-06).
+**Status:** accepted (2026-08-06) — `/cold-eyes` converged by cap after 3 loops,
+2 independent cold lanes per loop, 60 findings verified and 60 closed (59 fixed,
+1 escalated to the user as a design decision and answered: decision 6). No verified
+finding remains. Ready to implement.
 **Kind:** fix.
 **Source:** ROADMAP CL-0057 (in-session finding, root cause corrected by the user
 2026-08-06) and CL-0060 (user decision, 2026-08-06).
