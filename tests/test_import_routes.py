@@ -149,6 +149,27 @@ class TestVcardImportExport:
         assert b'FN:Alice' in resp.data
         assert b'X-CL;X-LABEL=Nickname:Al' in resp.data
 
+    def test_import_reports_skipped_cards_with_no_usable_name(self, client, app):
+        # Why this exists: the summary used to hardcode skipped=0, warnings=[],
+        # so a card vcard.parse silently dropped (no usable name) vanished from
+        # the count entirely -- a 200-card file where 150 were refused rendered
+        # as an unqualified "50 created".
+        token = _csrf(client)
+        vcf = (
+            b'BEGIN:VCARD\nVERSION:3.0\nFN:Zara\nEMAIL:z@x.com\nEND:VCARD\n'
+            b'BEGIN:VCARD\nVERSION:3.0\nEMAIL:noname@x.com\nEND:VCARD\n'
+        )
+        data = _upload(vcf, 'contacts.vcf')
+        data['_csrf_token'] = token
+        resp = client.post('/contacts/import', data=data,
+                           content_type='multipart/form-data', follow_redirects=True)
+        assert resp.status_code == 200
+        assert b'Skipped' in resp.data
+        assert b'no usable name' in resp.data
+        with app.app_context():
+            contacts, total = models.list_contacts(get_db())
+            assert total == 1 and contacts[0]['name'] == 'Zara'
+
 
 class TestMerge:
     def _two_dupes(self, app):
