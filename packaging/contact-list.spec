@@ -42,8 +42,32 @@ hiddenimports = [
 # These load submodules dynamically and/or ship package data the import scan
 # misses; collect_all gathers modules + data + dylibs. Finalise empirically:
 # if a frozen run raises ModuleNotFoundError / missing-data, add the package here.
+# `google.oauth2` is listed for the same reason as `google.auth`, and its
+# absence was a SHIPPED defect, not a build-log annoyance: the frozen /sync page
+# raised ModuleNotFoundError: No module named 'google.oauth2' and returned 500,
+# so Google sync did not work in a locally built AppImage at all.
+#
+# Cause (measured 2026-09-07). `google` is a namespace package. run.sh builds
+# its venv with --system-site-packages, which CL-0057 requires so the tray can
+# import the system PyGObject -- and the distro ships
+# /usr/lib64/.../site-packages/google as a REGULAR package, an __init__.py
+# calling pkgutil.extend_path. Under PEP 420 a regular package anywhere on
+# sys.path wins outright over the namespace portions on earlier entries, so
+# `google` resolves to the distro copy, which has no `auth` or `oauth2`
+# subpackage. PyInstaller's scan then cannot see either, and google_sync.py
+# imports google.oauth2.credentials INSIDE its functions, so nothing else
+# dragged it in.
+#
+# It is a path-RESOLUTION problem, not a path-ORDER one: `pathex` does not fix
+# it (measured -- still sixty errors). Dropping --system-site-packages would fix
+# it and reintroduce CL-0057, shipping a tray-less AppImage. Naming the
+# subpackages explicitly is what works.
+#
+# CL-0061 tracks the sixty "Hidden import not found" lines this still logs. Do
+# not silence them by removing these entries: that produces a bundle with no
+# _internal/google/ directory at all.
 for _pkg in ('googleapiclient', 'google_auth_oauthlib', 'google.auth',
-             'google_auth_httplib2', 'phonenumbers'):
+             'google.oauth2', 'google_auth_httplib2', 'phonenumbers'):
     _d, _b, _h = collect_all(_pkg)
     datas += _d
     binaries += _b
