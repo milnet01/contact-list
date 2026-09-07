@@ -60,7 +60,12 @@ explicitly because the sync code imports it directly (`google.oauth2` /
 dependency and does not affect the running app.
 
 PyInstaller, appimagetool, and the OS icon tools (CL-0049, §15) are build-time
-only, not runtime deps; the 8-runtime budget is unaffected.
+only, not runtime deps; the 8-runtime budget is unaffected. `tzdata` joins them
+on the **Windows** build alone: Windows ships no system zone database, so
+CPython's `zoneinfo` falls back to that package, and without it the frozen
+`.exe` renders the Settings timezone control with no options and every timestamp
+as a raw ISO string. Linux and macOS take their zone data from the OS and never
+install it.
 
 ### Dependency Versioning Policy
 
@@ -111,6 +116,11 @@ for r in actions/checkout actions/setup-python actions/upload-artifact \
          actions/download-artifact softprops/action-gh-release; do
   echo "$r $(gh api "repos/$r/releases/latest" -q .tag_name)"
 done
+# softprops/action-gh-release is SHA-pinned in release.yml, so comparing the
+# tag above is not enough -- resolve that tag to its commit and compare THAT:
+#   ref=$(gh api repos/softprops/action-gh-release/git/ref/tags/<tag> -q .object.sha)
+#   gh api repos/softprops/action-gh-release/git/tags/$ref -q .object.sha
+# (the first call returns an annotated tag object; the second dereferences it)
 
 # 4. The Python runtime itself — the CI matrix in ci.yml must include the
 #    current stable release, and local-ci.sh's CI_PYTHONS must match it.

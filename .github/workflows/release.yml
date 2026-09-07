@@ -12,7 +12,33 @@ permissions:
   contents: read
 
 jobs:
+  # config.py names packaging/check-version-drift.sh as the thing that enforces
+  # version lockstep, and until now NOTHING committed invoked it -- its only
+  # caller was .claude/bump.json, which .gitignore excludes, so the script was
+  # absent from every clone and the enforcement existed on one machine. Running
+  # it here, ahead of the builds, is what makes the claim true: a v* tag whose
+  # APP_VERSION disagrees with the top CHANGELOG heading now fails before any
+  # binary is produced, instead of publishing a mislabelled release.
+  version-lockstep:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Version lockstep (config.py vs CHANGELOG)
+        run: bash packaging/check-version-drift.sh
+      - name: Tag matches APP_VERSION
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          code=$(grep -oE "APP_VERSION = '([0-9]+\.[0-9]+\.[0-9]+)'" config.py \
+                 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+          if [ "$tag" != "$code" ]; then
+            echo "drift: tag v$tag != config.py APP_VERSION $code" >&2
+            exit 1
+          fi
+          echo "tag v$tag matches APP_VERSION $code"
+
   build-linux:
+    needs: version-lockstep
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -43,13 +69,17 @@ jobs:
           path: Contact-List-x86_64.AppImage
 
   build-windows:
+    needs: version-lockstep
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
-      - run: pip install -r requirements.txt pyinstaller
+      # tzdata supplies the zone database Windows does not ship; see the note in
+      # packaging/contact-list.spec. Build-time only, so it is not a runtime
+      # dependency and does not count against DESIGN.md §3's 8-package budget.
+      - run: pip install -r requirements.txt pyinstaller tzdata
       - run: bash packaging/make-icons.sh
       - run: pyinstaller --noconfirm packaging/contact-list.spec
       - uses: actions/upload-artifact@v7
@@ -58,6 +88,7 @@ jobs:
           path: dist/Contact-List.exe
 
   build-macos:
+    needs: version-lockstep
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v7
@@ -74,12 +105,25 @@ jobs:
   release:
     needs: [build-linux, build-windows, build-macos]
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
+    # Both halves are load-bearing. The ref test alone does not check for `v`,
+    # and it is satisfied by a workflow_dispatch run launched against a tag ref
+    # -- the Actions UI ref picker offers tags -- so a manual "rehearsal" on
+    # v1.1.0 would have re-published that release, which the header comment
+    # above says can never happen.
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: write
     steps:
       - uses: actions/download-artifact@v8
-      - uses: softprops/action-gh-release@v3
+      # SHA-pinned, unlike the actions/* above. This is the one third-party
+      # action in the tree: a mutable tag here can be moved by someone outside
+      # GitHub, and it runs in the job holding contents: write. The GitHub-owned
+      # actions stay on major tags so they keep receiving fixes, which is the
+      # trade DESIGN.md §3's "dependencies track latest" asks for. Bump this
+      # deliberately: resolve the tag's commit with
+      #   gh api repos/softprops/action-gh-release/git/ref/tags/<tag>
+      # then dereference the tag object it returns.
+      - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64  # v3.0.3
         with:
           files: |
             linux/Contact-List-x86_64.AppImage

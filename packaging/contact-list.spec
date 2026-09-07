@@ -29,6 +29,13 @@ binaries = []
 # collect each namespace's typelib (+ libs). Harmless on Windows/macOS (no gi).
 hiddenimports = [
     'gi.repository.DBus',
+    # Both indicator namespaces, because build-linux.sh's pre-flight accepts
+    # EITHER: it probes classic AppIndicator3 first and falls back to Ayatana.
+    # Listing only Ayatana meant that on a host carrying the classic typelib the
+    # probe passed, PyInstaller then could not resolve the hidden import, logged
+    # a warning and exited 0 -- shipping a tray-less AppImage, which is the CL-0057
+    # failure that pre-flight exists to prevent.
+    'gi.repository.AppIndicator3',
     'gi.repository.AyatanaAppIndicator3',
 ]
 
@@ -38,6 +45,19 @@ hiddenimports = [
 for _pkg in ('googleapiclient', 'google_auth_oauthlib', 'google.auth',
              'google_auth_httplib2', 'phonenumbers'):
     _d, _b, _h = collect_all(_pkg)
+    datas += _d
+    binaries += _b
+    hiddenimports += _h
+
+# Windows has no system tz database, so CPython's zoneinfo falls back to the
+# `tzdata` package. Without it `available_timezones()` returns an empty set on
+# the shipped .exe: the Settings timezone control renders with no options, every
+# timezone save fails, and ZoneInfo() raises -- which app.py swallows, so every
+# timestamp in the app degrades to a raw ISO string. Build-time only (§3 keeps
+# build deps out of the 8-package runtime budget), and only where it is needed;
+# Linux and macOS take their zone data from the OS.
+if sys.platform == 'win32':
+    _d, _b, _h = collect_all('tzdata')
     datas += _d
     binaries += _b
     hiddenimports += _h
