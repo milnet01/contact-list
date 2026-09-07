@@ -2,6 +2,7 @@ import logging
 import os
 import secrets
 import sys
+import tempfile
 
 # Single source of truth for the app version. Shown in the footer and bumped by
 # the /bump recipe (.claude/bump.json). The git release tag (v<APP_VERSION>) and
@@ -52,13 +53,49 @@ def _load_or_create_secret_key() -> str:
             return stored
     except FileNotFoundError:
         pass
+    except (OSError, UnicodeDecodeError):
+        # Catching FileNotFoundError alone let a PermissionError, an
+        # IsADirectoryError or a decode error escape -- from a call made in the
+        # Config class body, i.e. at IMPORT, before launcher.py installs file
+        # logging, on a build whose stdout is None. The app then failed to start
+        # with no message on any surface (CL-0069). An unreadable key file is
+        # the same situation as an absent one: mint a new key below.
+        _log.warning('Could not read the stored secret key; generating a new one')
 
     key = secrets.token_hex(32)
     try:
         ensure_private_dir(_CONFIG_DIR)
-        fd = os.open(key_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(fd, 'w') as f:
-            f.write(key)
+        # O_EXCL plus a temp-and-rename, because the previous read-then-truncate
+        # had two failure modes on a fresh install (CL-0069). Two copies starting
+        # at once each minted a different key and each O_TRUNC'd the file, so the
+        # loser signed cookies with a key that was in no file and 403'd every
+        # POST -- the exact failure persisting the key was meant to fix. And a
+        # crash between truncate and write left a zero-byte file, which the read
+        # above treats as absent, silently rotating the key on the next start.
+        #
+        # Whoever wins the O_EXCL race owns the file; everyone else re-reads it
+        # and uses the winner's key, so all workers agree.
+        fd, tmp = tempfile.mkstemp(dir=_CONFIG_DIR, prefix='secret_key.', suffix='.tmp')
+        try:
+            os.fchmod(fd, 0o600)
+            with os.fdopen(fd, 'w') as f:
+                f.write(key)
+            try:
+                os.link(tmp, key_path)
+            except FileExistsError:
+                # Another process got there first. Its key is the real one.
+                with open(key_path, encoding='utf-8') as f:
+                    winner = f.read().strip()
+                if winner:
+                    return winner
+                # Zero-byte file from an older crash: replace it outright.
+                os.replace(tmp, key_path)
+                return key
+        finally:
+            try:
+                os.remove(tmp)
+            except FileNotFoundError:
+                pass
     except OSError:
         # Can't persist (e.g. read-only home dir) — fall back to an ephemeral
         # key so the app still starts; sessions just won't survive a restart.
