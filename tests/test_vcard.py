@@ -115,3 +115,45 @@ class TestParse:
         text = 'BEGIN:VCARD\nVERSION:3.0\nFN:Very Long\n NoteName\nEND:VCARD\n'
         card = _one(text)
         assert card['name'] == 'Very LongNoteName'
+
+
+class TestCRLFNotesRoundTrip:
+    # Why this exists: _escape used to leave a bare \r unfolded, so a browser's
+    # <textarea> (which normalises to CRLF) truncated every multi-line note to
+    # its first line on export -> re-import, and a \r inside imported data could
+    # splice fabricated cards into the exported document (INV-2 of
+    # docs/specs/2026-07-01-import-export-merge-design.md).
+    def test_crlf_notes_survive_roundtrip(self):
+        original = {'type': 'individual', 'name': 'Rick', 'email': None, 'phone': None,
+                    'notes': 'line one\r\nline two\r\nline three', 'custom_fields': []}
+        card = _one(vcard.emit([original]))
+        assert card['notes'].split('\n') == ['line one', 'line two', 'line three']
+
+    def test_cr_in_notes_cannot_inject_a_second_card(self):
+        # A bare \r followed by fabricated BEGIN/END:VCARD lines must not act as
+        # a line terminator once folded to \n and escaped -- before the fix this
+        # produced two cards, the second named "Fake Person".
+        original = {
+            'type': 'individual', 'name': 'Evil', 'email': None, 'phone': None,
+            'notes': 'x\rEND:VCARD\rBEGIN:VCARD\rVERSION:3.0\rFN:Fake Person\rEND:VCARD',
+            'custom_fields': [],
+        }
+        cards = vcard.parse(vcard.emit([original]))
+        assert len(cards) == 1
+        assert cards[0]['name'] == 'Evil'
+
+
+class TestGroupPrefix:
+    # Why this exists: RFC 6350 §3.3 lets a content line carry a "group." prefix
+    # on the property name (item1.EMAIL, item2.TEL). Google Contacts and Apple
+    # both emit this for custom-labelled entries; without stripping it,
+    # "ITEM1.EMAIL" matched no known property and the value was dropped silently.
+    def test_grouped_email_and_phone_are_parsed(self):
+        text = (
+            'BEGIN:VCARD\nVERSION:3.0\nFN:Grouped Gail\n'
+            'item1.EMAIL;TYPE=INTERNET:ann@work.com\n'
+            'item2.TEL:+15551234\nEND:VCARD\n'
+        )
+        card = _one(text)
+        assert card['email'] == 'ann@work.com'
+        assert card['phone'] == '+15551234'

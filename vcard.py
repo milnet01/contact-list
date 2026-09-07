@@ -13,9 +13,20 @@ from importer import split_multivalue
 
 
 def _escape(value: str) -> str:
-    """Escape a property value per RFC 6350/2426 (backslash first)."""
+    """Escape a property value per RFC 6350/2426 (backslash first).
+
+    Carriage returns are folded into newlines BEFORE the newline escape, so
+    every line break leaves as a literal ``\\n``. A bare CR would otherwise be
+    emitted raw and act as a line terminator in the serialised card, which cost
+    two things: a browser normalises a <textarea> to CRLF, so every multi-line
+    note lost everything after its first line on a round-trip (INV-2 of
+    2026-07-01-import-export-merge-design); and a CR inside imported data could
+    inject whole fabricated cards into an exported file.
+    """
     return (
         value.replace('\\', '\\\\')
+        .replace('\r\n', '\n')
+        .replace('\r', '\n')
         .replace('\n', '\\n')
         .replace(',', '\\,')
         .replace(';', '\\;')
@@ -150,7 +161,14 @@ def parse(text: str) -> list[dict]:
 
         head, value = line.split(':', 1)
         segments = head.split(';')
-        prop = segments[0].upper()
+        # RFC 6350 §3.3 allows a group prefix on a content line:
+        # [group "."] name *(";" param) ":" value. Google Contacts and Apple
+        # both emit grouped properties for custom-labelled entries
+        # (item1.EMAIL;TYPE=INTERNET:..., item2.TEL:...). Without the strip,
+        # "ITEM1.EMAIL" matched no branch below and the property was dropped
+        # silently -- losing exactly the emails and phones that carried a
+        # custom label from a real phone or Google export.
+        prop = segments[0].rsplit('.', 1)[-1].upper()
         params = segments[1:]
 
         if prop == 'FN':
