@@ -18,6 +18,7 @@ from __future__ import annotations
 import logging
 import logging.handlers
 import os
+import signal
 import socket
 import sys
 import threading
@@ -97,10 +98,20 @@ def main() -> int:
     if getattr(sys, 'frozen', False):
         _install_file_logging()
 
-    # On Linux, pin pystray to the appindicator backend (SNI over DBus) BEFORE
-    # tray.py imports pystray (spec §4.2). setdefault honours an explicit user
-    # PYSTRAY_BACKEND override.
-    os.environ.setdefault('PYSTRAY_BACKEND', 'appindicator')
+    # On Linux ONLY, pin pystray to the appindicator backend (SNI over DBus)
+    # BEFORE tray.py imports pystray (spec §4.2). setdefault honours an explicit
+    # user PYSTRAY_BACKEND override.
+    #
+    # The platform guard is load-bearing, not tidiness. pystray honours this
+    # variable by importing pystray._<name> unconditionally and does NOT fall
+    # back when a named backend fails to import; _appindicator opens with
+    # `import gi`, which does not exist on Windows or macOS. Unguarded, this
+    # line made run_tray raise ImportError on both, the tray never appeared
+    # (against DESIGN.md §3, which names their native backends) and the
+    # except-branch below then opened a browser tab on every launch — the very
+    # thing CL-0060 removed.
+    if sys.platform.startswith('linux'):
+        os.environ.setdefault('PYSTRAY_BACKEND', 'appindicator')
 
     from app import create_app
     from werkzeug.serving import make_server
@@ -120,8 +131,35 @@ def main() -> int:
     # on the path a process manager runs.
     _emit(f'Listening on http://127.0.0.1:{port}')
 
-    server_thread = threading.Thread(target=server.serve_forever)
+    def _serve() -> None:
+        # Nothing else observes this thread. Without the guard a crash inside
+        # serve_forever ends the thread silently — threading.excepthook writes to
+        # a sys.stderr that is None on a frozen windowed build — leaving a live
+        # tray icon in front of a dead server.
+        try:
+            server.serve_forever()
+        except Exception:
+            logging.exception('server thread died; shutting down')
+
+    server_thread = threading.Thread(target=_serve)
     server_thread.start()
+
+    # The thread is non-daemon and only the tray's Quit calls server.shutdown(),
+    # so on every other exit path a Ctrl-C unwinds the main thread into
+    # server_thread.join() while serve_forever is still running -- and the
+    # interpreter then joins that same non-daemon thread at shutdown. The
+    # process hangs, still serving, with no way out but kill. Handling the
+    # signals gives serve_forever the shutdown it is waiting for.
+    def _stop(_signum: int, _frame: object) -> None:
+        server.shutdown()
+
+    for _sig in (signal.SIGINT, signal.SIGTERM):
+        try:
+            signal.signal(_sig, _stop)
+        except ValueError:
+            # Not on the main thread (or the signal is unavailable on this
+            # platform) -- nothing to install, and no worse than before.
+            pass
 
     if os.environ.get('LWSM_MANAGED') == '1':
         # Presentation hint only: a managed run shows no tray icon and serves

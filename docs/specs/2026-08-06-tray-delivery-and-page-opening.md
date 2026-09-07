@@ -56,7 +56,12 @@ user get to the page?*
 is missing is the library stack underneath it. `pystray` resolves to its
 `pystray._appindicator` backend — `launcher.py::main` *defaults* it there with
 `os.environ.setdefault('PYSTRAY_BACKEND', 'appindicator')` before `tray` is
-imported, which an explicit user `PYSTRAY_BACKEND` still overrides. That backend
+imported, which an explicit user `PYSTRAY_BACKEND` still overrides. That
+default is applied **on Linux only**, under a `sys.platform` guard: pystray
+honours the variable by importing `pystray._<name>` unconditionally and does not
+fall back when a named backend fails, and `_appindicator` opens with `import
+gi`, so an unguarded default broke the tray outright on Windows and macOS — the
+two platforms §9 relies on picking a native backend for themselves. That backend
 imports the `gi` module — PyGObject — which ships as a **distro package with no
 binary wheel**: `pip install PyGObject` builds from source and needs
 `libgirepository` development headers, `pkg-config` and a C compiler. (The symptom

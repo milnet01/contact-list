@@ -122,7 +122,9 @@ Plasma's native SNI host via KSNI, and is pystray's own preferred backend
 (we do not use a menu default action).
 
 **Decision:** default `PYSTRAY_BACKEND` to `appindicator` before importing pystray
-(via `setdefault`, §5), so pystray's auto-selection can never *silently* fall
+(via `setdefault`, §5, **on Linux only** — the variable names a backend pystray
+imports unconditionally, and `_appindicator` needs `gi`, so the default must not
+reach Windows or macOS), so pystray's auto-selection can never *silently* fall
 through to the menuless `xorg` backend — the only way to reach `xorg` is an
 explicit user `PYSTRAY_BACKEND=xorg`, their own informed choice. If the
 appindicator backend fails to load, we fall back to **headless** (§7) — never to a

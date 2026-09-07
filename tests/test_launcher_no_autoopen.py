@@ -17,6 +17,8 @@ to race and nothing to wait for.
 """
 from __future__ import annotations
 
+import os
+import sys
 from typing import Any
 
 import pytest
@@ -98,3 +100,42 @@ def test_managed_start_opens_no_browser(monkeypatch: pytest.MonkeyPatch) -> None
 
     assert launcher.main() == 0
     assert opened == []
+
+
+class TestPystrayBackendGuard:
+    """PYSTRAY_BACKEND=appindicator is pinned on Linux only.
+
+    Why this exists: pystray imports pystray._<name> unconditionally for a named
+    backend and does NOT fall back when that import fails; _appindicator opens
+    with `import gi`, which does not exist on Windows or macOS. Setting the
+    variable unconditionally made run_tray raise ImportError on both platforms,
+    so the tray never appeared and the except-branch fallback opened a browser
+    tab on every launch -- the very thing CL-0060 removed.
+    """
+
+    def _run(self, monkeypatch: pytest.MonkeyPatch, platform: str) -> None:
+        monkeypatch.delenv('PORT', raising=False)
+        monkeypatch.delenv('LWSM_MANAGED', raising=False)
+        # Snapshotting the (absent) key here means monkeypatch's teardown
+        # deletes it again afterwards, however main() sets it -- the test must
+        # not leak PYSTRAY_BACKEND into the environment of other tests.
+        monkeypatch.delenv('PYSTRAY_BACKEND', raising=False)
+        monkeypatch.setattr(sys, 'platform', platform)
+        opened: list[str] = []
+        _stub_start(monkeypatch, opened)
+        # A working tray that returns immediately, like the user picking Quit.
+        monkeypatch.setattr(tray, 'run_tray', lambda server, port: None)
+
+        assert launcher.main() == 0
+
+    def test_windows_does_not_set_backend(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._run(monkeypatch, 'win32')
+        assert 'PYSTRAY_BACKEND' not in os.environ
+
+    def test_macos_does_not_set_backend(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._run(monkeypatch, 'darwin')
+        assert 'PYSTRAY_BACKEND' not in os.environ
+
+    def test_linux_sets_backend(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._run(monkeypatch, 'linux')
+        assert os.environ.get('PYSTRAY_BACKEND') == 'appindicator'
