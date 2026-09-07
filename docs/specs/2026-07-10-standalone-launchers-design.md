@@ -103,8 +103,8 @@ all of those are created **lazily on first use**, so on a fresh frozen install t
 dir may not exist yet when the DB is first opened there. `_load_or_create_secret_key`
 creates it only as a side effect of *persisting* a key (config.py:51), and that
 path is skipped when a `SECRET_KEY` env var is set (config.py:37); `init_db`
-(app.py:35) opens `contacts.db` **before** `create_app`'s
-`ensure_private_dir(PHOTOS_DIR)` (app.py:47). Therefore the frozen launcher **must
+(`create_app`'s `init_db()` call) opens `contacts.db` **before** `create_app`'s
+`ensure_private_dir(PHOTOS_DIR)`. Therefore the frozen launcher **must
 `ensure_private_dir(_CONFIG_DIR)` before the DB is opened** — `_install_file_logging`
 (§3 point 2) does exactly that, since it also writes into this dir before
 `create_app`→`init_db`. Putting `contacts.db` there means
@@ -134,7 +134,7 @@ this so the cross-OS security stance is explicit, not assumed.
 Three read-only resource trees are loaded relative to the source today and must be
 (a) packed into the bundle and (b) resolved from `_MEIPASS` at runtime:
 
-- **`templates/`** and **`static/`** — Flask's `Flask(__name__)` (app.py:17)
+- **`templates/`** and **`static/`** — Flask's `Flask(__name__)` in `create_app`
   resolves these relative to the module's `root_path`, which is wrong inside a
   frozen binary.
 - **`migrations/*.sql`** — `db.py:66` reads
@@ -265,7 +265,7 @@ source. `launcher.py` responsibilities:
    startup failure is diagnosable. Because `_install_file_logging()` runs **before**
    `create_app()` (so even an `init_db()` failure inside `create_app` is captured),
    it sets the root logger's level and formatter **itself** — it does **not** rely
-   on `app.py`'s `logging.basicConfig` (app.py:25-28), which becomes a no-op once
+   on `app.py`'s `logging.basicConfig`, which becomes a no-op once
    our handler is attached (`basicConfig` does nothing when the root logger already
    has a handler). The log is opened append-mode with no rotation — acceptable for
    a single-user tool (it grows slowly and can be deleted freely). From source
@@ -288,7 +288,8 @@ source. `launcher.py` responsibilities:
    checks `contact-list.log` (frozen) — a rare degraded case, runtime-only, not
    unit-tested. The main thread runs
    `app.run(host='127.0.0.1', port=PORT, debug=False)` (blocking) — the same bind
-   address and port as `app.py:211` (`Config.PORT` is the value behind
+   address and port as `create_app`'s own `app.run(host='127.0.0.1', …)` call
+   (`Config.PORT` is the value behind
    `app.config['PORT']`). Opening the browser from Python replaces `run.sh`'s
    `xdg-open` line and works on all three OSes via the stdlib `webbrowser` module.
 
@@ -630,7 +631,7 @@ the frozen branch selection without actually freezing):
   a recorder (so it returns instead of blocking); assert `run` is called once with
   `host='127.0.0.1'`. Any launcher test that lets the real `create_app` run must
   first point `CONTACT_LIST_DB` at a temp file and isolate the config dir, exactly
-  as the existing suite does via `test_config` (app.py:19-22) — the launcher path
+  as the existing suite does via `create_app`'s `test_config` argument — the launcher path
   passes no `test_config`, so tests must inject isolation themselves. Note that
   merely *importing* `config` runs `Config.SECRET_KEY = _load_or_create_secret_key()`
   (config.py), which writes a `secret_key` into the real `~/.config/contact-list`
@@ -702,7 +703,8 @@ at minimum that the job is green) **before** pushing a real `v*` tag.
   DESIGN.md §3 runtime budget (<8 packages) is intact. *(Structural — verified by
   `pyinstaller` being absent from `requirements.txt`; not unit-tested.)*
 - **INV-6** The bundled app binds `127.0.0.1` only (the launcher's `app.run`
-  passes `host='127.0.0.1'`, matching `app.py:211`); packaging adds no network
+  passes `host='127.0.0.1'`, matching `app.py`'s own `app.run(host='127.0.0.1', …)`);
+  packaging adds no network
   exposure. *(Testable: monkeypatch `flask.Flask.run` with a recorder and assert
   the launcher calls it with `host='127.0.0.1'` — the existing suite exercises
   `create_app` but never `app.run`, so the launcher's bind needs its own

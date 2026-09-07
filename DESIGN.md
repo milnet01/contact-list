@@ -547,19 +547,44 @@ Every page is built to one standard so the app reads as one product. Full spec:
 
 ## 14. File Size Budget
 
-| Component | Max Size |
-|-----------|----------|
-| Python source — shipped app `.py` (excludes `tests/`) | < 100 KB total (soft) |
-| CSS | < 15 KB |
-| JavaScript | < 10 KB |
-| HTML templates (all) | < 30 KB total |
-| SQLite DB (empty) | < 20 KB |
-| Total pip install | < 20 MB |
+**Every figure here is a soft target — guidance, not a gate.** Nothing checks
+them: no test asserts one and no CI step reads this table. Say so plainly,
+because the previous version read as a live gate while **every single row was
+breached**, several by more than tenfold (CL-0044). A budget nothing enforces
+and everything exceeds is not a budget; it is a stale measurement that
+misleads the next reader into thinking a limit is being held.
 
-The Python-source figure is a **soft target** — guidance, not a hard gate — and
-counts shipped application modules only, not `tests/`. It was raised from the
-original < 50 KB when import/export/merge (CL-0022/0023/0024) landed (shipped
-app source is ~85 KB after those features); see
+| Component | Guide | Measured 2026-09-07 |
+|-----------|-------|---------------------|
+| Python source — shipped app `.py` (excludes `tests/`) | ~200 KB | 169 KB |
+| CSS | ~40 KB | 38 KB |
+| JavaScript | ~30 KB | 26 KB |
+| HTML templates (all) | ~60 KB | 57 KB |
+
+Re-derive rather than trusting the right-hand column — it is a dated
+measurement, not a claim about now:
+
+```bash
+git ls-files '*.py' | grep -v '^tests/' | xargs wc -c | tail -1   # app source
+wc -c static/style.css static/app.js                              # CSS, JS
+cat templates/*.html | wc -c                                      # templates
+```
+
+**Two rows were dropped rather than re-baselined.** *SQLite DB (empty)* measured
+nothing meaningful — an empty database is a page or two, and the figure never
+said whether it meant before or after the migrations run. *Total pip install*
+read `< 20 MB` against a real ~236 MB, and no number in that column would have
+been a control: the dependency budget that actually governs is the
+**eight-package direct limit in §3**, which is enforced by review and is
+currently at its limit. Size follows from that count, so stating it twice gave
+two answers that could disagree.
+
+The JavaScript row is the one worth watching: `static/app.js` is served on every
+page, has no build step and no minification, so its size is what a user actually
+downloads.
+
+The original Python figure was < 50 KB, raised to < 100 KB when
+import/export/merge (CL-0022/0023/0024) landed; see
 `docs/specs/2026-07-01-import-export-merge-design.md` §7.
 
 ---

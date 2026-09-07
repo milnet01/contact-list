@@ -386,7 +386,7 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   Source: in-session-2026-07-01.
   Resolved (2026-07-01): added pyproject.toml centralising ruff (line-length 100, target py312), mypy (py312, scoped stub-ignores for the untyped Google client libs), and pytest (testpaths=tests) config. Verified ruff/mypy/pytest all read config from the file and pass (124 tests green). One latent type bug fixed en route: models.create_contact narrows cursor.lastrowid (int|None) with an assert.
 
-- 📋 [CL-0044] **Re-baseline or retire DESIGN.md §14 "Total pip install < 20 MB" budget row.**
+- ✅ [CL-0044] **Re-baseline or retire DESIGN.md §14 "Total pip install < 20 MB" budget row.**
   DESIGN.md §14's `Total pip install | < 20 MB` row is stale by ~15x: the
   current venv site-packages is ~296 MB (googleapiclient ~100 MB, phonenumbers
   ~46 MB, plus grpc/others), independent of CL-0035. CL-0035 adds Pillow 12.3.0 (~21 MB:
@@ -397,6 +397,30 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   **Layman:** One line in the design doc says the installed code should be under 20 MB, but it's already about 296 MB — the line is long out of date and misleading.
   Kind: doc-fix.
   Source: in-session-2026-07-04 (surfaced during CL-0035 cold-eyes).
+  Resolved (2026-09-07): took both options the bullet offered, split by
+  row. Measuring first showed the problem was wider than the bullet knew
+  — EVERY row was breached, not just the pip one, including the row
+  already labelled a soft target.
+
+  Re-baselined the four source rows against measured figures, dated, with
+  the commands that reproduce them, so the next reader re-derives instead
+  of trusting. Dropped the other two: an empty SQLite database measures
+  nothing meaningful and never said whether it meant before or after
+  migrations, and no size figure could have been a control for the pip
+  install, because the budget that actually governs is §3's eight-package
+  direct limit. Stating it twice gave two answers that could disagree.
+
+  Also stated outright that nothing checks any of these — no test asserts
+  one and no CI step reads the table — because reading as a live gate
+  while universally breached is what made the row misleading rather than
+  merely wrong.
+
+  CLAUDE.md rule 14: applied the test. Correcting stale counts is the
+  exemption's own named case. Dropping the two rows is closer to the
+  line, so under the grey-zone rule it is recorded here rather than
+  gated: a wrong no is self-correcting on this document's next real gate,
+  and neither row instructed anyone to do anything a reader now does
+  differently.
 
 - ✅ [CL-0051] **Bump actions/upload-artifact and actions/download-artifact v4 → v5 in release.yml (Node 20 deprecation).**
   The v1.0.0 release run surfaced deprecation annotations: actions/upload-artifact@v4 (build-linux/windows/macos) and actions/download-artifact@v4 + softprops/action-gh-release@v2 (release job) target Node.js 20, force-run on Node 24 for now. Per DESIGN.md deps-latest policy, bump upload-artifact and download-artifact to @v5; re-check action-gh-release for a newer major. checkout@v7 / setup-python@v6 are already current.
@@ -458,7 +482,7 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   Progress (2026-08-06): specced as docs/specs/2026-08-06-tray-delivery-and-page-opening.md (umbrella with CL-0060), accepted after /cold-eyes converged by cap — 3 loops, 2 cold lanes each, 60 findings verified and closed. User chose option (a): --system-site-packages in run.sh (with a one-time rebuild of the existing gi-less venv) plus a loud GI pre-flight in packaging/build-linux.sh, and the distro prerequisite documented. The build script creates no venv of its own, so the flag lands only in run.sh. Prerequisite packages installed on this machine and the approach proven end to end: a --system-site-packages venv running launcher.py registered a real tray item on the session bus (Id 'contact-list', Status Active). Note for the implementer: the pre-flight must probe Gtk 3.0, Gio 2.0 AND DBus 1.0 plus either indicator typelib — DBus is what commit 3c817fc already fixed once — and release.yml's apt list must gain gir1.2-gtk-3.0 and the freedesktop typelib in the same commit, or the new gate can turn a release red.
   Resolved (2026-08-06): run.sh builds its venv with --system-site-packages (rebuilding an existing one once, guarded on both the pyvenv.cfg marker AND the base interpreter still running), plus --ignore-installed at creation so our pinned Flask/Pillow stay in the venv rather than being borrowed from the distro. build-linux.sh gained a pre-flight probing every namespace pystray needs (Gtk 3.0, Gio 2.0, DBus 1.0, AppIndicator3-or-Ayatana), which captures stderr so the failure names the missing typelib. release.yml gained gir1.2-gtk-3.0 + gir1.2-freedesktop so the new gate cannot redden a release on a transitive-dependency change. VERIFIED on real artefacts, not inferred: ./run.sh rebuilt the venv and registered a tray item on the session bus, and a locally built AppImage did the same with no ImportError in its log and no 'Hidden import gi.repository.DBus' line in the build. Follow-up CL-0061 filed for 60 spurious PyInstaller hidden-import errors the gi-capable venv introduces (noise, not breakage).
 
-- 📋 [CL-0058] **Spec INV-6 cites app.py:211 for the loopback bind; the line has moved.**
+- ✅ [CL-0058] **Spec INV-6 cites app.py:211 for the loopback bind; the line has moved.**
   docs/specs/2026-07-10-standalone-launchers-design.md INV-6 says
   "matching app.py:211"; the app.run call is at app.py:230 after CL-0056
   (was 217 before it). Pre-existing drift — the citation was already
@@ -466,6 +490,22 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   **Layman:** A design document points at a line number in the code that has since shifted, so a reader following the reference lands in the wrong place.
   Kind: doc-fix.
   Source: in-session-2026-08-06 (CL-0056).
+  Resolved (2026-09-07): fixed by removing the line number rather than
+  correcting it. The bind had moved to app.py:230, then 231, then 244
+  during this session's own edits — three moves for one citation, which
+  is the argument against the whole form. Every `app.py:<line>` reference
+  in docs/specs/ now names the symbol instead (`create_app`'s
+  `app.run(host='127.0.0.1', ...)` call, `_check_csrf`, `init_db`,
+  `Flask(__name__)`, the `test_config` argument), so none of them can go
+  stale on an edit elsewhere in the file.
+
+  The bullet named INV-6's citation; the sweep found the same defect in
+  every sibling reference, all equally stale, so they were fixed together
+  rather than leaving known-wrong pointers beside a corrected one.
+
+  Two dead anchors found next door and fixed with them: both table-of-
+  contents links omitted a heading's trailing parenthetical. Verified by
+  doc_integrity over the four edited specs — zero findings.
 
 - ✅ [CL-0060] **Open question: should a manager-started server open a browser at all?**
   launcher.py:106 fires the browser-open on EVERY start that binds,
@@ -517,6 +557,32 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   **Layman:** The AppImage builds correctly, but the build now prints 60 scary-looking errors that are not real — and that noise could hide a genuine one next time.
   Kind: fix.
   Source: in-session-2026-08-06 (CL-0057 implementation, found by reading the build log).
+  Progress (2026-09-07): still open, but two routes are now ruled out by
+  measurement rather than reasoning, and the bullet's own diagnosis needs
+  correcting.
+
+  The cause is not path ORDER. The distro ships site-packages/google as
+  a REGULAR package (an `__init__.py` calling pkgutil.extend_path), and
+  under PEP 420 a regular package found anywhere on sys.path beats the
+  namespace portions on earlier entries. So `google` resolves to the
+  distro copy regardless of ordering.
+
+  Ruled out: (a) the `pathex` / `--paths` fix this bullet proposes --
+  tried, still sixty errors, because ordering is not the lever;
+  (b) dropping `google.auth` from the spec's collect_all loop on the
+  grounds that the dependency graph collects it anyway -- it does not.
+  That silences all sixty errors and produces a bundle with no
+  _internal/google/ directory at all.
+
+  The bullet's premise that this is "not breakage" was half right. The
+  artefact was NOT correct: the sixty lines were hiding a genuinely
+  missing `google.oauth2`, which made /sync return 500 in the frozen app.
+  That is fixed and recorded as CL-0080; this item is now only about the
+  remaining log noise.
+
+  Untried ideas for whoever takes it: a PyInstaller hook that resolves
+  the namespace portions explicitly, or filtering the unresolvable
+  entries out of hiddenimports after collect_all returns.
 
 - 📋 [CL-0062] **Decide which of ruff 0.16's 35 newly-flagged findings to adopt.**
   Context: pyproject.toml had no [tool.ruff.lint] select, so ruff used its
@@ -934,6 +1000,48 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   **Layman:** A list of small things that are wrong but not urgent.
   Kind: ux.
   Source: review-code 2026-09-07 (all lanes); the Low tail.
+
+- ✅ [CL-0080] **Google sync was dead in the frozen build: google.oauth2 was never bundled.**
+  Found by launching a locally built artefact and opening the page,
+  which is the only way it could have been found: every static check and
+  every one of the 428 tests passes, because they all run from source
+  where the import resolves.
+
+  Symptom: `GET /sync` returned 500 in the frozen app, with
+  `ModuleNotFoundError: No module named 'google.oauth2'` in
+  ~/.config/contact-list/contact-list.log. `is_authenticated` is called
+  on that page, and it reaches `_token_has_write_scope`, which imports
+  `google.oauth2.credentials`.
+
+  Cause, and it is the same one as CL-0061 one layer deeper. `google` is
+  a namespace package. run.sh builds its venv with
+  --system-site-packages, which CL-0057 requires so the tray can import
+  the system PyGObject, and the distro ships its own
+  site-packages/google as a REGULAR package -- an `__init__.py` calling
+  pkgutil.extend_path. Under PEP 420 a regular package found anywhere on
+  sys.path wins outright over the namespace portions on earlier entries,
+  so `google` resolved to the distro copy, which carries neither `auth`
+  nor `oauth2`. PyInstaller could not see either. `google.auth` was
+  listed in the spec's collect_all loop and so was bundled anyway;
+  `google.oauth2` was not listed, google_sync.py imports it only inside
+  function bodies, and nothing else dragged it in.
+
+  Fix: name `google.oauth2` in the collect_all loop alongside
+  `google.auth`. Verified on a real artefact -- /sync, /contacts and
+  /settings all 200, no errors in the frozen app's log.
+
+  This is what CL-0061 predicted: sixty spurious "Hidden import not
+  found" lines per build made a real one invisible. The real one was not
+  even in that list, because the missing import was never declared.
+
+  OPEN QUESTION for whoever picks up CL-0061: whether the CI-built
+  release was affected too. release.yml's build-linux also uses
+  --system-site-packages, so it depends on whether ubuntu-latest ships a
+  regular `google` package the way this openSUSE box does. Not settled
+  here; it needs a CI build to answer.
+  **Layman:** In the downloadable app, opening the Google Sync page showed an error instead of the page. It never worked there.
+  Kind: fix.
+  Source: in-session-2026-09-07 (found by running a frozen build during verify-delivery, not by reading).
 
 ## Efficiency & Refactoring
 

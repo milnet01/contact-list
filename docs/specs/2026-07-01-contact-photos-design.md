@@ -35,7 +35,7 @@ Sections: [1 Overview](#1-overview) · [2 Storage & data model](#2-storage--data
 [5 Upload & remove](#5-upload--remove-manual) · [6 Serve route](#6-serve-route) ·
 [7 Display](#7-display) · [8 Deletion & merge cleanup](#8-deletion--merge-cleanup) ·
 [9 Security](#9-security--robustness) · [10 Files & size budget](#10-new--changed-files--size-budget) ·
-[11 Testing](#11-testing) · [12 Invariants](#12-invariants) · [13 Out of scope](#13-out-of-scope).
+[11 Testing](#11-testing) · [12 Invariants](#12-invariants) · [13 Out of scope](#13-out-of-scope-v12).
 
 ## 1. Overview
 
@@ -66,7 +66,7 @@ pip dependency** (§3).
   the `Config` class in `config.py` — this spec's §10). Created `0700` by calling
   `ensure_private_dir(app.config['PHOTOS_DIR'])` inside `create_app` in `app.py`,
   immediately after the existing `with app.app_context(): init_db()` block
-  (app.py:33-34) and before the `log.info('App initialized …')` line — the same
+  (in `create_app`) and before the `log.info('App initialized …')` line — the same
   helper that protects the Google token dir (CL-0011). (`ensure_private_dir` is currently called only from
   `google_sync` on token save and `config` on secret-key persist; this adds an
   explicit startup call.)

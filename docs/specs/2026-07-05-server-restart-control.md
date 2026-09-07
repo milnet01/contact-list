@@ -91,7 +91,7 @@ If the `Popen` spawn raises `OSError` the delay thread **logs** it and returns
 degrades to "no restart", never to a dead server). See INV-7.
 
 The dev server runs threaded — Flask's `app.run` defaults `threaded=True`
-(`app.py:211` passes no `threaded=`; the default lives in Flask's `run`, not
+(`app.py`'s `app.run(...)` passes no `threaded=`; the default lives in Flask's `run`, not
 Werkzeug's `run_simple`) — so any **other** in-flight request is killed when the
 process exits. Accepted trade-off: the sole client is the local user who just
 clicked Restart/Shutdown; there are no concurrent callers to disrupt.

@@ -32,6 +32,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Google Sync works in the downloadable app** (CL-0080)
+  Opening the Google Sync page in a packaged build showed an error page
+  instead of the page. A library the sync code needs was never included in
+  the bundle, so the feature could not work there at all — while running
+  from source was unaffected, which is why no test caught it. Found by
+  launching a real build and opening the page.
+
+- **Imported files can no longer store oversized contact fields** (CL-0067)
+  Name, email, phone, notes and custom-field values are now length-checked
+  where the data is written rather than only in the browser, so an imported
+  CSV or vCard gets the same limits the contact form shows. The
+  fifty-custom-field limit applies to imports too; it previously applied
+  only to the form.
+
+- **Replacing a contact photo no longer risks losing the old one** (CL-0071)
+  The previous photo was deleted before the new one was written, so a
+  failure in between left the contact with no photo at all and a broken
+  avatar. The new photo is now put in place first.
+
+- **Two copies of the app starting at once agree on one session key** (CL-0069)
+  On a first run they could each generate a different key, and the loser
+  rejected every form submission. An unreadable key file also stopped the
+  app starting with no message anywhere; it now logs and creates a new one.
+
+- **A photo that cannot be saved no longer looks like the contact failed to save** (CL-0079)
+  A full disk raised an error page after the contact had already been
+  stored, so the user could not tell it had worked. It now says the contact
+  was saved and the photo was not.
+
 - **Back-to-top and the sticky filter bar work on every page** (CL-0048)
   Both were stranded behind an early return that fires on every page
   except the contact form, so the button never appeared where it was
@@ -103,6 +132,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unchanged.
 
 ### Security
+
+- **Search terms are no longer written to the log file, and contact pages are not cached** (CL-0072)
+  The request log recorded full URLs, and a contact search puts what you
+  typed in the URL — so names, numbers and note text were being written to
+  a log file on disk. Contact pages now also set no-store, so they do not
+  remain in the browser cache. Contact photos keep their one-day cache.
 
 - **The one third-party release action is pinned to a commit, not a moving tag**
   It runs in the job that holds write access to the repository, and a tag

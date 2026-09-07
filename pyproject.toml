@@ -30,6 +30,11 @@ warn_unused_ignores = true
 # Without this, the bundled google/ copies under dist/ and build/ trip mypy's
 # duplicate-module check on a dev machine that has run packaging/build-linux.sh.
 exclude = '^(dist|build)/'
+# Every production module, deliberately. This list omitted importer.py,
+# photos.py, server_control.py, tray.py and vcard.py until CL-0076 -- so the two
+# modules that parse untrusted text (importer, vcard) were the two nothing had
+# ever type-checked, while CLAUDE.md requires type hints on all signatures.
+# A new module belongs here on the day it is written.
 files = [
     "app.py",
     "browser.py",
@@ -37,11 +42,16 @@ files = [
     "db.py",
     "google_auth.py",
     "google_sync.py",
+    "importer.py",
     "launcher.py",
     "models.py",
     "phoneutil.py",
+    "photos.py",
     "resources.py",
+    "server_control.py",
     "settings.py",
+    "tray.py",
+    "vcard.py",
     "routes",
 ]
 

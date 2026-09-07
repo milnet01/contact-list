@@ -10,7 +10,7 @@ this spec — they are applied, not merely planned. All three features ship in
 Sections: [1 Overview](#1-overview) · [2 CSV import](#2-csv-import-cl-0022) ·
 [3 vCard](#3-vcard-import--export-cl-0023) · [4 Merge](#4-merge-duplicates-cl-0024) ·
 [5 Data model](#5-data-model-changes) · [6 Security](#6-security--robustness) ·
-[7 Files & budget](#7-new--changed-files--size-budget) · [8 Testing](#8-testing) ·
+[7 Files & budget](#7-new--changed-files--size-budget) · [8 Testing](#8-testing-per-designmd-11) ·
 [9 Invariants](#9-invariants) · [10 Out of scope](#10-out-of-scope).
 
 ## 1. Overview
@@ -317,7 +317,7 @@ up in order and must be idempotent (`CREATE TABLE IF NOT EXISTS`) — it is.
 
 - **Upload cap.** Add `MAX_CONTENT_LENGTH = 5 * 1024 * 1024` to the `Config`
   class in `config.py` (picked up via `app.config.from_object(Config)` in
-  `create_app`, `app.py:19`); an oversize request gets Flask's 413 before any
+  `create_app`); an oversize request gets Flask's 413 before any
   handler runs. This hard ceiling covers both the file upload and the
   carried-CSV re-post. In addition, the upload handler rejects a **decoded body
   larger than 1 MiB** with a flashed error, so the carried `csv_text` re-post
@@ -325,7 +325,7 @@ up in order and must be idempotent (`CREATE TABLE IF NOT EXISTS`) — it is.
   bounds are tested (§8).
 - **CSRF.** The new POST endpoints — `import_view` (POST), `import_apply`,
   `merge_preview`, `merge_apply` — all carry the signed token in the body,
-  validated by the blanket `_check_csrf` before-request hook (`app.py:63-68`,
+  validated by the blanket `_check_csrf` before-request hook (in `create_app`,
   fires on every POST/PUT/DELETE, no exemptions). The GET endpoints
   (`import_view` GET form, `export_vcard`) are read-only and need no token.
 - **XSS.** All imported values render through Jinja2 autoescaping; preview,
