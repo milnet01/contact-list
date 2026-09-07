@@ -37,7 +37,16 @@ while read -r _local_ref local_sha _remote_ref remote_sha; do
         changed="RUN_ANYWAY"
         break
     fi
-    changed="$changed$(git diff --name-only "$base" "$local_sha" 2>/dev/null)"$'\n'
+    # A failing `git diff` must not read as "nothing changed". It fails whenever
+    # $base names a commit this repo does not have -- the remote is ahead, a
+    # force-push, pruned objects -- and the discarded error left `changed`
+    # whitespace-only, so the empty test below exited 0 and skipped local CI
+    # entirely, indistinguishable from having nothing to push.
+    if ! diff_out=$(git diff --name-only "$base" "$local_sha" 2>/dev/null); then
+        changed="RUN_ANYWAY"
+        break
+    fi
+    changed="$changed$diff_out"$'\n'
 done
 
 # Nothing being pushed (e.g. already up to date) — let git get on with it.

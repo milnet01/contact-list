@@ -100,9 +100,26 @@ for ver in $CI_PYTHONS; do
     if [ ! -d "$venv" ]; then
         "$py" -m venv "$venv"
     fi
-    "$venv/bin/python" -m pip install --quiet --upgrade pip
-    "$venv/bin/pip" install --quiet -r requirements.txt
-    "$venv/bin/pip" install --quiet "${DEV_TOOLS[@]}"
+    # --upgrade on both, because requirements.txt pins MAJORS only and CI builds
+    # a fresh environment every run -- so CI resolves to the newest in-range
+    # release while a plain `pip install -r` into a cached venv reports
+    # "already satisfied" and keeps the old one. The stamp below cannot catch
+    # that: it hashes our inputs, and none of them changes when UPSTREAM
+    # publishes flask 3.2.0 or ruff 0.16.5. Without this the cached venv drifts
+    # behind CI silently, which is the stale-env false pass this venv-stamping
+    # was written to close, and it hides the dependency drift DESIGN.md §3
+    # requires be surfaced.
+    if ! "$venv/bin/python" -m pip install --quiet --upgrade pip \
+       || ! "$venv/bin/pip" install --quiet --upgrade -r requirements.txt \
+       || ! "$venv/bin/pip" install --quiet --upgrade "${DEV_TOOLS[@]}"; then
+        # Setup ran outside run_step and so incremented nothing: an index outage
+        # left the cached tools in place, every check ran against a stale
+        # environment, and the run still printed "CI PASSED".
+        echo "!!! ERROR: dependency install failed for Python ${ver} -- its checks did NOT run against the intended environment."
+        echo
+        failures=$((failures + 1))
+        continue
+    fi
     printf '%s' "$want" > "$stamp"
 
     run_step "[$ver] Lint (ruff)"       "$venv/bin/ruff" check .
