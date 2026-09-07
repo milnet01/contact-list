@@ -1147,6 +1147,31 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   Kind: doc.
   Source: in-session-2026-09-07 (learned the expensive way during verify-delivery).
 
+- 📋 [CL-0082] **google-auth-httplib2's cap is looser than the 0.x rule DESIGN §3 now states.**
+  §3 now says that on a `0.x` dependency the MINOR acts as the major,
+  because 0.x makes no stability promise across minors. Under that rule
+  `pystray>=0.19,<0.20` is a correct major cap and so is `ruff~=0.16.1`.
+
+  `google-auth-httplib2>=0.2,<1.0` is not. It admits every 0.x minor up
+  to 1.0, so an unreviewed breaking minor CAN land silently -- which is
+  the thing the major cap exists to prevent, pointing the other way from
+  the usual failure. We currently run 0.4.2 and latest is 0.4.2, so
+  nothing is wrong today; the exposure is the next minor.
+
+  NOT fixed inline because tightening a runtime pin changes what installs
+  and wants its own verification, and this was found during a document
+  review rather than a dependency sweep. The fix is either
+  `>=0.4,<0.5` -- taking the current minor as the cap -- or a deliberate
+  decision that this package's 0.x minors are safe, recorded as a comment
+  in requirements.txt so the next sweep does not re-raise it.
+
+  Do this at the next sweep, when the whole manifest is in hand, rather
+  than on its own. §3's new step 6 greps the manifests for exactly this
+  shape, so it will surface again if forgotten."
+  **Layman:** One dependency is allowed to update more freely than our own rule intends, so a change that breaks something could arrive without review.
+  Kind: chore.
+  Source: in-session-2026-09-07 (review-contract on DESIGN §3, second lane).
+
 ## Efficiency & Refactoring
 
 Performance and code-health opportunities surfaced during the 2026-06-30 review.

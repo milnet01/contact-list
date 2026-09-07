@@ -73,10 +73,21 @@ install it.
 features **and** security. Scope: runtime pip packages (`requirements.txt`), dev
 / CI tools (`ruff`, `mypy`, `pytest`), GitHub Actions (`actions/checkout`,
 `actions/setup-python`) and the CI runner image, and the Python runtime itself.
-The `requirements.txt` constraints cap only the **major** version, so an
-unreviewed breaking major cannot land silently; within that cap the newest
-release is always installed, and the cap is raised promptly once a new major is
-vetted.
+The `requirements.txt` constraints cap the **major** version, so an unreviewed
+breaking major cannot land silently; within that cap the newest release is
+always installed, and the cap is raised promptly once a new major is vetted.
+
+**On a `0.x` dependency the MINOR acts as the major.** `0.x` makes no stability
+promise across minors, so `pystray>=0.19,<0.20` is a correct major cap and not a
+hold, exactly as `flask>=3.1.1,<4.0` is. Without this sentence the rule below
+reads as forbidding the one and permitting the other, and the manifest carries
+both shapes.
+
+**A minimum is not a hold.** `>=3.1.1` states the oldest release we support and
+admits every newer one, so it never belongs in the register — the register is
+for versions we *cannot take*. The same goes for the Python 3.12 floor in §2:
+it reads like a "first broken at 3.11" row and is not one, because nothing newer
+is being refused.
 
 **Holding a version back is the rare exception — allowed only when a newer
 version explicitly breaks a feature and there is no reasonable workaround.** Every
@@ -94,8 +105,10 @@ automatically, and raise the cap promptly once a new major is vetted. Found
 2026-08-06: `ruff~=0.15.0` had silently capped ruff two minors behind with no
 register row.
 
-**Check at the start of a release cycle, or whenever touching a manifest or
-workflow.** All four scopes, because three of them are invisible to `pip`:
+**Sweep at the start of a release cycle, and at natural moments besides** —
+adding a dependency to a manifest, or touching a CI workflow for any other
+reason. If you are already in the file, look at the pins on the way past. All
+five scopes below, because four of them are invisible to `pip`:
 
 ```bash
 # 1. Runtime + test pip packages.
@@ -125,13 +138,30 @@ done
 # 4. The Python runtime itself — the CI matrix in ci.yml must include the
 #    current stable release, and local-ci.sh's CI_PYTHONS must match it.
 gh api repos/python/cpython/tags -q '.[].name' | grep -E '^v3\.[0-9]+\.[0-9]+$' | head -3
+
+# 5. ADVISORIES. Every command above reports what is NEWEST; none of them
+#    reports what is VULNERABLE, and those are different questions. Without
+#    this step the "a known vulnerability does not wait" rule below has no way
+#    to fire: a full sweep would run clean and nobody would learn otherwise.
+./venv/bin/python -m pip_audit --progress-spinner off   # pip scope
+gh api repos/milnet01/contact-list/dependabot/alerts --jq '.[].security_advisory.summary' 2>/dev/null \
+  || echo '(dependabot alerts not enabled or not permitted for this token)'
+
+# 6. PIN SHAPE. The steps above compare installed against latest, so a pin that
+#    caps below latest reports as current -- which is how ruff sat two minors
+#    behind with no register row until someone spotted it by eye. This looks at
+#    the manifests instead of the installed set. Every hit must be a major cap
+#    (see the 0.x rule above) or have a register row.
+grep -nE '[<~]=?[0-9]' requirements.txt pyproject.toml
+grep -rnE 'uses:.*@|python-version|~=' .github/workflows/ local-ci.sh
 ```
 
 During that sweep, also revisit every row in the register below: if a release
 **newer than its "First broken at" version** now exists, re-test the feature
 against it. If it passes, delete the row and move to latest; if it still breaks,
-update "Latest available" / "Re-test when" so the row stays accurate. A held-back
-pin is never permanent — it lives only until a fixed upstream release lands.
+move "First broken at" up to the version you just tested and stamp "Last
+retested", so the row stays true. A held-back pin is never permanent — it lives
+only until a fixed upstream release lands.
 
 ### Dependency Exceptions & Breakage Register
 
@@ -147,25 +177,58 @@ have been the wrong answer; stating the rule set explicitly in `pyproject.toml`
 was the right one, and ruff now tracks latest with the lint contract chosen
 deliberately (CL-0062 tracks reviewing the wider set).
 
-| Dependency | Pinned to | Latest available | First broken at | Symptom / what breaks | Re-test when | Noted |
-|------------|-----------|------------------|-----------------|-----------------------|--------------|-------|
-| _None_ | — | — | — | Every dependency tracks its latest release. | — | — |
+| Dependency | Held at | First broken at | Symptom / what breaks | What would release it | Decided | Last retested |
+|------------|---------|-----------------|-----------------------|-----------------------|---------|---------------|
+| _None_ | — | — | Every dependency tracks its latest release. | — | — | — |
 
-**Last full sweep: 2026-08-06.** All four scopes checked, everything at latest:
+**Why *first broken at* is the column that matters.** It turns a hold from a
+permanent fact into a testable claim: once a release newer than that version
+exists, the hold is due for a retest. Upstream may already have fixed it, and
+nobody would otherwise look — the hold's own existence is what stops anyone
+trying. So a hold is never simply carried forward. Every sweep asks of every
+row: is there anything newer than the version recorded as broken? If so, test
+it. Either the hold is released, or *first broken at* moves up and the row is
+true again.
 
-- **Runtime + test:** flask 3.1.3, google-api-python-client 2.198.0, google-auth
-  2.56.3, google-auth-oauthlib 1.4.0, google-auth-httplib2 0.4.1, phonenumbers
-  9.0.36, pillow 12.3.0, pystray 0.19.5, pytest 9.1.1.
-- **Dev/CI tools:** `ruff~=0.16.1` (was `~=0.15.0` — an undocumented below-latest
-  cap, corrected), `mypy~=2.1` (admits the current 2.3.0).
-- **Actions:** checkout@v7 (v7.0.1), setup-python@v7 (was @v6, a full major
-  behind — bumped in both `ci.yml` and `release.yml`), upload-artifact@v7
-  (v7.0.1), download-artifact@v8 (v8.0.1), softprops/action-gh-release@v3
-  (v3.0.2). Runner images all `*-latest`.
-- **Python runtime:** CI matrix is 3.12 / 3.13 / **3.14** (3.14 added this sweep;
-  current stable is 3.14.7). `local-ci.sh`'s `CI_PYTHONS` mirrors it. Note that
-  3.12 and 3.14 are not installed on the current dev machine, so a local run
-  mirrors only the 3.13 job and says so loudly.
+**Record the symptom precisely enough that someone who was not there can
+retest it.** "Breaks the vCard export" can be checked in a minute.
+"Incompatible" cannot be checked at all, and becomes a hold nobody can lift.
+
+**A hold with no release condition is permanent by accident.** Where the honest
+answer is "when someone has time to do the migration", write that: it reads as
+work rather than as a fact of nature.
+
+**Both dates are required.** *Decided* without *last retested* hides a stale
+hold — the row looks considered when nobody has looked at it in a year.
+
+*Latest available* used to be a column here and was dropped: it is wrong the
+moment upstream publishes, and nothing signals that it has gone stale. A sweep
+re-derives it in one command per ecosystem, which is the only form of it that
+can be trusted.
+
+**Sweep cadence: every release cycle, and at natural moments besides** — adding
+a dependency to a manifest, or touching a CI workflow for any other reason. If
+you are already in the file, look at the pins on the way past. A sweep walks the
+register above as well as the unheld dependencies; one that only checks what is
+not held never revisits the versions most likely to be stuck.
+
+**A sweep reports; it does not bump on its own.** Which upgrades are safe to
+take is a judgement about this project.
+
+**Except a known vulnerability, which does not wait for the ask.** Where step 5
+turns up an advisory naming a version we ship, it stops being a version question
+and becomes a security fix: taken now, ahead of queued work, and pushed without
+batching (`CLAUDE.md`'s push rule exempts a security fix by name). Being behind
+is not urgent; being exploitable is. **Step 5 is the step that makes this rule
+reachable** — the other steps report staleness and can never produce an
+advisory, so a sweep that skips it cannot fire this clause and cannot tell.
+
+**Last full sweep: 2026-08-06** — the record is
+`docs/reviews/2026-08-06-dependency-sweep.md`, not here. A dated list of current
+versions inside this document is wrong from the first upstream release and
+nothing announces it, which is the same reason the register above no longer
+carries a *Latest available* column. Sweep records are history; §3 states the
+policy and the commands that re-derive the numbers.
 
 ---
 
