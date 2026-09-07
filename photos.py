@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import io
 import os
+import tempfile
 
 from PIL import Image, ImageOps
 
@@ -133,9 +134,17 @@ def _write_thumbnail(config, contact_id: int, ext: str, data: bytes) -> bool:
         return False
     ensure_private_dir(config['PHOTOS_DIR'])
     final = _thumb_path(config, contact_id, ext)
-    tmp = f'{final}.{os.getpid()}.tmp'
+    # A per-PROCESS temp name was not unique enough: the server serves on a
+    # long-lived background thread, so two concurrent GETs for the same missing
+    # avatar both lazily regenerate it and shared one path -- one truncating
+    # while the other sat between write and replace, promoting a half-written
+    # file that then persisted, because the existence check never regenerates
+    # (CL-0071). mkstemp gives each writer its own (same directory, so the
+    # replace stays atomic).
+    fd, tmp = tempfile.mkstemp(
+        dir=config['PHOTOS_DIR'], prefix=f'{contact_id}_thumb.', suffix='.tmp')
     try:
-        with open(tmp, 'wb') as fh:
+        with os.fdopen(fd, 'wb') as fh:
             fh.write(thumb_bytes)
         os.replace(tmp, final)           # atomic: a concurrent GET never sees a torn file
         return True
@@ -151,8 +160,15 @@ def save_photo(config, contact_id: int, data: bytes, *, old_ext: str | None = No
     """Validate ``data`` and store it as ``<contact_id>.<ext>``. Return the ext.
 
     Checks size first (so an oversize non-image is reported as oversize), then
-    magic bytes. Raises ``ValueError`` on either reject. Removes any existing
-    file at ``old_ext`` first (the new ext may differ, e.g. png -> jpg).
+    magic bytes. Raises ``ValueError`` on either reject.
+
+    The new file is written and put in place BEFORE any existing one at
+    ``old_ext`` is removed. The other order -- delete, then write -- destroyed
+    the contact's existing photo whenever the write then failed (a full disk, an
+    unwritable directory), leaving the database still naming a file that was
+    gone, so the avatar 404'd permanently (CL-0071). The extension can change
+    across a replacement (png -> jpg), so the old file is a separate path and
+    still needs removing once the new one is safely down.
     """
     if len(data) > MAX_PHOTO_BYTES:
         raise ValueError('Photo exceeds the size limit')
@@ -160,12 +176,23 @@ def save_photo(config, contact_id: int, data: bytes, *, old_ext: str | None = No
     if ext is None:
         raise ValueError('Unsupported image type')
 
-    if old_ext:
-        delete_photo(config, contact_id, old_ext)
-
     ensure_private_dir(config['PHOTOS_DIR'])
-    with open(_photo_path(config, contact_id, ext), 'wb') as fh:
-        fh.write(data)
+    final = _photo_path(config, contact_id, ext)
+    fd, tmp = tempfile.mkstemp(
+        dir=config['PHOTOS_DIR'], prefix=f'{contact_id}.', suffix='.tmp')
+    try:
+        with os.fdopen(fd, 'wb') as fh:
+            fh.write(data)
+        os.replace(tmp, final)
+    except OSError:
+        try:
+            os.remove(tmp)
+        except FileNotFoundError:
+            pass
+        raise
+
+    if old_ext and old_ext != ext:
+        delete_photo(config, contact_id, old_ext)
     # Eager thumbnail (CL-0035): the common upload/sync case has its avatar ready
     # before the first request. Non-fatal — the original is the source of truth.
     _write_thumbnail(config, contact_id, ext, data)

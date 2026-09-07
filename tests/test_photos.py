@@ -3,6 +3,7 @@
 
 import io
 import os
+import tempfile
 
 import pytest
 from PIL import Image
@@ -221,3 +222,84 @@ class TestAvatarFilename:
         os.makedirs(config['PHOTOS_DIR'], exist_ok=True)
         # No files at all: return the original basename (send_from_directory 404s).
         assert photos.avatar_filename(config, 42, 'png') == '42.png'
+
+
+class TestSavePhotoAtomicReplace:
+    """CL-0071: save_photo writes the new file and os.replace()s it into place
+    BEFORE any existing file at old_ext is removed.
+
+    Why this exists: the previous order deleted old_ext first, so a write
+    failure after the delete (full disk, unwritable dir) destroyed the only
+    copy of the photo while the database still named it, 404ing the avatar
+    permanently.
+    """
+
+    def test_replace_failure_preserves_existing_photo(self, config, monkeypatch):
+        original = _real_png(64, 64)
+        photos.save_photo(config, 11, original)
+        orig_path = os.path.join(config['PHOTOS_DIR'], '11.png')
+        assert os.path.exists(orig_path)
+
+        def _boom(*args, **kwargs):
+            raise OSError('disk full')
+
+        monkeypatch.setattr(photos.os, 'replace', _boom)
+        with pytest.raises(OSError):
+            photos.save_photo(config, 11, _real_png(32, 32), old_ext='png')
+
+        # The existing photo must survive untouched, byte-for-byte.
+        with open(orig_path, 'rb') as fh:
+            assert fh.read() == original
+        # And the abandoned temp file must not be left behind.
+        leftovers = [f for f in os.listdir(config['PHOTOS_DIR']) if f.endswith('.tmp')]
+        assert leftovers == []
+
+    def test_normal_replacement_still_works_across_extension_change(self, config):
+        old_data = _real_png(64, 64)
+        photos.save_photo(config, 12, old_data)
+        new_data = _real_jpeg(64, 64)
+        photos.save_photo(config, 12, new_data, old_ext='png')
+
+        assert not os.path.exists(os.path.join(config['PHOTOS_DIR'], '12.png'))
+        new_path = os.path.join(config['PHOTOS_DIR'], '12.jpg')
+        assert os.path.exists(new_path)
+        with open(new_path, 'rb') as fh:
+            assert fh.read() == new_data
+        leftovers = [f for f in os.listdir(config['PHOTOS_DIR']) if f.endswith('.tmp')]
+        assert leftovers == []
+
+
+class TestWriteThumbnailTempNaming:
+    """CL-0071: _write_thumbnail's temp name must be unique per WRITER, not per
+    process.
+
+    Why this exists: the old name was f'{final}.{os.getpid()}.tmp' -- unique
+    per process, but the server serves on a long-lived background thread, so
+    two concurrent regenerations of the same avatar (same contact_id, same
+    ext) shared one temp path: one write could truncate the file while the
+    other sat between write and os.replace, promoting a half-written image
+    that then persisted (the existence check never regenerates it). This locks
+    the naming scheme deterministically -- two _write_thumbnail calls for the
+    same contact_id/ext must be handed two different tempfile.mkstemp paths --
+    rather than a flaky real-threads race test.
+    """
+
+    def test_two_writes_for_same_contact_get_different_temp_names(
+        self, config, monkeypatch
+    ):
+        real_mkstemp = tempfile.mkstemp
+        names: list[str] = []
+
+        def _recording_mkstemp(*args, **kwargs):
+            fd, path = real_mkstemp(*args, **kwargs)
+            names.append(path)
+            return fd, path
+
+        monkeypatch.setattr(photos.tempfile, 'mkstemp', _recording_mkstemp)
+
+        data = _real_png(64, 64)
+        assert photos._write_thumbnail(config, 20, 'png', data) is True
+        assert photos._write_thumbnail(config, 20, 'png', data) is True
+
+        assert len(names) == 2
+        assert names[0] != names[1]
