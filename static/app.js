@@ -195,7 +195,15 @@
     }
     if (bulkDeleteBtn && bulkForm) {
         bulkDeleteBtn.addEventListener('click', function () {
-            var count = document.querySelectorAll('.row-select:checked').length;
+            // Count DISTINCT contact ids, not checkboxes. /contacts/duplicates
+            // renders three independent bucketings (name, email, phone), so a
+            // contact duplicated by two of them appears as two checkboxes with
+            // the same value -- and the confirmation then overstated what the
+            // delete would do ("Delete 5" preceding a delete of 3).
+            var selected = document.querySelectorAll('.row-select:checked');
+            var ids = {};
+            Array.prototype.forEach.call(selected, function (cb) { ids[cb.value] = true; });
+            var count = Object.keys(ids).length;
             if (count === 0) return;
             showModal('Delete ' + count + ' selected contact' + (count !== 1 ? 's' : '') + '?').then(function (confirmed) {
                 if (confirmed) {
@@ -214,8 +222,20 @@
     var MAX_RECENT = 5;
 
     function getRecent() {
-        try { return JSON.parse(localStorage.getItem(RECENT_KEY) || '[]'); }
+        // The try guards the PARSE; it does not guard the SHAPE. JSON.parse of a
+        // tampered or legacy value yields any JSON type, and the callers below
+        // then throw on .filter or .name -- aborting the rest of this IIFE, which
+        // takes card-view masonry and every enhancement after it down with it,
+        // on every page, until the user clears storage.
+        var parsed;
+        try { parsed = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]'); }
         catch (e) { return []; }
+        if (!Array.isArray(parsed)) return [];
+        return parsed.filter(function (r) {
+            return r && typeof r.id === 'string'
+                && typeof r.name === 'string'
+                && typeof r.href === 'string';
+        });
     }
 
     function saveRecent(list) {
@@ -504,9 +524,21 @@
         }
     });
 
-    // =================================================================
-    // Sticky filter bar offset + back-to-top button
-    // =================================================================
+})();
+
+// =====================================================================
+// Sticky filter bar offset + back-to-top button (CL-0048) — its OWN IIFE.
+// These used to sit at the end of the custom-fields IIFE above, which
+// returns early on any page without #custom-fields. That element exists
+// only in contact_form.html, so both features ran on /contacts/new and
+// /contacts/<id>/edit and nowhere else — while #back-to-top ships in
+// base.html on EVERY page, and --header-h is consumed by .list-controls
+// on /contacts, the one page that could never set it. Same reasoning as
+// the tabs block below; keep them separate.
+// =====================================================================
+(function () {
+    'use strict';
+
     // The filter/search bar (.list-controls) sticks below the sticky header;
     // publish the header's real height so its `top` matches on every theme /
     // viewport instead of a hardcoded guess.
@@ -523,12 +555,17 @@
     var backToTop = document.getElementById('back-to-top');
     if (backToTop) {
         var toggleBackToTop = function () {
-            backToTop.hidden = window.pageYOffset < 400;
+            backToTop.hidden = window.scrollY < 400;
         };
         toggleBackToTop();
         window.addEventListener('scroll', toggleBackToTop, { passive: true });
         backToTop.addEventListener('click', function () {
-            window.scrollTo({ top: 0, behavior: 'smooth' });
+            // DESIGN.md §10 promises prefers-reduced-motion support; style.css
+            // covers animations and transitions but cannot reach a programmatic
+            // smooth scroll, so it is honoured here.
+            var reduce = window.matchMedia
+                && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            window.scrollTo({ top: 0, behavior: reduce ? 'auto' : 'smooth' });
         });
     }
 })();
