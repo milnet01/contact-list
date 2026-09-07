@@ -1110,6 +1110,43 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   Kind: fix.
   Source: in-session-2026-09-07 (found by running a frozen build during verify-delivery, not by reading).
 
+- 📋 [CL-0081] **Hand-verifying a launch needs the CONFIG dir isolated, not just the database.**
+  CLAUDE.md's "Verifying a launch by hand" carries three traps -- poll
+  for the port, background the server, intercept the browser-open. There
+  is a fourth and it bites harder, because its damage lands outside the
+  repository.
+
+  CONTACT_LIST_DB isolates the database and NOTHING ELSE. PHOTOS_DIR,
+  GOOGLE_CREDENTIALS_FILE, GOOGLE_TOKEN_FILE and the log all derive from
+  config._CONFIG_DIR, which has no environment override. So a run that
+  looks isolated because the database is:
+
+    - writes uploaded photos into the user's real photos directory, and
+    - on any page calling is_authenticated -- /sync is one -- REFRESHES
+      AND REWRITES the user's real Google token, because _load_credentials
+      calls creds.refresh() and _save_credentials writes it back.
+
+  Both happened in this session. The photo files were orphans and were
+  removed; the token rewrite is not reversible and was reported to the
+  user. It is not damaging -- a refresh rotation is normal and the
+  credentials still work -- but it is a live-credential side effect
+  nobody asked for, and the standing rule is that a check needing a
+  credential is an ask.
+
+  The remedy is to set XDG_CONFIG_HOME to a scratch directory for any
+  hand-verification run, which moves _CONFIG_DIR wholesale, rather than
+  overriding CONTACT_LIST_DB alone. A frozen build needs this even more
+  than a source run, because frozen also puts its database there.
+
+  This belongs in CLAUDE.md's "Verifying a launch by hand" list, next to
+  the other three. Filed here rather than edited straight in because
+  adding it changes what a conformer does -- they would isolate a
+  directory they do not isolate today -- which is rule 14's Yes branch
+  and owes the review gate. Small edit, one gate; worth doing.
+  **Layman:** A note for future sessions: testing the app by running it can touch your real Google login and photo folder unless the whole settings folder is pointed somewhere else.
+  Kind: doc.
+  Source: in-session-2026-09-07 (learned the expensive way during verify-delivery).
+
 ## Efficiency & Refactoring
 
 Performance and code-health opportunities surfaced during the 2026-06-30 review.
