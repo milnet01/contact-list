@@ -714,3 +714,67 @@ class TestFavourites:
             'SELECT 1 FROM contact_favourites WHERE contact_id = ?', [cid]
         ).fetchone()
         assert row is None
+
+
+class TestFieldCaps:
+    """CL-0067: server-side length/count caps on the core fields and custom
+    fields, enforced by _validate_field_lengths / _validate_custom_field_names
+    and called from every writer -- including import_contact.
+
+    Why this exists: the 50-custom-field cap used to live only in
+    routes.contacts, and the core-field lengths existed only as browser
+    ``maxlength`` attributes. Both are ignored by a direct POST, and
+    import_contact (the CSV/vCard import path, which ingests untrusted files)
+    called neither -- so an imported row could store an unbounded name, notes
+    or custom-field value. These tests exercise import_contact specifically,
+    since that was the path the cap did not reach.
+    """
+
+    def test_import_rejects_overlong_name(self, db):
+        overlong = 'A' * (models.MAX_NAME_LEN + 1)
+        with pytest.raises(ValueError):
+            models.import_contact(db, {'name': overlong, 'type': 'individual'})
+
+    def test_import_rejects_overlong_notes(self, db):
+        overlong = 'N' * (models.MAX_NOTES_LEN + 1)
+        with pytest.raises(ValueError):
+            models.import_contact(
+                db, {'name': 'X', 'type': 'individual', 'notes': overlong}
+            )
+
+    def test_import_rejects_too_many_custom_fields(self, db):
+        custom_fields = [
+            (f'Field{i}', 'v') for i in range(models.MAX_CUSTOM_FIELDS + 1)
+        ]
+        with pytest.raises(ValueError):
+            models.import_contact(
+                db, {'name': 'X', 'type': 'individual'}, custom_fields=custom_fields
+            )
+
+    def test_import_rejects_overlong_custom_field_value(self, db):
+        overlong_value = [('Bio', 'V' * (models.MAX_CF_VALUE_LEN + 1))]
+        with pytest.raises(ValueError):
+            models.import_contact(
+                db, {'name': 'X', 'type': 'individual'}, custom_fields=overlong_value
+            )
+
+    def test_import_normal_contact_still_succeeds(self, db):
+        # A rejection-only test would pass even if the cap rejected everything,
+        # so lock that a within-bounds import is unaffected.
+        cid, action = models.import_contact(
+            db,
+            {
+                'name': 'Normal Person',
+                'type': 'individual',
+                'email': 'normal@example.com',
+                'notes': 'Well within every cap.',
+            },
+            custom_fields=[('Nickname', 'Norm')],
+        )
+        assert action == 'created'
+        contact = models.get_contact(db, cid)
+        assert contact['name'] == 'Normal Person'
+        assert contact['email'] == 'normal@example.com'
+        cfs = models.get_custom_fields(db, cid)
+        assert any(cf['field_name'] == 'Nickname' and cf['field_value'] == 'Norm'
+                   for cf in cfs)

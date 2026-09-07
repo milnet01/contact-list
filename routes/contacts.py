@@ -21,6 +21,11 @@ import phoneutil
 import photos
 from db import get_db
 from models import (
+    MAX_CUSTOM_FIELDS,
+    MAX_EMAIL_LEN,
+    MAX_NAME_LEN,
+    MAX_NOTES_LEN,
+    MAX_PHONE_LEN,
     _normalize_tags,
     clear_contact_photo,
     create_contact,
@@ -73,8 +78,8 @@ def _validate_custom_fields(form) -> tuple[list[tuple[str, str]], list[str]]:
         else:
             seen.add(cn.lower())
             custom_fields.append((cn, cv))
-    if len(custom_fields) > 50:
-        errors.append('Maximum 50 custom fields allowed.')
+    if len(custom_fields) > MAX_CUSTOM_FIELDS:
+        errors.append(f'Maximum {MAX_CUSTOM_FIELDS} custom fields allowed.')
     return custom_fields, errors
 
 
@@ -92,6 +97,16 @@ def _validate_form(form) -> tuple[dict, list[tuple[str, str]], list[str]]:
         errors.append('Type must be individual or company.')
     if not name:
         errors.append('Name is required.')
+    # The model enforces these for every caller (CL-0067); checking here too
+    # turns a raw ValueError into a message on the form the user is looking at.
+    for label, value, cap in (
+        ('Name', name, MAX_NAME_LEN),
+        ('Email', email, MAX_EMAIL_LEN),
+        ('Phone', phone, MAX_PHONE_LEN),
+        ('Notes', notes, MAX_NOTES_LEN),
+    ):
+        if value and len(value) > cap:
+            errors.append(f'{label} must be {cap} characters or fewer.')
     if email and not _EMAIL_RE.match(email):
         errors.append('Invalid email address.')
     if phone and not _PHONE_RE.match(phone):
@@ -246,6 +261,14 @@ def _apply_photo(db, contact_id: int) -> None:
             )
         except ValueError:
             flash('Photo must be a JPEG, PNG, GIF or WebP under 4 MB.', 'error')
+        except OSError:
+            # save_photo writes the original with a bare open(), so a full disk
+            # or an unwritable PHOTOS_DIR raised straight out of this handler as
+            # a 500 -- AFTER the contact had already been written. The user saw
+            # an error page and could not tell the contact was saved, which is
+            # the opposite of what this function's docstring promises (CL-0079).
+            current_app.logger.exception('Could not store photo for contact %s', contact_id)
+            flash('Contact saved, but the photo could not be stored.', 'error')
         else:
             set_contact_photo(db, contact_id, ext)
     elif request.form.get('remove_photo'):

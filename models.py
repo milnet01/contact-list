@@ -8,11 +8,26 @@ import sqlite3
 import phoneutil
 
 # CL-0037: tag caps. MAX_TAG_LEN bounds a single tag's length; MAX_TAGS bounds
-# how many tags one contact may carry (matching the hard-coded 50-item
-# custom-field limit in routes.contacts). Both are enforced in _normalize_tags,
+# how many tags one contact may carry. Both are enforced in _normalize_tags,
 # which is the single choke-point for every tag write.
 MAX_TAG_LEN = 50
 MAX_TAGS = 50
+
+# CL-0067: the same caps for everything else a contact carries, enforced HERE
+# rather than in the route. The 50-custom-field limit used to live only in
+# routes.contacts, so the CSV/vCard import path -- the one that ingests
+# untrusted files -- reached import_contact with no cap at all. The core-field
+# lengths existed only as browser maxlength attributes, which a direct POST
+# ignores, so a single request could store a multi-megabyte name that then
+# rendered into every list page, the duplicates scan and the CSV export.
+# These mirror templates/contact_form.html's maxlength values; change both
+# together.
+MAX_CUSTOM_FIELDS = 50
+MAX_NAME_LEN = 200
+MAX_EMAIL_LEN = 254
+MAX_PHONE_LEN = 30
+MAX_NOTES_LEN = 2000
+MAX_CF_VALUE_LEN = 500
 
 
 def _escape_like(term: str) -> str:
@@ -551,14 +566,44 @@ def _validate_custom_field_names(custom_fields: list[tuple[str, str]] | None) ->
     (and so a colliding name can't trip the idx_cf_unique constraint mid-write)."""
     if not custom_fields:
         return
+    if len(custom_fields) > MAX_CUSTOM_FIELDS:
+        raise ValueError(
+            f'At most {MAX_CUSTOM_FIELDS} custom fields allowed '
+            f'({len(custom_fields)} given)'
+        )
     seen: set[str] = set()
-    for fn, _ in custom_fields:
+    for fn, fv in custom_fields:
         if not valid_field_name(fn):
             raise ValueError(f'Invalid custom field name: {fn!r}')
+        if len(fv) > MAX_CF_VALUE_LEN:
+            raise ValueError(
+                f'Custom field {fn!r} exceeds {MAX_CF_VALUE_LEN} characters'
+            )
         key = fn.lower()
         if key in seen:
             raise ValueError(f'Duplicate custom field name: {fn!r}')
         seen.add(key)
+
+
+def _validate_field_lengths(
+    name: str,
+    email: str | None,
+    phone: str | None,
+    notes: str | None,
+) -> None:
+    """Bound the core contact fields, for every caller including the importers.
+
+    Paired with _validate_contact_type at each write site, so the import paths
+    get the same limits the contact form does (CL-0067).
+    """
+    for label, value, cap in (
+        ('Name', name, MAX_NAME_LEN),
+        ('Email', email, MAX_EMAIL_LEN),
+        ('Phone', phone, MAX_PHONE_LEN),
+        ('Notes', notes, MAX_NOTES_LEN),
+    ):
+        if value is not None and len(value) > cap:
+            raise ValueError(f'{label} exceeds {cap} characters')
 
 
 VALID_CONTACT_TYPES = ('individual', 'company')
@@ -582,6 +627,7 @@ def create_contact(
     tags: list[str] | None = None,
 ) -> int:
     _validate_contact_type(contact_type)
+    _validate_field_lengths(name, email, phone, notes)
     _validate_custom_field_names(custom_fields)
 
     # `with db` commits on success and rolls back on any error, so a failed
@@ -623,6 +669,7 @@ def _write_contact(
     alongside the loser deletes in one transaction. Validating here means every
     caller enforces the same contract (INV-4)."""
     _validate_contact_type(contact_type)
+    _validate_field_lengths(name, email, phone, notes)
     _validate_custom_field_names(custom_fields)
 
     db.execute(
@@ -707,6 +754,7 @@ def import_contact(
     phone = (fields.get('phone') or '').strip() or None
     notes = (fields.get('notes') or '').strip() or None
     custom_fields = custom_fields or []
+    _validate_field_lengths(name, email, phone, notes)
     _validate_custom_field_names(custom_fields)
 
     match_id: int | None = None

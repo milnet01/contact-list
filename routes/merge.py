@@ -19,6 +19,7 @@ from flask import (
 import photos
 from db import get_db
 from models import (
+    MAX_CUSTOM_FIELDS,
     _normalize_tags,
     get_contact,
     get_contact_photo_ext,
@@ -106,7 +107,11 @@ def merge_apply():
         return redirect(url_for('contacts.duplicates'))
 
     try:
-        cf_count = int(request.form.get('cf_count', 0))
+        # Clamped: this is a loop bound taken straight from the request body, so
+        # an unbounded value spun a worker thread for as long as the caller
+        # liked (CL-0067). The cap is the model's, so merge and the contact form
+        # agree on how many custom fields a contact may carry.
+        cf_count = min(max(int(request.form.get('cf_count', 0)), 0), MAX_CUSTOM_FIELDS)
     except ValueError:
         cf_count = 0
     customs: list[tuple[str, str]] = []
