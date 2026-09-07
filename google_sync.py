@@ -112,7 +112,32 @@ def _save_credentials(config: dict, creds) -> None:
 
 
 def revoke_credentials(config: dict) -> None:
+    """Revoke the grant at Google, then delete the local token.
+
+    Deleting the local file alone left the refresh token live at Google
+    indefinitely, so any copy of token.json -- a backup, a synced home
+    directory -- still granted full read-write contacts access after the user
+    had "disconnected". DESIGN.md §6.2 and §9 both call this route a revoke.
+
+    Revocation is best-effort: the local token is removed whether or not Google
+    could be reached, because leaving it behind after the user asked to
+    disconnect is the worse failure.
+    """
     token_path = config['GOOGLE_TOKEN_FILE']
+    creds = _load_credentials(config)
+    if creds is not None:
+        try:
+            # Imported locally, as every other google-library use in this module
+            # is, so importing google_sync stays cheap and import-safe.
+            from google.auth.transport.requests import Request
+
+            creds.revoke(Request())
+        except Exception:
+            log.warning(
+                'Could not revoke the token at Google; removing the local copy '
+                'anyway. The grant may still be listed in the Google account.',
+                exc_info=True,
+            )
     if os.path.isfile(token_path):
         os.remove(token_path)
 
@@ -205,7 +230,14 @@ def sync_contacts(config: dict, db: sqlite3.Connection, region: str) -> SyncResu
                 sync_token = None
                 next_page_token = None
                 synced = 0
-                db.execute('DELETE FROM sync_state WHERE id = 1')
+                # Clear the TOKEN only. A DELETE took last_synced_at with it,
+                # and spec §5 Step 3 decouples the two precisely so that value
+                # never goes stale: if the restarted full pull then fails on a
+                # later page, Step 3 never runs, last_synced_at stays NULL, and
+                # the next sync computes an empty dirty set -- so the pull's
+                # deferral is disabled and every locally-edited contact is
+                # overwritten by Google's copy without ever having been pushed.
+                db.execute('UPDATE sync_state SET sync_token = NULL WHERE id = 1')
                 db.commit()
                 continue
             # Log the detail server-side; don't surface raw API error text
@@ -315,7 +347,7 @@ def _contact_update_time(person: dict) -> datetime.datetime | None:
     return None
 
 
-def _merge_primary(existing: list | None, value: str, key: str) -> list:
+def _merge_primary(existing: list | None, value: str | dict, key: str) -> list:
     """Set the value of the FIRST entry (index 0) in place, preserving its other
     keys and every later entry — the multi-value-preservation guard (INV-2). If
     the list is empty, create one entry. Position-based (not value-matching): the
@@ -371,7 +403,12 @@ def _person_body_for_push(
     cf = {r['field_name'].lower(): r['field_value'] for r in custom_fields}
     date = _birthday_to_google_date(cf['birthday']) if cf.get('birthday') else None
     if date:
-        body['birthdays'] = [{'date': date}]  # single-valued
+        # Was a wholesale replacement, which made birthdays the one managed
+        # field not going through _merge_primary -- so a contact with a second
+        # birthday entry, or a `text` field alongside the date on entry 0, lost
+        # it on every push. That is exactly what INV-2 forbids.
+        body['birthdays'] = _merge_primary(
+            existing.get('birthdays'), date, 'date')
         fields.append('birthdays')
     if cf.get('address'):
         body['addresses'] = _merge_primary(
@@ -419,11 +456,31 @@ def _push_update(service, db, contact_id: int, google_id: str, person: dict) -> 
     return True
 
 
+# §9: surfaced verbatim to the user, so the wording is part of the contract.
+_SCOPE_DENIED_MESSAGE = 'Google needs the write permission — reconnect.'
+
+
+def _is_write_scope_denied(exc: Exception) -> bool:
+    """True for a People API 403 refusing the write.
+
+    A token that has lost the write scope fails the same way on every contact,
+    so without this the whole push reported as N per-contact skips with no clue
+    that reconnecting is the fix.
+    """
+    status = getattr(getattr(exc, 'resp', None), 'status', None)
+    return status == 403
+
+
 def _push_local_changes(service, db, region, config, dirty_linked, local_only,
                         prev_sync, result: SyncResult) -> None:
     """Step 2: create local-only contacts on Google, and push locally-edited
     linked contacts with per-contact conflict resolution (§7). Each push is its own
-    committed unit, isolated so one failure is logged + skipped, never fatal."""
+    committed unit, isolated so one failure is logged + skipped, never fatal.
+
+    The one exception is a 403 on write (§9): a token that has lost the write
+    scope fails identically on every contact, so reporting it as N per-contact
+    skips tells the user nothing about the cause. It is recorded once on the
+    result and the push stops."""
     prev_dt = _parse_dt(prev_sync)
 
     for contact_id in local_only:
@@ -438,8 +495,12 @@ def _push_local_changes(service, db, region, config, dirty_linked, local_only,
                 db, contact_id, created.get('resourceName'), created.get('etag'))
             db.commit()  # persist the link at once so a re-run never re-creates
             result.created += 1
-        except Exception:
+        except Exception as exc:
             db.rollback()
+            if _is_write_scope_denied(exc):
+                result.error = _SCOPE_DENIED_MESSAGE
+                log.error('Google refused the write (403); token lacks the write scope')
+                return
             log.exception('Failed to create Google contact for %s', contact_id)
             result.skipped += 1
 
@@ -468,8 +529,12 @@ def _push_local_changes(service, db, region, config, dirty_linked, local_only,
                     result.conflicts_local += 1  # local edit beat a concurrent Google edit
                 elif pushed:
                     result.updated += 1
-        except Exception:
+        except Exception as exc:
             db.rollback()
+            if _is_write_scope_denied(exc):
+                result.error = _SCOPE_DENIED_MESSAGE
+                log.error('Google refused the write (403); token lacks the write scope')
+                return
             log.exception('Failed to push contact %s', contact_id)
             result.skipped += 1
 

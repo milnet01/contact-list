@@ -297,3 +297,70 @@ class TestDirtyDefer:
         assert result.conflicts_local == 1
         _res, _fields, body = service.updated[0]
         assert body['names'][0]['unstructuredName'] == 'Local Name'
+
+
+class TestExpiredSyncTokenSelfHeal:
+    """An expired sync token clears ONLY sync_token, preserving last_synced_at.
+
+    Why this exists: the self-heal path used to `DELETE FROM sync_state WHERE id
+    = 1`, wiping last_synced_at along with the token. If the restarted full pull
+    then failed on a later page, Step 3 (which advances last_synced_at) never
+    ran, last_synced_at stayed NULL, and the next sync computed an EMPTY dirty
+    set -- silently disabling the pull's deferral and letting Google overwrite
+    unpushed local edits. The retry is made to fail here too, so Step 3 never
+    runs and the only source of last_synced_at's value is whatever survived the
+    self-heal -- proving it was preserved rather than merely re-set later.
+    """
+
+    class _ExpiredThenBrokenService:
+        """list() raises the expired-sync-token error when called with a
+        syncToken; the retry (no syncToken) raises a plain failure, so the sync
+        never reaches Step 3."""
+
+        def __init__(self):
+            self.calls: list[dict] = []
+
+        def people(self):
+            return self
+
+        def connections(self):
+            return self
+
+        def list(self, **kwargs):
+            self.calls.append(kwargs)
+
+            def run():
+                if 'syncToken' in kwargs:
+                    from googleapiclient.errors import HttpError
+
+                    class _Resp:
+                        status = 400
+                        reason = 'Bad Request'
+
+                    raise HttpError(
+                        _Resp(),
+                        b'{"error": {"status": "INVALID_ARGUMENT", "message": '
+                        b'"Sync token is expired. Retry with an empty token. '
+                        b'Reason: EXPIRED_SYNC_TOKEN"}}',
+                    )
+                raise RuntimeError('network died mid-resync')
+            return _Exec(run)
+
+    def test_last_synced_at_survives_a_self_heal_whose_retry_then_fails(
+        self, app, db, monkeypatch
+    ):
+        db.execute(
+            'INSERT INTO sync_state (id, sync_token, last_synced_at) '
+            "VALUES (1, 'STALE-TOKEN', '2020-01-01T00:00:00Z')"
+        )
+        db.commit()
+        service = self._ExpiredThenBrokenService()
+        result = _run_sync(app, db, service, monkeypatch)
+        assert result.error is not None  # the retry's RuntimeError surfaced
+        # The retry was made with no syncToken (a clean full resync).
+        assert 'syncToken' not in service.calls[-1]
+        row = db.execute(
+            'SELECT sync_token, last_synced_at FROM sync_state WHERE id = 1'
+        ).fetchone()
+        assert row['sync_token'] is None            # cleared by the self-heal
+        assert row['last_synced_at'] == '2020-01-01T00:00:00Z'  # preserved, not wiped
