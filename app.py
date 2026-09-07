@@ -31,6 +31,13 @@ def create_app(test_config: dict | None = None) -> Flask:
         level=logging.INFO,
         format='%(asctime)s %(levelname)s %(name)s: %(message)s',
     )
+    # basicConfig pins the ROOT level, which is the level Werkzeug's request
+    # logger uses -- and that logger writes the full request line including the
+    # query string. Contact search covers name, email, phone and notes, so on a
+    # frozen build the search terms persisted to a rotating log file under the
+    # config directory, undocumented and unredacted (CL-0072). Our own INFO
+    # lines are still wanted, so raise Werkzeug's alone rather than the root's.
+    logging.getLogger('werkzeug').setLevel(logging.WARNING)
     log = logging.getLogger(__name__)
 
     # Database lifecycle
@@ -170,6 +177,12 @@ def create_app(test_config: dict | None = None) -> Flask:
         response.headers['X-Frame-Options'] = 'DENY'
         response.headers['Referrer-Policy'] = 'same-origin'
         response.headers['Permissions-Policy'] = 'camera=(), microphone=(), geolocation=()'
+        # Contact pages carry names, numbers and notes; without this they sit in
+        # the browser's on-disk cache after the tab is closed (CL-0072).
+        # setdefault, so the photo route's deliberate one-day max-age (CL-0034)
+        # is left alone -- an image the user already has is not the exposure,
+        # and re-downloading every avatar per navigation is what CL-0034 fixed.
+        response.headers.setdefault('Cache-Control', 'no-store')
         return response
 
     # ------------------------------------------------------------------
