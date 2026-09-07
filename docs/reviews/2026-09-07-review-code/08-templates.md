@@ -1,0 +1,33 @@
+# Lane 8 — templates (13 files, 1,179 lines)
+Boundary note: the lane read docs/specs/2026-07-05-page-construction-standard.md 3-8 + INV-1/INV-2 beyond its packet, after DESIGN 10.1 pointed at it. This REMOVED three findings it would otherwise have filed falsely (bare h2 in cards, error.html's bare h1, server_action.html not extending base.html — all explicitly exempted there). Disclosed.
+Language standard: none covers Jinja2/HTML. No template-aware tool has ever run on this tree.
+## Critical (0)
+## High (1)
+- [dim 2] base.html:54 — the back-to-top button ships on EVERY page and is inert on twelve of thirteen; its only handler sits downstream of app.js:346's early return. Already tracked as CL-0048 — not double-filed; the fix is in app.js (another lane), but the dead markup is this lane's.
+## Medium (6)
+- [dim 12][tool: axe-core/pa11y] base.html:59-67 — the confirmation dialog gating EVERY destructive action (delete contact, bulk delete, disconnect Google, restart server, shut down server) has no role="dialog"/"alertdialog", no aria-modal, no aria-labelledby. app.js:38 moves focus to a button whose accessible name is just "Confirm"; the question in .modal-message is NEVER announced. A screen-reader user is asked to confirm a deletion and told only "Confirm, button". No Escape handler, no focus trap.
+- [dim 2] DESIGN 9 route table — seven shipped routes these templates link or POST to are absent: contacts.birthdays (base.html:25, a TOP-LEVEL NAV ITEM), contacts.import_view (base.html:27, also nav), contacts.import_apply, contacts.export_vcard, contacts.bulk_delete, contacts.merge_preview, contacts.merge_apply. 13 marks v1.1 shipped, so the DOCUMENT is the wrong side. Hand to review-contract.
+- [dim 13] birthdays.html:46 — the only date in the app rendered without friendly_date. strftime('%B') is locale-dependent (LC_TIME) and the "%B day" order is hardcoded US, so a user who picked d/m/y in Settings sees "March 5" here and their chosen format everywhere else. The Date-format setting does not reach this page.
+- [dim 4][tool: curlylint] merge.html:76 — the tags input has no label, no id, no aria-label, while the identical control in contact_form.html:93-97 has all three. One control copied twice where one copy lost its label. An h2 is not a programmatic label (WCAG 3.3.2, 4.1.2).
+- [dim 4][tool: djlint] inline SVG sprites stamped 3-4x with three different class treatments. The mail path appears verbatim bare at contacts.html:130, contact_detail.html:40, contact_form.html:57 and classed at duplicates.html:79; the phone path repeats the same 3-bare-plus-1-classed split; the back-arrow diverges a THIRD way. The same glyph renders at three sizes/tints depending on which page copied it when — the drift CL-0047 exists to stop, and _macros.html holds only page_header. fix: an icon(name) macro.
+- [dim 2] import.html:37 — the whole uploaded file round-trips through the browser between map and apply as a hidden textarea. MAX_CONTENT_LENGTH is 5 MiB and stage 2 re-posts percent-encoded, so a CSV that uploads fine at 3-4 MiB can exceed 5 MiB on the re-post and 413, stranding the user mid-import. (The escaping itself is correct — </textarea> is neutralised by autoescape; verified.)
+## Low / Info
+- [dim 12][tool: curlylint] import.html:21,46,59 — file input has no label; each map_<col> select has none (only a th); default_type is labelled by loose p text.
+- [dim 2] CL-0047 spec 6 (.form-actions inside a form, .actions outside) is inverted in BOTH directions: settings.html:129 and merge.html:80.
+- [dim 12] merge.html:29-39,55-61 — radio groups grouped only by an h2; no fieldset/legend, so no programmatic name (WCAG 1.3.1).
+- [dim 12] contacts.html:100,102 — sort state conveyed only by a triangle glyph; no aria-sort, no scope. A screen reader reads "Name black up-pointing triangle".
+- [dim 2] contact_detail.html:59 — notes rendered into HTML where newlines collapse. CONDITIONAL on style.css setting white-space: pre-wrap on dd; the lane was not granted the stylesheet.
+- [dim 4] avatar rendering diverged — contacts.html and contact_detail.html branch on a photo; duplicates.html:61,101,141 and birthdays.html:41 always render the letter avatar even for a contact that has one, and duplicates is precisely where a photo distinguishes identically-named rows. Could not confirm whether has_photo is available there.
+- [dim 12] server_action.html:10 — meta refresh is a WCAG 2.2.1 failure with no opt-out, but is required by the CL-0046 spec 4.2, so a note on the design. Secondary: a 3s redirect can land before the restarted server is listening.
+- [dim 12] error.html:6 — page heading is a bare "404". Explicitly out of CL-0047 scope; general principles only.
+- [dim 12] contact_form.html:110 — server-rendered Remove buttons have no aria-label while their JS-created twin at app.js:434 does, so N fields give N buttons all named "Remove".
+- INFO — DESIGN 14 caps HTML templates at 30 KB; likely breached given ~30 inline SVG sprites, but the lane's read-only verb set returns no byte count and it declined to assert an unmeasured number.
+## Covered by spec and looks correct
+XSS: a full sweep of all 13 files for |safe, Markup(, autoescape false, script-with-interpolation, on* handlers, inline style, target=, javascript: returns ZERO hits. mailto:/tel: have fixed scheme prefixes. The two raw-URL sinks both trace to routes/contacts.py:203 _safe_ref. _macros.html's caller() is Markup already rendered under autoescape. CSRF: EVERY form checked, not a sample — all 15 mutating forms carry the hidden _csrf_token (sites enumerated). The three type="button" controls mutate nothing directly and submit #bulk-form which carries the token; app.js has no fetch/XHR, so there is no token-less async path. CL-0047: all eight in-scope pages use page_header (INV-1); .settings-form/.contact-form gone per 4.1; settings tabs match 7.1/7.2 exactly. CSP: no inline style/script; the only script is url_for-resolved same-origin. error.html/server_action.html content traced to literals in app.py:181,185,191 — never an exception string. _macros.html imported by eight of thirteen; the single macro is sound.
+## Open questions
+1. Does style.css set white-space: pre-wrap on dd?
+2. Is has_photo available in the duplicates/birthdays row dicts?
+3. DESIGN 14 template size budget needs a byte measurement.
+4. Does a .vcf reach the map stage and get stuffed into a field called csv_text?
+## 3 to fix first
+1. base.html:59-67 give the confirmation modal dialog semantics. 2. DESIGN 9 add the seven missing routes. 3. birthdays.html:46 route the date through friendly_date.
