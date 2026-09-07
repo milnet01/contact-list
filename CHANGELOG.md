@@ -39,7 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   from source was unaffected, which is why no test caught it. Found by
   launching a real build and opening the page.
 
-- **Imported files can no longer store oversized contact fields** (CL-0067)
+- **Imported files can no longer store oversized contact fields** (CL-0068)
   Name, email, phone, notes and custom-field values are now length-checked
   where the data is written rather than only in the browser, so an imported
   CSV or vCard gets the same limits the contact form shows. The

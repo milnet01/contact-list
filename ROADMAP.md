@@ -737,6 +737,22 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   Calibrated below the lanes' raw severity: this is a single-user
   localhost app, so the requester is the owner. The import path is the
   exception and keeps its weight -- that input is genuinely untrusted.
+  Progress (2026-09-07): PARTLY done, deliberately not flipped.
+
+  Done: the four core-field length caps and the fifty-custom-field limit
+  now live in models.py and are applied at all three write sites, so the
+  CSV and vCard import paths get them too -- that was the bypass this
+  item was mainly about. merge_apply's cf_count is clamped to the same
+  cap. Verified through import_contact as well as create_contact, with
+  regression tests proven red.
+
+  Still open: bulk_delete's id list is still unbounded, each id costing
+  its own commit and a full orphan-tag anti-join.
+
+  Note: the commit that landed this work cites CL-0067 in its subject and
+  body. That is wrong -- CL-0067 is the buffered-exports item. The id was
+  miscopied; the work described here is this bullet's. Recorded rather
+  than rewritten, since the commit is already pushed.
   **Layman:** A few form fields are trusted to be a sensible size without anyone checking.
   Kind: security.
   Source: review-code 2026-09-07 (routes-contacts + data-layer + routes-io lanes).
@@ -761,6 +777,21 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
       the README advertises, and DESIGN §8.1 tells the user to put
       `credentials.json` there.
     - `SECRET_KEY` from the environment has no length floor.
+  Progress (2026-09-07): PARTLY done, deliberately not flipped.
+
+  Done: the secret-key write is now a temp file plus os.link, so whoever
+  wins owns the file and every other worker re-reads the winner's key --
+  closing both the concurrent-first-run race and the zero-byte-file
+  rotation. The read now catches OSError and UnicodeDecodeError rather
+  than FileNotFoundError alone, so an unreadable key file no longer kills
+  the app at import with no message on any surface. Verified with eight
+  concurrent callers converging on one key; tests proven red.
+
+  Still open, both from the same lane: ensure_private_dir chmods only the
+  leaf, so the config directory itself is created 0755 by its nested
+  caller -- and the branch that normally tightens it as a side effect is
+  skipped entirely when SECRET_KEY is set, which the README advertises.
+  And SECRET_KEY from the environment still has no length floor.
   **Layman:** The file that keeps you logged in can be written twice at once on first run, and the folder holding your Google credentials is briefly readable by other users on the machine.
   Kind: security.
   Source: review-code 2026-09-07 (app-core lane).
@@ -793,7 +824,7 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   Kind: security.
   Source: review-code 2026-09-07 (google-sync lane).
 
-- 📋 [CL-0071] **Photo writes are not atomic and can destroy the existing photo on a failed replace.**
+- ✅ [CL-0071] **Photo writes are not atomic and can destroy the existing photo on a failed replace.**
   Two findings in `photos.py`:
 
     - `save_photo` deletes the previous file BEFORE opening the new one
@@ -807,11 +838,24 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
       rename, promoting a half-written image that then persists because
       the existence check never regenerates it. The docstring's
       atomicity claim is true of the rename and false of the temp file.
+  Resolved (2026-09-07): both halves. save_photo now writes the new
+  file to a temp and os.replace's it into position before removing the
+  old one, so a failure in between can no longer leave the contact with
+  no photo while the database still names one. _write_thumbnail uses
+  tempfile.mkstemp instead of a per-process name, so two concurrent
+  regenerations of the same avatar cannot share a path and promote a
+  half-written image.
+
+  Verified by simulating the failure rather than reasoning about it: with
+  os.replace raising, the existing photo is still present and
+  byte-identical and no temp file is left behind. Regression tests proven
+  red against the old code -- the preservation test failed with
+  FileNotFoundError, because the old photo was already gone.
   **Layman:** Replacing a contact photo deletes the old one first, so if the new one fails to save you lose both.
   Kind: fix.
   Source: review-code 2026-09-07 (google-sync lane).
 
-- 📋 [CL-0072] **Contact search terms are written to the log file, and pages carrying contact data are cacheable.**
+- ✅ [CL-0072] **Contact search terms are written to the log file, and pages carrying contact data are cacheable.**
   Two findings, both privacy rather than a breach:
 
     - The root logger is pinned to INFO, which is the level Werkzeug's
@@ -826,6 +870,15 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
       the browser's on-disk cache. Remedy: `no-store` on the response.
 
   Found by two lanes independently.
+  Resolved (2026-09-07): both halves. Werkzeug's own logger is raised to
+  WARNING rather than the root's, so the request line carrying the search
+  query string is no longer written to the log file while our own INFO
+  lines are unaffected. Contact pages set Cache-Control: no-store.
+
+  Applied with setdefault so the photo route's deliberate one-day
+  max-age (CL-0034) is untouched -- verified on the running app: the
+  photo response still carries public, max-age=86400 while the page it
+  sits on carries no-store.
   **Layman:** What you type into the search box gets written to a log file on disk, and contact pages can sit in the browser cache.
   Kind: security.
   Source: review-code 2026-09-07 (app-core + process-lifecycle lanes).
@@ -912,6 +965,20 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   runs without `disallow_untyped_defs`. Widening the ruff select is
   already tracked separately, and BLE001, PLW1514 and PTH would each
   have caught findings this sweep found by hand.
+  Progress (2026-09-07): PARTLY done, deliberately not flipped.
+
+  Done: all five modules -- importer.py, photos.py, server_control.py,
+  tray.py and vcard.py -- are in mypy's file list. The checked set went
+  from seventeen files to twenty-two with zero new errors, so they were
+  correctly annotated all along and simply never checked. A comment on
+  the list now says a new module belongs there on the day it is written.
+
+  Still open: the other half of this item. No route function carries a
+  return annotation and several helpers take untyped parameters, against
+  CLAUDE.md's requirement of type hints on all signatures. Neither tool
+  catches it as configured -- ruff selects no ANN rules and mypy runs
+  without disallow_untyped_defs. Turning either on is the real fix and is
+  its own piece of work.
   **Layman:** The type checker skips five of our files — including the two that read files other people send us.
   Kind: chore.
   Source: review-code 2026-09-07 (five lanes).
