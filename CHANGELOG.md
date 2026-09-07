@@ -32,6 +32,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Back-to-top and the sticky filter bar work on every page** (CL-0048)
+  Both were stranded behind an early return that fires on every page
+  except the contact form, so the button never appeared where it was
+  useful and the filter bar fell back to a fixed offset. The scroll to top
+  now also respects a reduced-motion preference.
+
+- **The system-tray icon now appears on Windows and macOS**
+  The appindicator backend was pinned on every platform, not just Linux.
+  pystray imports the named backend unconditionally and does not fall back,
+  and that backend needs a Linux-only library — so the tray failed to start
+  on Windows and macOS, and the app then opened a browser tab on every
+  launch as its no-tray fallback. Both platforms now select their own
+  native backend, as the design document always said they would.
+
+- **Multi-line notes survive a vCard export and re-import**
+  Notes typed on more than one line were exported with a raw carriage
+  return, which acted as an end-of-line marker when the file was read back
+  — so everything after the first line was lost. This also closes a way for
+  imported contact data to inject extra entries into an exported file.
+
+- **Emails and phone numbers with custom labels now import from Google and Apple exports**
+  Both write those entries with a group prefix on the property name, which
+  the parser did not recognise, so exactly the labelled emails and phone
+  numbers were dropped without a word.
+
+- **A vCard import that skips contacts now says so**
+  Contacts the importer refused were counted as neither imported nor
+  skipped, so a file where most records failed still reported an
+  unqualified success. The summary now reports the skipped count and the
+  reason for each, as the CSV import already did.
+
+- **Dates and the timezone setting work in the Windows build**
+  Windows ships no system timezone database, so the frozen build had none:
+  the Settings timezone list rendered empty, saving a timezone always
+  failed, and every date in the app fell back to a raw machine-readable
+  timestamp. The database is now bundled into the Windows build.
+
+- **The delete confirmation counts contacts, not checkboxes**
+  On the duplicates page a contact can appear in more than one group, so
+  "delete 5 selected" could precede a delete of three.
+
+- **Ctrl-C stops the server instead of hanging it**
+  The server ran on a thread nothing shut down outside the tray's Quit, so
+  interrupting a run from the terminal printed an error and then hung,
+  still serving, until the process was killed.
+
+- **Google sync no longer discards its own last-sync time when recovering**
+  When Google retired a sync token the recovery cleared the whole sync
+  record rather than just the token. If the restarted sync then failed
+  part-way, the next run could not tell which contacts had local edits
+  pending and let Google's copy overwrite them.
+
+- **Pushing a contact to Google preserves birthday entries it does not manage**
+  The birthday was the one field written as a wholesale replacement rather
+  than an in-place update, so anything else Google held there was
+  discarded on every push.
+
+- **A Google sync that fails for want of permission now says so**
+  A refused write was counted as an ordinary per-contact skip, so a token
+  that had lost its write permission reported every contact as skipped
+  with no hint that reconnecting was the fix.
+
 - **System-tray icon now appears when running from source or from a self-built AppImage, not only in CI-built releases** (CL-0057)
   The GI/AppIndicator stack was installed only in the release workflow, so ./run.sh and a local packaging/build-linux.sh both produced a tray-less app — the latter exiting 0 while logging "Hidden import 'gi.repository.DBus' not found". run.sh now builds its venv with --system-site-packages (rebuilding an existing venv once, since the flag is fixed at creation), and build-linux.sh refuses to build under an interpreter that cannot load the GI typelibs rather than silently shipping without a tray. Linux from-source users need a few distro packages — see the README.
 
@@ -39,6 +101,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   It warned nowhere and raised an unhandled `ValueError` while importing
   `config`; it now logs a warning and uses 5002. Its accepted range is
   unchanged.
+
+### Security
+
+- **The one third-party release action is pinned to a commit, not a moving tag**
+  It runs in the job that holds write access to the repository, and a tag
+  can be moved by someone outside GitHub. The GitHub-owned actions stay on
+  major tags so they keep receiving fixes.
+
+- **Exported CSV no longer lets contact data run as a spreadsheet formula**
+  A contact field beginning with a formula character executed when the
+  export was opened in a spreadsheet. Such fields are now neutralised.
+  International phone numbers are unaffected.
+
+- **Disconnecting from Google now revokes the token at Google**
+  Disconnecting deleted the local copy only, leaving the grant active on
+  the Google account — so any surviving copy of the token file still had
+  full access to contacts after the user had disconnected.
 
 ## [1.1.0] - 2026-07-12
 

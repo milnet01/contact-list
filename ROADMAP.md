@@ -1,3 +1,5 @@
+<!-- ants-roadmap-format: 1 -->
+
 # Contact List — Roadmap
 
 Forward-looking work for Contact List. Status legend: 📋 planned · 🚧 in-progress ·
@@ -192,7 +194,7 @@ efficiency / coding standards every item must comply with.
   Source: user-request-2026-07-05.
   Resolved (2026-07-05): page_header macro (_macros.html), base fieldset now renders as a card (matches Settings), .form-group forms + .form-actions, .card-title, .page-header, and progressive-enhancement tabs (app.js separate IIFE, tab-bar hidden until .js-tabs, type=button, roving tabindex, Save hidden on Server tab). Settings sections are tabs; contact form + all pages migrated; contact_detail keeps its .detail-header variant. Spec passed 6-loop /cold-eyes. 356 tests green (+1), all templates compile + render 200, app.js valid, CSS balanced. DESIGN.md §10.1 records the standard. Manual visual QA pending (no browser automation here).
 
-- 📋 [CL-0048] **app.js single-IIFE early return strands back-to-top / --header-h on most pages.**
+- ✅ [CL-0048] **app.js single-IIFE early return strands back-to-top / --header-h on most pages.**
   static/app.js is one big IIFE (lines 2-534). The custom-fields
   block does `if (!container || !addBtn) return;` at line 347, which
   returns from the WHOLE IIFE. So on any page without #custom-fields
@@ -206,6 +208,18 @@ efficiency / coding standards every item must comply with.
   **Layman:** The 'back to top' button and the sticky filter-bar positioning silently don't work on most pages (everywhere except the contact add/edit form).
   Kind: fix.
   Source: surfaced-during-CL-0047 cold-eyes 2026-07-05.
+  Resolved (2026-09-07): the sticky-header height calc and the
+  back-to-top wiring now live in their own IIFE, alongside the tabs
+  block that was already separated for the same reason. Verified: the
+  file parses under `node --check`, and the moved code sits outside the
+  IIFE carrying the custom-fields early return. Found again independently
+  by two lanes of a full review sweep, which also established the exact
+  extent — `--header-h` is set only on the contact form and consumed only
+  on the contact list, so the measurement never reached the page that
+  needed it and the sticky bar always used its hardcoded fallback.
+  Two defects in the moved lines were fixed with it: the deprecated
+  `pageYOffset` alias, and a smooth scroll that ignored
+  `prefers-reduced-motion` despite DESIGN.md §10 promising support.
 
 - ✅ [CL-0049] **Standalone one-file launchers per OS (AppImage / .exe / .dmg) via PyInstaller + GitHub Actions.**
   Design: docs/specs/2026-07-10-standalone-launchers-design.md. Freeze the Flask app with PyInstaller into one self-contained artefact per OS; GitHub Actions runners build all three (Linux/Windows/macOS can't cross-build), with local pre-flight builds on Linux (native) and Windows (Wine). Key code changes: frozen-aware data dir (~/.config/contact-list), resource_path helper for bundled templates/static/migrations, and --google-auth self-dispatch so OAuth works in the frozen binary. macOS ad-hoc-signed arm64 .dmg (unsigned/no-notarization out of scope). Cutting v1.0.0 is a separate follow-on.
@@ -419,15 +433,17 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   python`, which picks the same gi-less ./venv that run.sh:9-11 creates.
   CI escapes this only because it exports PYTHON=build-venv/bin/python.
   So BOTH non-CI paths lose the tray:
-   - From source: ./run.sh logs "system tray unavailable or failed" with
-     ImportError: this platform is not supported: No module named 'gi'.
-     Verified pre-existing on an unmodified tree (git stash) 2026-08-06.
-   - Local AppImage: `bash packaging/build-linux.sh` exits 0 while logging
-     "ERROR: Hidden import 'gi.repository.DBus' not found" and the same for
-     AyatanaAppIndicator3; the resulting .AppImage serves normally, opens
-     the browser, registers NO StatusNotifierItem on the session bus, and
-     writes the same ImportError to ~/.config/contact-list/contact-list.log.
-     Verified on a built artefact 2026-08-06, not inferred.
+
+    - From source: ./run.sh logs "system tray unavailable or failed" with
+      ImportError: this platform is not supported: No module named 'gi'.
+      Verified pre-existing on an unmodified tree (git stash) 2026-08-06.
+    - Local AppImage: `bash packaging/build-linux.sh` exits 0 while logging
+      "ERROR: Hidden import 'gi.repository.DBus' not found" and the same for
+      AyatanaAppIndicator3; the resulting .AppImage serves normally, opens
+      the browser, registers NO StatusNotifierItem on the session bus, and
+      writes the same ImportError to ~/.config/contact-list/contact-list.log.
+      Verified on a built artefact 2026-08-06, not inferred.
+
   Consequence for the spec: §10's local-build verification step ("launch the
   resulting .AppImage from a clean environment") cannot confirm the tray —
   it never appears there — so it is not a usable pre-release check for
@@ -505,35 +521,419 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
 - 📋 [CL-0062] **Decide which of ruff 0.16's 35 newly-flagged findings to adopt.**
   Context: pyproject.toml had no [tool.ruff.lint] select, so ruff used its
   implicit default. Ruff 0.16 widened that default, so the routine bump from
-  0.15.21 to 0.16.1 turned a clean run into 35 findings across 16 rules that
+  0.15.21 to 0.16.1 turned a clean run into findings across sixteen rules that
   nobody had opted into. Resolved on 2026-08-06 by stating the historical set
   (E4, E7, E9, F) explicitly, so the tool tracks latest while the lint contract
   is a deliberate choice. Verified the explicit set still catches real defects
   (F401 unused import, F821 undefined name).
 
   This item is the follow-up question that split off: WHICH of the wider rules
-  do we actually want? Counts from `ruff check . --output-format=concise` at
+  do we actually want? Measured with `ruff check . --output-format=concise` at
   0.16.1 with select unset:
 
-    7 I001      import block un-sorted
-    5 RUF059    unused unpacked variable
-    5 BLE001    blind `except Exception` — worth a careful look, launcher.py's
-                tray fallback is deliberately blind and should stay that way
-    4 DTZ011    `date.today()` without a timezone
-    2 UP037     redundant quotes in a type annotation
-    2 UP017     `datetime.UTC` alias available
-    2 LOG015    logging call on the root logger
-    1 each      UP012, S310, RUF100, RUF012, PLW1510, LOG014, FURB162, EXE001, B017
+  ```
+  7 I001      import block un-sorted
+  5 RUF059    unused unpacked variable
+  5 BLE001    blind `except Exception`
+  4 DTZ011    `date.today()` without a timezone
+  2 UP037     redundant quotes in a type annotation
+  2 UP017     `datetime.UTC` alias available
+  2 LOG015    logging call on the root logger
+  1 each      UP012, S310, RUF100, RUF012, PLW1510,
+              LOG014, FURB162, EXE001, B017
+  ```
+
+  BLE001 is the one to be careful with: launcher.py's tray fallback is
+  deliberately blind and should stay that way.
 
   Some look genuinely valuable (S310 flags a URL open, DTZ011 naive datetimes).
-  Others would fight deliberate design — BLE001 against the tray fallback is the
-  clear case. Treat this as a review of each rule family, adopting per-rule with
-  a `# noqa` plus reason where the current code is right, NOT as a bulk autofix:
-  13 are auto-fixable and 7 more need --unsafe-fixes, which is exactly the shape
-  that quietly changes behaviour.
-  **Layman:** A newer version of our code checker suggests 35 improvements it never used to mention. Worth reading through and picking the ones we want, rather than accepting or ignoring them wholesale.
+  Others would fight deliberate design. Treat this as a review of each rule
+  family, adopting per-rule with a `# noqa` plus reason where the current code
+  is right, NOT as a bulk autofix: thirteen are auto-fixable and seven more
+  need --unsafe-fixes, which is exactly the shape that quietly changes
+  behaviour.
+  **Layman:** A newer version of our code checker suggests improvements it never used to mention. Worth reading through and picking the ones we want, rather than accepting or ignoring them wholesale.
   Kind: refactor.
   Source: in-session-2026-08-06 (dependency sweep; surfaced by the ruff 0.15 to 0.16 bump).
+
+- 📋 [CL-0063] **Restart respawns the AppImage from a mount that is being unmounted.**
+  Frozen, both `sys.executable` and `sys.argv[0]` are the AppImage
+  type-2 runtime's ephemeral mount. server_control spawns the child from
+  that path and then `os._exit(0)`s the payload, at which point the
+  runtime unmounts it -- so the child, a onedir bundle still paging in
+  the stdlib, dies part-started. Two consequences ride along: because
+  `sys.executable == sys.argv[0]` when frozen the command is the binary
+  with its own path as argv[1], and re-exec'ing the old mount reloads the
+  OLD code even when an update succeeded, which is the stated purpose of
+  restart.
+
+  QUEUED RATHER THAN FIXED: the remedy (prefer `$APPIMAGE`) changes what
+  two invariants of docs/specs/2026-07-05-server-restart-control.md
+  describe. INV-1 pins the respawn argv to `sys.executable` + `sys.argv`,
+  and INV-3's port-rebind reasoning was verified on the source path only
+  -- its own note records a port-5099 smoke test, which cannot have
+  covered the frozen case. So this needs the spec amended and gated
+  before the code moves, not an inline edit during a fix pass.
+
+  Blocked-by: a spec amendment to 2026-07-05-server-restart-control.md.
+  **Layman:** Restarting the app from the tray or the Settings page probably kills it instead, on the Linux download most people use.
+  Kind: fix.
+  Source: review-code 2026-09-07 (process-lifecycle lane); queued by close-findings.
+
+- 📋 [CL-0064] **Decide whether clearing a field locally should push the deletion to Google.**
+  A field the user empties is omitted from both the request body and
+  `updatePersonFields`, so Google never hears about it and keeps the old
+  value; the next pull then re-imports that value locally and the
+  deletion silently reverts. The spec's conflict rule promises "local
+  wins", and under this a clearing edit can never win. The same shape
+  applies to the birthday, address and organization custom fields.
+
+  QUEUED RATHER THAN FIXED: this is a decision, not an edit. Pushing an
+  empty value deletes data on the Google side, which is exactly what
+  INV-2 ("a push never removes a value the app does not manage") is
+  guarding against -- so the two readings pull opposite ways and the
+  wrong choice destroys data. Settle the semantics, record them in the
+  spec, then implement.
+  **Layman:** If you delete someone's phone number here, Google keeps its copy and puts it back on the next sync.
+  Kind: investigate.
+  Source: review-code 2026-09-07 (google-sync lane); queued by close-findings.
+
+- 📋 [CL-0065] **DESIGN §6 covers input handling only; nothing states an output-encoding rule.**
+  The CSV formula-injection fix landed in code (`_csv_safe`), but §6.1
+  is entirely about the inbound direction, so nothing tells the next
+  person writing an export to neutralise anything. The same gap covers
+  vCard emission and any future export format.
+
+  QUEUED RATHER THAN FIXED: adding the rule changes what a conformer
+  writes, which is rule 14's Yes branch, so it needs `review-contract`
+  rather than an inline edit during a fix pass.
+  **Layman:** Our security standards say how to handle data coming in, but not how to make it safe on the way out.
+  Kind: security.
+  Source: review-code 2026-09-07 (routes-io lane); queued by close-findings.
+
+- 📋 [CL-0066] **Contact list pays a full table scan and per-row phone parsing on every render.**
+  Four findings, one subject -- all measured against DESIGN §7.1's own
+  targets:
+
+    - `get_letter_counts` groups on `first_letter(name)`, a Python
+      callback registered in db.py. SQLite cannot index an
+      application-defined function, so every contact-list render scans
+      the table with one interpreter round trip per row, and the
+      `?letter=` filter scans the same way. §7.2 promises indexes on
+      WHERE/ORDER BY columns; a UDF in the predicate defeats that by
+      construction. Remedy: a stored first-letter column, indexed.
+    - `find_duplicates` and `find_all_duplicates` run
+      `phoneutil.normalize_e164` per row with no caching, on every
+      contact create and update. Remedy: store the E.164 form in an
+      indexed column.
+    - `idx_contacts_email` can never be used: every email lookup wraps
+      the column in LOWER() and search uses a leading-wildcard LIKE. It
+      is maintained on every write and serves nothing.
+    - `/contacts/duplicates` and `/contacts/birthdays` neither paginate
+      nor bound their result set, against §7.2's "all list endpoints
+      paginate".
+
+  Found independently by two lanes.
+  **Layman:** The contact list does far more work per page than it needs to, and it gets worse as the address book grows.
+  Kind: perf.
+  Source: review-code 2026-09-07 (data-layer + routes-contacts lanes).
+
+- 📋 [CL-0067] **Both exports buffer the whole database in memory, against DESIGN §7.2.**
+  §7.2 requires streaming responses for CSV and vCard export, using
+  generators rather than full in-memory buffers. Both do the opposite:
+  `export_contacts` calls `.fetchall()`, the CSV route builds a
+  `StringIO` and returns `getvalue()`, and `vcard.emit` assembles one
+  string from a complete list. The vCard route additionally issues a
+  `get_custom_fields` query per contact -- an N+1 that dominates a large
+  export.
+
+  The code is the wrong side here: §7.2's wording ("any future CSV/vCard
+  export") predates the export shipping, and it shipped buffered.
+  **Layman:** Exporting contacts builds the entire file in memory before sending it, which the design document says not to do.
+  Kind: perf.
+  Source: review-code 2026-09-07 (data-layer + routes-io lanes).
+
+- 📋 [CL-0068] **Request-derived values reach loops and writes with no server-side bound.**
+  Four sites, one subject. The choke-point pattern already exists in
+  this codebase -- `_normalize_tags` enforces its caps in the model, so
+  every caller gets them -- and these four skipped it:
+
+    - `merge_apply` takes `cf_count` straight from the form and uses it
+      as a loop bound, with no clamp.
+    - `bulk_delete` takes an unbounded id list, each costing its own
+      commit and a full orphan-tag anti-join.
+    - `name`, `email`, `notes` and custom-field values have no
+      server-side length limit at all; the only caps are the browser
+      `maxlength` attributes, which a direct POST ignores.
+    - The 50-custom-field cap lives only in the contact route, so the
+      CSV/vCard import path reaches `import_contact` uncapped.
+
+  Calibrated below the lanes' raw severity: this is a single-user
+  localhost app, so the requester is the owner. The import path is the
+  exception and keeps its weight -- that input is genuinely untrusted.
+  **Layman:** A few form fields are trusted to be a sensible size without anyone checking.
+  Kind: security.
+  Source: review-code 2026-09-07 (routes-contacts + data-layer + routes-io lanes).
+
+- 📋 [CL-0069] **Secret-key persistence and the config directory have gaps a fresh install can hit.**
+  Four findings in `config.py`, one subject:
+
+    - The secret-key write is read-then-write with no `O_EXCL` and no
+      atomic rename. Two copies started at once on a fresh install each
+      mint a different key and each truncate-overwrite; the loser then
+      403s every POST -- the exact failure the persisted key was
+      introduced to fix. A crash mid-write leaves a zero-byte file,
+      which the read treats as absent and silently rotates the key.
+    - The read catches `FileNotFoundError` only, so a `PermissionError`
+      or a decode error escapes -- at import, before file logging is
+      installed, on a build whose stdout is None. The app fails to start
+      with no message anywhere.
+    - `ensure_private_dir` chmods only the leaf, so the config directory
+      itself is created 0755 by the nested caller. It is normally
+      tightened as a side effect of persisting the secret key -- but
+      that branch is skipped entirely when `SECRET_KEY` is set, which
+      the README advertises, and DESIGN §8.1 tells the user to put
+      `credentials.json` there.
+    - `SECRET_KEY` from the environment has no length floor.
+  **Layman:** The file that keeps you logged in can be written twice at once on first run, and the folder holding your Google credentials is briefly readable by other users on the machine.
+  Kind: security.
+  Source: review-code 2026-09-07 (app-core lane).
+
+- 📋 [CL-0070] **Google sync robustness: SSRF redirect, rate limits, and a lock held across a download.**
+  Six findings in `google_sync.py`, one subject:
+
+    - The photo host allow-list validates only the INITIAL URL.
+      `urlopen` follows redirects by default, so a 3xx from an approved
+      host to a local address is followed. The guard is the documented
+      SSRF mitigation and does not survive a redirect. (The guard is
+      otherwise sound -- userinfo, trailing-dot and confusable hosts all
+      fail closed.)
+    - No rate-limit handling anywhere: no `num_retries`, no 429 branch.
+      The spec mandates a one-time bulk create of every local-only
+      contact, which is exactly where the write quota trips.
+    - The photo download runs inside the per-contact SAVEPOINT, holding
+      the write lock across a network call with a socket timeout and no
+      total budget.
+    - The photo is re-fetched on every upsert; nothing stores the photo
+      URL or an etag, so an unchanged photo is indistinguishable from a
+      new one.
+    - The deferral check precedes the deleted-tombstone check, so a
+      tombstone for a locally-edited contact is skipped and consumed by
+      that run's sync token, never redelivered. The local row survives
+      as an orphan pointing at a deleted resource.
+    - A transient network failure is indistinguishable from an invalid
+      grant, so a temporary outage invites a full re-auth.
+  **Layman:** The Google sync has several rough edges that show up on large address books or slow networks.
+  Kind: security.
+  Source: review-code 2026-09-07 (google-sync lane).
+
+- 📋 [CL-0071] **Photo writes are not atomic and can destroy the existing photo on a failed replace.**
+  Two findings in `photos.py`:
+
+    - `save_photo` deletes the previous file BEFORE opening the new one
+      for writing. If that write fails, the old photo is already gone
+      while the database still names it, so the avatar 404s permanently.
+      The thumbnail path a few lines up does this correctly, with a temp
+      file and `os.replace` -- the original does not.
+    - The thumbnail temp name is unique per PROCESS, not per writer. Two
+      concurrent requests for the same avatar share one temp path, so
+      one can truncate the file while the other is between write and
+      rename, promoting a half-written image that then persists because
+      the existence check never regenerates it. The docstring's
+      atomicity claim is true of the rename and false of the temp file.
+  **Layman:** Replacing a contact photo deletes the old one first, so if the new one fails to save you lose both.
+  Kind: fix.
+  Source: review-code 2026-09-07 (google-sync lane).
+
+- 📋 [CL-0072] **Contact search terms are written to the log file, and pages carrying contact data are cacheable.**
+  Two findings, both privacy rather than a breach:
+
+    - The root logger is pinned to INFO, which is the level Werkzeug's
+      request logger uses, so every request line -- including the query
+      string -- is logged. Contact search covers name, email, phone and
+      notes, and on a frozen build those lines persist to a rotating log
+      under the config directory. No document says that file holds
+      contact data, and the file is created with the process umask
+      rather than 0600 as the token file is. Remedy: raise the Werkzeug
+      logger's level, or strip the query string.
+    - No `Cache-Control` header is set, so contact detail pages land in
+      the browser's on-disk cache. Remedy: `no-store` on the response.
+
+  Found by two lanes independently.
+  **Layman:** What you type into the search box gets written to a log file on disk, and contact pages can sit in the browser cache.
+  Kind: security.
+  Source: review-code 2026-09-07 (app-core + process-lifecycle lanes).
+
+- 📋 [CL-0073] **The confirmation dialog on every destructive action has no dialog semantics.**
+  The modal gates delete contact, bulk delete, disconnect Google,
+  restart server and shut down server. It carries no `role`, no
+  `aria-modal` and no `aria-labelledby`, so the question in the message
+  paragraph is never announced; there is no Escape handler and no focus
+  trap, and nothing restores focus to the trigger on cancel.
+
+  Related accessibility findings from the same two lanes, same subject:
+  the file input and the column-mapping selects on the import page have
+  no labels; the merge page's tags input lost the label its twin on the
+  contact form has; the merge radio groups have no fieldset/legend; the
+  sortable column headers convey state only by a glyph, with no
+  `aria-sort`; the three single-character keyboard shortcuts have no
+  modifier guard, so Ctrl+S is swallowed; and the selection count
+  changes with no live region.
+
+  The project names no accessibility standard, so none of these was
+  raised above the level general principles support.
+  **Layman:** Someone using a screen reader is asked to confirm deleting a contact and hears only "Confirm, button" — never what they are deleting.
+  Kind: accessibility.
+  Source: review-code 2026-09-07 (templates + frontend-js lanes).
+
+- 📋 [CL-0074] **DESIGN §9's route table is missing a third of the shipped routes.**
+  Three lanes found this independently, each from a different side.
+  Absent from §9: the birthdays page and the import page -- both
+  TOP-LEVEL NAV ITEMS -- plus import apply, vCard export, bulk delete,
+  merge preview and merge apply. §9.1 also omits the `ref` parameter,
+  and its stated "default 50" for page size is really the user's
+  Settings value.
+
+  The document is the wrong side: §13 already marks the work shipped.
+  A favourites spec from July recorded the gap as pre-existing and it
+  was never closed.
+
+  This is a contract document, so the edit runs rule 14's test before it
+  lands.
+  **Layman:** The design document's list of web addresses the app answers is well out of date.
+  Kind: doc-fix.
+  Source: review-code 2026-09-07 (routes-contacts, routes-io and templates lanes).
+
+- 📋 [CL-0075] **vCard export loses standard fields to a private property, and drops them on import.**
+  Four findings, one subject -- all about fidelity to other software
+  rather than to ourselves:
+
+    - Birthday, address and organization are modelled as first-class
+      concepts in DESIGN §8.2 and named explicitly in the Google sync
+      code, yet every custom field exports as a private `X-CL` property
+      no other consumer reads. The import side is the mirror: inbound
+      `BDAY` and `ADR` match no branch and are dropped. Round-trips
+      within this app, loses the data to every other app.
+    - A company card emits no `N` property, which RFC 2426 makes
+      REQUIRED in vCard 3.0; strict consumers reject the card.
+    - `emit` never folds long lines, which RFC 6350 says it SHOULD. The
+      import side unfolds correctly.
+    - The parser ignores `ENCODING=QUOTED-PRINTABLE`, which Android
+      exports still use heavily. The module docstring scopes itself to
+      3.0/4.0, so the code matches its own contract -- whether the
+      contract should widen is a product call.
+
+  The group-prefix and CR-escaping halves of this lane's findings were
+  fixed on 2026-09-07 and are not part of this item.
+  **Layman:** Birthdays and addresses exported from here are not recognised by other contact apps, and theirs are ignored by ours.
+  Kind: fix.
+  Source: review-code 2026-09-07 (routes-io lane).
+
+- 📋 [CL-0076] **Five production modules are outside mypy's file list, including both untrusted-text parsers.**
+  `[tool.mypy]`'s `files` list omits `importer.py`, `photos.py`,
+  `server_control.py`, `tray.py` and `vcard.py`. Three lanes noticed
+  independently, and the sharpest framing is that the two modules
+  parsing untrusted text are the two never type-checked -- `vcard.py`'s
+  heterogeneous dicts being exactly what mypy is good at.
+
+  Adding them may surface a batch of errors, which is why this is its
+  own item rather than a line in a fix pass.
+
+  Same subject, from the same lanes: no route function carries a return
+  annotation, and several helpers take untyped parameters, against
+  CLAUDE.md's "type hints on all signatures". Neither tool catches it as
+  configured -- ruff selects a narrow set with no ANN rules, and mypy
+  runs without `disallow_untyped_defs`. Widening the ruff select is
+  already tracked separately, and BLE001, PLW1514 and PTH would each
+  have caught findings this sweep found by hand.
+  **Layman:** The type checker skips five of our files — including the two that read files other people send us.
+  Kind: chore.
+  Source: review-code 2026-09-07 (five lanes).
+
+- 📋 [CL-0077] **JavaScript, templates and the PyInstaller spec are analysed by no tool at all.**
+  Reported as a gap in the static-analysis tool set rather than as a
+  review win, because a tool should have decided each of these:
+
+    - There is no `package.json`, so no JavaScript row is ever selected
+      and `static/app.js` is checked by nothing. A linter would have
+      found a variable declared twice in one scope, a second IIFE
+      missing `'use strict'`, and a deprecated scroll alias.
+    - No template-aware or HTML-aware tool runs, and the semgrep packs
+      used are Python-only, so the Jinja templates are checked by
+      nothing.
+    - `packaging/contact-list.spec` is Python that neither ruff nor
+      mypy recognises by extension. Under the project's own selected
+      rule set every PyInstaller-injected global in it would raise an
+      undefined-name finding.
+
+  Remedy is a decision about tooling, not an edit: adding a JS linter
+  means adding a Node toolchain to a project that deliberately has no
+  build step, which is a trade worth making deliberately.
+  **Layman:** Our automated checks cover the Python and shell code but not the browser code, the page templates, or the packaging script.
+  Kind: chore.
+  Source: review-code 2026-09-07 (frontend-js, templates and shell-ci lanes); gap in check-code's tool set.
+
+- 📋 [CL-0078] **Shell and CI: several failure paths report success.**
+  The two worst findings in this lane -- the push gate silently skipping
+  CI, and the cached test environment never updating -- were fixed on
+  2026-09-07. What remains, same subject:
+
+    - `run.sh` omits the `--ignore-installed` its own venv-creation step
+      uses, so a dependency the distro also ships is borrowed from the
+      system rather than taking our pinned version.
+    - `run.sh` runs under `set -e` with an unconditional per-launch pip
+      install, so with PyPI unreachable an app that worked yesterday
+      will not start at all.
+    - `check-version-drift.sh` fails closed on a malformed version, but
+      under `set -e` a failed extraction exits before its own diagnostic
+      can print, so the messages naming the problem are unreachable.
+    - The interpreter-search prologue is duplicated three ways across
+      the packaging scripts and only one copy has the empty-interpreter
+      guard the tray spec explains.
+    - `wine-setup.sh` runs a downloaded installer with no integrity
+      check, and re-runs a cached copy unverified -- while the Linux
+      build script establishes the project's own pattern of pinning a
+      checksum and re-verifying every run.
+    - The push hook decides docs-only from the commits being pushed but
+      runs the gate against the working tree.
+    - Nothing makes the release path depend on CI, which triggers on
+      branch pushes only -- so a tag push publishes binaries without
+      ever running the checks.
+  **Layman:** A few of our build and launch scripts carry on as if nothing went wrong when something did.
+  Kind: fix.
+  Source: review-code 2026-09-07 (shell-ci lane).
+
+- 📋 [CL-0079] **Several smaller correctness and UI defects across routes, templates and the frontend.**
+  Filed as one item because each is small and none needs a decision.
+  The full lane reports carry the detail.
+
+    - A photo write failure raises after the contact has already been
+      saved, so the user sees an error page and cannot tell the contact
+      was kept -- contradicting that function's own docstring.
+    - A failed custom-field row vanishes from the re-rendered form, so
+      the error names a field no longer on the page.
+    - The edit form's error re-render omits the photo state, so a ticked
+      "remove photo" is lost silently on resubmit.
+    - The merge flow is a second copy of the contact-field validation
+      that never received the email, phone and region normalisation the
+      original has -- so merge can write values the contact form itself
+      rejects.
+    - The birthdays page is the only date in the app not rendered
+      through the shared filter, so it ignores the user's chosen date
+      format and depends on the server's locale.
+    - Card view applies its masonry layout to the first group only on
+      the duplicates page.
+    - An armed confirmation button stays armed if navigation does not
+      complete, so the next click submits unconfirmed.
+    - Inline SVG icons are stamped repeatedly with three different
+      class treatments, which is the drift the page-construction
+      standard exists to stop, and the shared macro file holds only the
+      page header.
+    - Timezone lookups walk the whole zone database on every settings
+      render and again per submitted value, uncached.
+  **Layman:** A list of small things that are wrong but not urgent.
+  Kind: ux.
+  Source: review-code 2026-09-07 (all lanes); the Low tail.
 
 ## Efficiency & Refactoring
 
