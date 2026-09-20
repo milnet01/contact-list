@@ -1,4 +1,5 @@
 <!-- ants-roadmap-format: 1 -->
+<!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
 
 # Contact List — Roadmap
 
@@ -660,6 +661,16 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   guarding against -- so the two readings pull opposite ways and the
   wrong choice destroys data. Settle the semantics, record them in the
   spec, then implement.
+  Decided (2026-09-20, user): push the clear, scoped to the slot the app
+  manages. Clearing a synced field locally clears index 0 of that
+  field's value list on Google and leaves index 1+ untouched. That is
+  what INV-2 actually says -- it is a MULTI-VALUE preservation rule ("a
+  push never removes a value the app does not manage"), and index 0 is
+  precisely the value the app does manage. What conflicts is the blanket
+  "**no deletions** are ever sent (S2)" cell in the spec's risk table,
+  which overstates INV-2; that cell needs amending. Amending it changes
+  direction for work not yet built, so the spec edit takes CLAUDE.md
+  rule 14's cold-read gate before implementation.
   **Layman:** If you delete someone's phone number here, Google keeps its copy and puts it back on the next sync.
   Kind: investigate.
   Source: review-code 2026-09-07 (google-sync lane); queued by close-findings.
@@ -677,7 +688,7 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   Kind: security.
   Source: review-code 2026-09-07 (routes-io lane); queued by close-findings.
 
-- 📋 [CL-0066] **Contact list pays a full table scan and per-row phone parsing on every render.**
+- ✅ [CL-0066] **Contact list pays a full table scan and per-row phone parsing on every render.**
   Four findings, one subject -- all measured against DESIGN §7.1's own
   targets:
 
@@ -700,6 +711,13 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
       paginate".
 
   Found independently by two lanes.
+  Resolved (2026-09-20): all four findings closed. Migration 009 adds contact_lookup(contact_id, letter, phone_key) with an index on each key. models.sync_lookup maintains both inside the same transaction as every write to contacts.name or contacts.phone -- create, update, merge, both import branches and the Google sync pull; backfill_lookup runs at startup for rows written before the migration or by anything outside the app; rebuild_phone_keys re-derives the column when phone_region changes, since the E.164 form depends on it. idx_contacts_email became an index on the LOWER(email) EXPRESSION rather than being dropped -- same write cost, and the duplicate scan's GROUP BY and per-group lookup both use it. idx_contacts_phone was dropped: removing find_duplicates' unparseable-phone fallback left it with no reader. The duplicates and birthdays endpoints now cap at 200 and report truncation rather than showing a prefix as if complete.
+
+  Measured, not assumed: EXPLAIN QUERY PLAN on a real database shows letter counts, the letter filter, the phone lookup, the phone grouping and both email queries each using an index; before this every one of them was a full table scan, four of them with a Python call per row.
+
+  One defect found and fixed during the work: the first cut read the phone region from a passed-in argument while the stored keys were derived from the settings table, so a caller supplying a different region computed a key that could not match any stored one. An existing test caught it. find_duplicates and find_all_duplicates no longer take a region -- the settings table is the single source.
+
+  Gates: ./local-ci.sh green on 3.12/3.13/3.14, 437 tests (9 new), doc_integrity clean. Each new test was proven red against its reverted fix and the files restored byte-identical. DESIGN.md 4.1 and the new 4.7 record the schema as built.
   **Layman:** The contact list does far more work per page than it needs to, and it gets worse as the address book grows.
   Kind: perf.
   Source: review-code 2026-09-07 (data-layer + routes-contacts lanes).
@@ -1106,6 +1124,21 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   --system-site-packages, so it depends on whether ubuntu-latest ships a
   regular `google` package the way this openSUSE box does. Not settled
   here; it needs a CI build to answer.
+  Resolved (2026-09-20): the CI-built release was NOT affected.
+  Reproduced release.yml's build-linux environment in a throwaway
+  ubuntu:24.04 container with its exact apt list, then created the same
+  `python3 -m venv --system-site-packages` and pip-installed the Google
+  deps. `importlib.util.find_spec('google')` on the system interpreter
+  returned None -- Ubuntu ships no `google` package at all, regular or
+  namespace -- so there is nothing for the venv's namespace portion to
+  lose to. In the venv, `google` resolved to the venv's own
+  site-packages and `google.auth`, `google.oauth2` and
+  `google.oauth2.credentials` all imported. The defect was specific to
+  this openSUSE box, which ships site-packages/google as a REGULAR
+  package. Caveat: GitHub's runner image preinstalls software the bare
+  base image does not, so this is strong evidence rather than proof; a
+  preinstalled regular `google` would still win under PEP 420. The
+  shipped fix is unconditional either way, so no release needs yanking.
   **Layman:** In the downloadable app, opening the Google Sync page showed an error instead of the page. It never worked there.
   Kind: fix.
   Source: in-session-2026-09-07 (found by running a frozen build during verify-delivery, not by reading).
@@ -1171,6 +1204,23 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   **Layman:** One dependency is allowed to update more freely than our own rule intends, so a change that breaks something could arrive without review.
   Kind: chore.
   Source: in-session-2026-09-07 (review-contract on DESIGN §3, second lane).
+
+- 📋 [CL-0083] **A spec cites a models.py line number that was already wrong.**
+  docs/specs/2026-07-01-import-export-merge-design.md cites the
+  non-empty email guard as `models.py:196`. At the commit before
+  CL-0066 that guard was on a different line entirely, so the citation
+  was already stale -- CL-0066 did not break it and did not fix it.
+
+  The claim itself is still true: find_all_duplicates does carry that
+  guard, and CL-0066 left the email branch alone. Only the locator is
+  wrong.
+
+  Remedy: name the symbol instead of the line, matching the convention
+  CL-0058 applied to the other spec citations. Check the same document
+  for other line-number citations while there.
+  **Layman:** A design document points at a line number in the code that has not been that line for a long time.
+  Kind: doc-fix.
+  Source: in-session-2026-09-20 (found while working CL-0066).
 
 ## Efficiency & Refactoring
 

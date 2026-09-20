@@ -265,9 +265,12 @@ class TestFindAllDuplicates:
     def test_duplicate_phones_normalized(self, db):
         # Same ZA number typed two different ways must land in one group, the
         # same way the on-create warning normalizes (find_duplicates) — CL-0027.
+        # CL-0066: the region is no longer a parameter -- each contact's E.164
+        # key is derived on write from the stored phone_region setting, whose
+        # default is ZA.
         models.create_contact(db, 'individual', 'Alice', phone='+27 11 555 0001')
         models.create_contact(db, 'individual', 'Bob', phone='0115550001')
-        dupes = models.find_all_duplicates(db, region='ZA')
+        dupes = models.find_all_duplicates(db)
         assert len(dupes['phone']) == 1
         assert len(dupes['phone'][0]) == 2
 
@@ -312,20 +315,39 @@ class TestContactTypeGuard:
 
 
 class TestPhoneNormalizedDuplicates:
+    # CL-0066: the region is no longer a find_duplicates argument. Each
+    # contact's E.164 key is derived on write from the stored phone_region, and
+    # the lookup reads the same setting -- so these tests set it the way the
+    # settings form does, which is also what makes them exercise the real
+    # single-source-of-truth path.
+    @staticmethod
+    def _set_region(db, region):
+        db.execute(
+            'INSERT INTO settings (key, value) VALUES (?, ?) '
+            'ON CONFLICT(key) DO UPDATE SET value = excluded.value',
+            ('phone_region', region),
+        )
+        db.commit()
+
     def test_same_number_different_format_flagged(self, db):
+        self._set_region(db, 'US')
         models.create_contact(db, 'individual', 'Alice', phone='+1 202-555-0123')
         # A differently-typed form of the same US number.
-        warnings = models.find_duplicates(db, 'Bob', '2025550123', region='US')
+        warnings = models.find_duplicates(db, 'Bob', '2025550123')
         assert any('already used by "Alice"' in w for w in warnings)
 
     def test_different_number_not_flagged(self, db):
+        self._set_region(db, 'US')
         models.create_contact(db, 'individual', 'Alice', phone='+1 202-555-0123')
-        warnings = models.find_duplicates(db, 'Bob', '+1 202-555-9999', region='US')
+        warnings = models.find_duplicates(db, 'Bob', '+1 202-555-9999')
         assert not any('already used' in w for w in warnings)
 
     def test_unparseable_phone_falls_back_to_exact(self, db):
+        # 'ext-12345' parses to nothing under US, so both the stored key and the
+        # lookup key fall back to the raw string and still match.
+        self._set_region(db, 'US')
         models.create_contact(db, 'individual', 'Alice', phone='ext-12345')
-        warnings = models.find_duplicates(db, 'Bob', 'ext-12345', region='US')
+        warnings = models.find_duplicates(db, 'Bob', 'ext-12345')
         assert any('already used by "Alice"' in w for w in warnings)
 
 
@@ -778,3 +800,117 @@ class TestFieldCaps:
         cfs = models.get_custom_fields(db, cid)
         assert any(cf['field_name'] == 'Nickname' and cf['field_value'] == 'Norm'
                    for cf in cfs)
+
+
+class TestLookupKeys:
+    """CL-0066: the derived letter/phone keys stored in contact_lookup.
+
+    These lock the maintenance contract, not the speed: every path that writes
+    a name or a phone must leave the keys correct, because the alpha nav and
+    duplicate detection now read them instead of recomputing per row.
+    """
+
+    @staticmethod
+    def _keys(db, contact_id):
+        return db.execute(
+            'SELECT letter, phone_key FROM contact_lookup WHERE contact_id = ?',
+            [contact_id],
+        ).fetchone()
+
+    def test_create_stores_both_keys(self, db):
+        cid = models.create_contact(
+            db, 'individual', 'Élodie', phone='+27 11 555 0001'
+        )
+        row = self._keys(db, cid)
+        assert row['letter'] == 'E'          # accent folded, as the nav expects
+        assert row['phone_key'] == '+27115550001'
+
+    def test_update_rewrites_both_keys(self, db):
+        cid = models.create_contact(db, 'individual', 'Alice', phone='0115550001')
+        models.update_contact(db, cid, 'individual', 'Zoë', phone='0115550002')
+        row = self._keys(db, cid)
+        assert row['letter'] == 'Z'
+        assert row['phone_key'] == '+27115550002'
+
+    def test_letter_counts_match_the_letter_filter(self, db):
+        # CL-0014's guarantee, now resting on one stored column rather than on
+        # two call sites of the same SQLite function.
+        for name in ('Élodie', 'Eve', 'alice', '42 Ltd'):
+            models.create_contact(db, 'individual', name)
+        counts = models.get_letter_counts(db)
+        assert counts == {'E': 2, 'A': 1, '#': 1}
+        for letter, expected in counts.items():
+            rows, total = models.list_contacts(db, letter=letter)
+            assert total == expected, f'letter {letter!r} filter disagrees with its count'
+
+    def test_delete_reaps_the_lookup_row(self, db):
+        cid = models.create_contact(db, 'individual', 'Alice', phone='0115550001')
+        models.delete_contact(db, cid)
+        assert self._keys(db, cid) is None
+
+    def test_backfill_covers_a_contact_inserted_outside_the_app(self, db):
+        # A restored dump or a hand-written INSERT leaves no lookup row. Without
+        # the backfill that contact is absent from the alpha nav and invisible
+        # to duplicate detection.
+        cur = db.execute(
+            "INSERT INTO contacts (type, name, phone) VALUES "
+            "('individual', 'Ömer', '0115550009')"
+        )
+        db.commit()
+        cid = cur.lastrowid
+        assert self._keys(db, cid) is None
+
+        assert models.backfill_lookup(db) == 1
+        row = self._keys(db, cid)
+        assert row['letter'] == 'O'
+        assert row['phone_key'] == '+27115550009'
+        assert models.backfill_lookup(db) == 0   # idempotent
+
+    def test_changing_the_phone_region_rebuilds_the_keys(self, db):
+        import settings as settings_mod
+
+        # Stored under the ZA default, where these digits parse as a possible
+        # ZA number and key to a +27 form -- the wrong bucket for a US number.
+        cid = models.create_contact(db, 'individual', 'Alice', phone='2025550123')
+        assert self._keys(db, cid)['phone_key'] == '+272025550123'
+
+        assert settings_mod.update_settings(db, {'phone_region': 'US'}) == []
+
+        # Re-derived under US, so the differently-typed same number now matches.
+        assert self._keys(db, cid)['phone_key'] == '+12025550123'
+        warnings = models.find_duplicates(db, 'Bob', '+1 202-555-0123')
+        assert any('already used by "Alice"' in w for w in warnings)
+
+    def test_unchanged_phone_region_does_not_rebuild(self, db):
+        cid = models.create_contact(db, 'individual', 'Alice', phone='0115550001')
+        before = self._keys(db, cid)['phone_key']
+        assert models.find_duplicates(db, 'Bob', '0115550001')
+        import settings as settings_mod
+        assert settings_mod.update_settings(db, {'phone_region': 'ZA'}) == []
+        assert self._keys(db, cid)['phone_key'] == before
+
+
+class TestListBounds:
+    """CL-0066: DESIGN 7.2 requires every list endpoint to bound its results."""
+
+    def test_duplicate_groups_are_capped(self, db):
+        for i in range(5):
+            for _ in range(2):
+                models.create_contact(db, 'individual', f'Dup {i}')
+        assert len(models.find_all_duplicates(db)['name']) == 5
+        assert len(models.find_all_duplicates(db, limit=3)['name']) == 3
+
+    def test_upcoming_birthdays_are_capped_keeping_the_soonest(self, db):
+        today = datetime.date(2026, 1, 1)
+        # Three contacts, birthdays 1/2/3 days out; a cap of 2 must keep the
+        # two soonest, not an arbitrary prefix.
+        for day in (2, 3, 4):
+            cid = models.create_contact(db, 'individual', f'B{day}')
+            db.execute(
+                'INSERT INTO custom_fields (contact_id, field_name, field_value) '
+                "VALUES (?, 'birthday', ?)",
+                [cid, f'01-{day:02d}'],
+            )
+        db.commit()
+        rows = models.upcoming_birthdays(db, within_days=30, today=today, limit=2)
+        assert [r['name'] for r in rows] == ['B2', 'B3']

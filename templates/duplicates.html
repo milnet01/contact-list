@@ -31,7 +31,9 @@
         <button type="button" class="btn btn-small btn-secondary" id="bulk-clear">Clear</button>
     </div>
 
-    <p class="toolbar-meta mb-md">Found {{ total }} duplicate group{{ 's' if total != 1 }}.</p>
+    <p class="toolbar-meta mb-md">Found {{ total }} duplicate group{{ 's' if total != 1 }}.
+    {%- if truncated %} Showing the first {{ cap }} per category — merge some and
+    re-run to see the rest.{% endif %}</p>
 
 {% if dupes.name %}
 <div class="card">

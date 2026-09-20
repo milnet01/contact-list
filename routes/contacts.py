@@ -22,10 +22,12 @@ import photos
 from db import get_db
 from models import (
     MAX_CUSTOM_FIELDS,
+    MAX_DUPLICATE_GROUPS,
     MAX_EMAIL_LEN,
     MAX_NAME_LEN,
     MAX_NOTES_LEN,
     MAX_PHONE_LEN,
+    MAX_UPCOMING_BIRTHDAYS,
     _normalize_tags,
     clear_contact_photo,
     create_contact,
@@ -192,9 +194,19 @@ def contact_list():
 def duplicates():
     """Scan all contacts and show duplicate names, emails, and phone numbers."""
     db = get_db()
-    dupes = find_all_duplicates(db, g.settings['phone_region'])
+    # CL-0066: ask for one group more than we will show, per category, so a
+    # full page is distinguishable from a truncated one. The phone region is no
+    # longer passed -- each contact's E.164 key is stored and re-derived when
+    # that setting changes, so the scan reads it rather than recomputing it.
+    cap = MAX_DUPLICATE_GROUPS
+    dupes = find_all_duplicates(db, limit=cap + 1)
+    truncated = any(len(groups) > cap for groups in dupes.values())
+    dupes = {key: groups[:cap] for key, groups in dupes.items()}
     total = sum(len(groups) for groups in dupes.values())
-    return render_template('duplicates.html', dupes=dupes, total=total)
+    return render_template(
+        'duplicates.html', dupes=dupes, total=total,
+        truncated=truncated, cap=cap,
+    )
 
 
 @bp.route('/contacts/birthdays')
@@ -206,8 +218,16 @@ def birthdays():
     except (TypeError, ValueError):
         days = 30
     days = min(max(days, 1), 366)
-    upcoming = upcoming_birthdays(db, within_days=days)
-    return render_template('birthdays.html', upcoming=upcoming, days=days)
+    # CL-0066: one more than we will show, so a full page is distinguishable
+    # from a truncated one.
+    cap = MAX_UPCOMING_BIRTHDAYS
+    upcoming = upcoming_birthdays(db, within_days=days, limit=cap + 1)
+    truncated = len(upcoming) > cap
+    upcoming = upcoming[:cap]
+    return render_template(
+        'birthdays.html', upcoming=upcoming, days=days,
+        truncated=truncated, cap=cap,
+    )
 
 
 def _get_ref() -> str:
@@ -322,9 +342,10 @@ def create():
         ), 400
 
     db = get_db()
-    for warning in find_duplicates(
-        db, fields['name'], fields['phone'], g.settings['phone_region']
-    ):
+    # CL-0066: no region argument -- find_duplicates reads the stored setting,
+    # which is where g.settings['phone_region'] came from, and is the region the
+    # stored phone keys were derived under.
+    for warning in find_duplicates(db, fields['name'], fields['phone']):
         flash(f'Note: {warning}', 'error')
 
     contact_id = create_contact(

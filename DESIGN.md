@@ -255,9 +255,16 @@ CREATE TABLE contacts (
 CREATE INDEX idx_contacts_type ON contacts(type);
 CREATE INDEX idx_contacts_name ON contacts(name COLLATE NOCASE);
 CREATE INDEX idx_contacts_google_id ON contacts(google_id);
-CREATE INDEX idx_contacts_email ON contacts(email);
-CREATE INDEX idx_contacts_phone ON contacts(phone);
+CREATE INDEX idx_contacts_email_lower ON contacts(LOWER(email));
 ```
+
+The email index is on the `LOWER(email)` **expression**, not the column. Every
+email lookup in the app wraps the column in `LOWER()`, which a plain column
+index cannot serve, so the original `idx_contacts_email` was maintained on
+every write and read by nothing (CL-0066). There is no index on `phone`: after
+CL-0066 no query filters, joins or sorts on that column -- duplicate detection
+goes through `contact_lookup` (4.7) and search uses a leading-wildcard `LIKE`,
+which no index serves.
 
 ### 4.2 `custom_fields` Table (EAV Pattern)
 
@@ -335,6 +342,39 @@ export/import of tags, Google-group sync, and per-tag colours (future items).
   join table (`contact_tags`), which needs none. (This convention is aspirational:
   only `contacts` currently carries both; the companion tables deliberately do not.)
 - Migrations are sequential numbered SQL files in `migrations/`.
+
+### 4.7 `contact_lookup` Table (CL-0066)
+
+```sql
+CREATE TABLE contact_lookup (
+    contact_id  INTEGER PRIMARY KEY REFERENCES contacts(id) ON DELETE CASCADE,
+    letter      TEXT NOT NULL,   -- folded uppercase initial, or '#'
+    phone_key   TEXT             -- E.164 form, or the raw string, or NULL
+);
+
+CREATE INDEX idx_lookup_letter ON contact_lookup(letter);
+CREATE INDEX idx_lookup_phone  ON contact_lookup(phone_key);
+```
+
+Two derived keys, precomputed on write so 7.2's indexing rule can hold for
+them. Both were previously computed per row at query time: the initial by an
+application-defined SQLite function, which no index can serve, and the phone
+by a Python parse per candidate row. The alpha nav's counts, the `?letter=`
+filter and both duplicate finders read this table instead.
+
+- **`letter`** comes from `models._first_letter`, which folds accents
+  ("Elodie" from "Élodie") and buckets any non-A-Z initial under `#`. One
+  function feeds both the counts and the filter, so the two agree (CL-0014).
+- **`phone_key`** is the E.164 form, falling back to the raw string when
+  `phonenumbers` cannot parse it, and `NULL` when there is no phone. That form
+  depends on the `phone_region` setting, so `models.rebuild_phone_keys`
+  recomputes the column whenever that setting changes.
+- **Maintenance.** `models.sync_lookup` runs inside the same transaction as
+  every write to `contacts.name` or `contacts.phone` -- including the Google
+  sync pull. `models.backfill_lookup` runs at startup and gives a row to any
+  contact that lacks one, so a restored dump or a hand-written `INSERT`
+  self-heals rather than going missing from the nav and from duplicate
+  detection.
 
 ---
 

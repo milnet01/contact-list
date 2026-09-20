@@ -4,8 +4,10 @@ import datetime
 import json
 import re
 import sqlite3
+import unicodedata
 
 import phoneutil
+from settings import SETTINGS_DEFAULTS
 
 # CL-0037: tag caps. MAX_TAG_LEN bounds a single tag's length; MAX_TAGS bounds
 # how many tags one contact may carry. Both are enforced in _normalize_tags,
@@ -29,10 +31,136 @@ MAX_PHONE_LEN = 30
 MAX_NOTES_LEN = 2000
 MAX_CF_VALUE_LEN = 500
 
+# CL-0066: DESIGN 7.2 requires every list endpoint to bound its result set
+# ("max 200 per page"). The duplicates scan and the birthday list returned
+# every match, so a large address book could render an unbounded page. Both
+# callers report truncation rather than silently showing a prefix -- a cap with
+# no flag reads as completeness.
+MAX_DUPLICATE_GROUPS = 200
+MAX_UPCOMING_BIRTHDAYS = 200
+
 
 def _escape_like(term: str) -> str:
     """Escape special LIKE characters."""
     return term.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
+
+
+# CL-0066: the two derived keys stored in contact_lookup. Both used to be
+# computed per row at query time -- the letter by a SQLite application-defined
+# function, which no index can serve, and the phone by a Python parse per
+# candidate row. Computing them on write instead makes both an indexed lookup.
+# Every path that writes contacts.name or contacts.phone calls sync_lookup
+# inside its own transaction; backfill_lookup catches rows written before this
+# migration, and rebuild_phone_keys handles a phone_region change.
+
+
+def _first_letter(name: str | None) -> str:
+    """Folded, uppercase first letter for the alpha nav.
+
+    Strips accents so 'Élodie' buckets under 'E'; anything whose folded initial
+    isn't an ASCII A–Z (digits, symbols, non-Latin scripts) buckets under '#'.
+    One function feeds both the stored counts and the letter filter, so the two
+    fold identically (CL-0014) -- previously guaranteed by both calling the same
+    registered SQLite function.
+    """
+    if not name:
+        return '#'
+    ch = name.strip()[:1]
+    if not ch:
+        return '#'
+    base = unicodedata.normalize('NFD', ch)[0].upper()
+    return base if base.isascii() and base.isalpha() else '#'
+
+
+def _phone_key(phone: str | None, region: str) -> str | None:
+    """Bucket key for duplicate detection: the E.164 form, or the raw string
+    when it can't be parsed, or None when there is no phone at all.
+
+    The raw-string fallback and the empty-phone exclusion preserve exactly what
+    find_duplicates and find_all_duplicates computed per row before CL-0066.
+    """
+    if not phone:
+        return None
+    return phoneutil.normalize_e164(phone, region) or phone
+
+
+def _stored_region(db: sqlite3.Connection) -> str:
+    """The phone region the stored keys are derived under.
+
+    Read from the settings table rather than threaded through every write
+    signature. SETTINGS_DEFAULTS is the single source of truth for the default,
+    so this and settings.get_settings cannot drift apart.
+    """
+    row = db.execute(
+        "SELECT value FROM settings WHERE key = 'phone_region'"
+    ).fetchone()
+    return row['value'] if row else SETTINGS_DEFAULTS['phone_region']
+
+
+def sync_lookup(
+    db: sqlite3.Connection,
+    contact_id: int,
+    name: str,
+    phone: str | None,
+) -> None:
+    """Maintain one contact's contact_lookup row.
+
+    Issues no transaction of its own, so each caller composes it into the
+    atomic block that wrote the contact -- a lookup row that outlived a rolled
+    back insert would put a phantom letter in the alpha nav's counts.
+    """
+    db.execute(
+        'INSERT INTO contact_lookup (contact_id, letter, phone_key) '
+        'VALUES (?, ?, ?) '
+        'ON CONFLICT(contact_id) DO UPDATE SET '
+        'letter = excluded.letter, phone_key = excluded.phone_key',
+        [contact_id, _first_letter(name), _phone_key(phone, _stored_region(db))],
+    )
+
+
+def backfill_lookup(db: sqlite3.Connection) -> int:
+    """Give a contact_lookup row to every contact that lacks one. Returns how
+    many were written.
+
+    Run at startup. Covers the rows that existed before migration 009, and
+    self-heals a row inserted by something outside the app (a restored dump, a
+    hand-written INSERT) -- without it those contacts would be missing from the
+    alpha nav and from duplicate detection entirely.
+    """
+    region = _stored_region(db)
+    rows = db.execute(
+        'SELECT c.id, c.name, c.phone FROM contacts c '
+        'LEFT JOIN contact_lookup l ON l.contact_id = c.id '
+        'WHERE l.contact_id IS NULL'
+    ).fetchall()
+    if not rows:
+        return 0
+    with db:
+        db.executemany(
+            'INSERT INTO contact_lookup (contact_id, letter, phone_key) '
+            'VALUES (?, ?, ?)',
+            [
+                (r['id'], _first_letter(r['name']), _phone_key(r['phone'], region))
+                for r in rows
+            ],
+        )
+    return len(rows)
+
+
+def rebuild_phone_keys(db: sqlite3.Connection, region: str) -> None:
+    """Recompute every stored phone key under ``region``.
+
+    The E.164 form depends on the phone region, so changing that setting
+    invalidates every stored key. Without this, duplicate detection would
+    silently stop matching numbers typed in local form until each contact was
+    re-saved -- a wrong answer that looks like a right one.
+    """
+    rows = db.execute('SELECT id, phone FROM contacts').fetchall()
+    with db:
+        db.executemany(
+            'UPDATE contact_lookup SET phone_key = ? WHERE contact_id = ?',
+            [(_phone_key(r['phone'], region), r['id']) for r in rows],
+        )
 
 
 def _build_contact_query(
@@ -76,11 +204,19 @@ def _build_contact_query(
         conditions.append('type = ?')
         params.append(contact_type)
 
+    # CL-0066: an indexed membership test against the stored letter, replacing
+    # `first_letter(name) = ?`. That predicate wrapped the column in an
+    # application-defined function, which SQLite cannot index, so every filtered
+    # render scanned the table with one interpreter round trip per row.
     if letter == '#':
-        conditions.append('first_letter(name) = ?')
+        conditions.append(
+            'id IN (SELECT contact_id FROM contact_lookup WHERE letter = ?)'
+        )
         params.append('#')
     elif letter and len(letter) == 1 and letter.isascii() and letter.isalpha():
-        conditions.append('first_letter(name) = ?')
+        conditions.append(
+            'id IN (SELECT contact_id FROM contact_lookup WHERE letter = ?)'
+        )
         params.append(letter.upper())
 
     # CL-0037: AND-filter by tag. One scalar `id IN (subquery)` membership test
@@ -154,13 +290,13 @@ def get_type_counts(db: sqlite3.Connection) -> dict[str, int]:
 def get_letter_counts(db: sqlite3.Connection) -> dict[str, int]:
     """Return a dict of first-letter -> count for the alpha nav bar.
 
-    Uses the SQLite first_letter() function (registered in db.py) so accented
-    initials fold onto their base letter ('Élodie' -> 'E') and the buckets
-    match the letter filter's grouping exactly (CL-0014).
+    Groups the stored letter (CL-0066), which _first_letter derived on write so
+    accented initials fold onto their base letter ('Élodie' -> 'E'). The letter
+    filter tests the same column, so the buckets and the filter still agree
+    exactly (CL-0014).
     """
     rows = db.execute(
-        'SELECT first_letter(name) AS letter, COUNT(*) AS cnt '
-        'FROM contacts GROUP BY letter'
+        'SELECT letter, COUNT(*) AS cnt FROM contact_lookup GROUP BY letter'
     ).fetchall()
     return {row['letter']: row['cnt'] for row in rows}
 
@@ -177,12 +313,19 @@ def find_duplicates(
     db: sqlite3.Connection,
     name: str,
     phone: str | None = None,
-    region: str = 'ZA',
     exclude_id: int | None = None,
 ) -> list[str]:
-    """Find duplicate contacts by name or phone. Returns list of warning messages."""
+    """Find duplicate contacts by name or phone. Returns list of warning messages.
+
+    CL-0066: the phone region is read from settings rather than passed in. The
+    stored phone keys are derived under that region, so a caller supplying a
+    different one would compute a key that could not match any of them -- two
+    sources of truth for one comparison.
+    """
     warnings: list[str] = []
     id_filter = 'AND id != ?' if exclude_id is not None else ''
+    # The phone lookup joins contacts, where a bare `id` would be ambiguous.
+    join_id_filter = 'AND c.id != ?' if exclude_id is not None else ''
     base_params: list = [exclude_id] if exclude_id is not None else []
 
     rows = db.execute(
@@ -195,46 +338,46 @@ def find_duplicates(
     if phone:
         # Compare on the normalized E.164 form so the same number typed
         # differently ('+1 202-555-0123' vs '2025550123') is still caught
-        # (CL-0013). SQLite has no phone-normalization function, so scan the
-        # (few, single-user) phone-bearing rows and compare in Python. Fall
-        # back to exact string match when a value can't be parsed.
-        target = phoneutil.normalize_e164(phone, region)
-        if target is not None:
-            candidates = db.execute(
-                f'SELECT name, phone FROM contacts '
-                f'WHERE phone IS NOT NULL {id_filter}',
-                base_params,
-            ).fetchall()
-            for c in candidates:
-                if phoneutil.normalize_e164(c['phone'], region) == target:
-                    warnings.append(f'Phone number already used by "{c["name"]}".')
-                    break
-        else:
-            rows = db.execute(
-                f'SELECT id, name FROM contacts WHERE phone = ? {id_filter}',
-                [phone, *base_params],
-            ).fetchall()
-            if rows:
-                warnings.append(f'Phone number already used by "{rows[0]["name"]}".')
+        # (CL-0013). CL-0066: that form is now stored per contact, so this is a
+        # single indexed lookup instead of a scan of every phone-bearing row
+        # with a Python parse each. _phone_key keeps the old fallback -- an
+        # unparseable number keys on its raw string, matching only an identical
+        # raw string, exactly as the pre-CL-0066 exact-match branch did.
+        target = _phone_key(phone, _stored_region(db))
+        rows = db.execute(
+            f'SELECT c.name FROM contact_lookup l '
+            f'JOIN contacts c ON c.id = l.contact_id '
+            f'WHERE l.phone_key = ? {join_id_filter} LIMIT 1',
+            [target, *base_params],
+        ).fetchall()
+        if rows:
+            warnings.append(f'Phone number already used by "{rows[0]["name"]}".')
 
     return warnings
 
 
 def find_all_duplicates(
     db: sqlite3.Connection,
-    region: str = 'ZA',
+    limit: int = MAX_DUPLICATE_GROUPS,
 ) -> dict[str, list[list[sqlite3.Row]]]:
     """Scan all contacts for duplicates by name, email, and phone.
 
     Returns a dict with keys 'name', 'email', 'phone'.  Each value is a list
     of groups, where each group is a list of Row objects sharing the same value.
+
+    ``limit`` caps the number of groups per category (CL-0066) -- the scan used
+    to return every match, so a large address book rendered an unbounded page.
+    A caller that needs to tell a full result from a truncated one asks for one
+    more group than it will show.
     """
+    limit = max(1, limit)
     result: dict[str, list[list[sqlite3.Row]]] = {'name': [], 'email': [], 'phone': []}
 
     # Duplicate names (case-insensitive)
     name_groups = db.execute(
         "SELECT name COLLATE NOCASE AS norm_name "
-        "FROM contacts GROUP BY norm_name HAVING COUNT(*) > 1"
+        "FROM contacts GROUP BY norm_name HAVING COUNT(*) > 1 LIMIT ?",
+        [limit],
     ).fetchall()
     for row in name_groups:
         contacts = db.execute(
@@ -248,7 +391,8 @@ def find_all_duplicates(
     email_groups = db.execute(
         "SELECT LOWER(email) AS norm_email "
         "FROM contacts WHERE email IS NOT NULL AND email != '' "
-        "GROUP BY norm_email HAVING COUNT(*) > 1"
+        "GROUP BY norm_email HAVING COUNT(*) > 1 LIMIT ?",
+        [limit],
     ).fetchall()
     for row in email_groups:
         contacts = db.execute(
@@ -260,19 +404,25 @@ def find_all_duplicates(
 
     # Duplicate phones: bucket by the normalized E.164 form so the same number
     # typed differently ('+27 11 555 0001' vs '0115550001') groups together,
-    # matching the on-create warning (find_duplicates, CL-0013/CL-0027). SQLite
-    # has no phone-normalization function, so bucket the (few, single-user)
-    # phone-bearing rows in Python; a value that can't be parsed falls back to
-    # its exact string. Rows are pre-ordered by name so each group stays sorted.
-    phone_rows = db.execute(
-        "SELECT id, type, name, email, phone FROM contacts "
-        "WHERE phone IS NOT NULL AND phone != '' ORDER BY name COLLATE NOCASE"
+    # matching the on-create warning (find_duplicates, CL-0013/CL-0027).
+    # CL-0066: that form is stored per contact and indexed, so this is a GROUP
+    # BY over an index instead of a full scan re-parsing every phone in Python.
+    # _phone_key stores NULL for an absent or empty phone, which is what the old
+    # `phone IS NOT NULL AND phone != ''` filter excluded, and keys an
+    # unparseable number on its raw string, which is the old Python fallback.
+    phone_groups = db.execute(
+        'SELECT phone_key FROM contact_lookup WHERE phone_key IS NOT NULL '
+        'GROUP BY phone_key HAVING COUNT(*) > 1 LIMIT ?',
+        [limit],
     ).fetchall()
-    phone_buckets: dict[str, list[sqlite3.Row]] = {}
-    for row in phone_rows:
-        key = phoneutil.normalize_e164(row['phone'], region) or row['phone']
-        phone_buckets.setdefault(key, []).append(row)
-    result['phone'] = [group for group in phone_buckets.values() if len(group) > 1]
+    for row in phone_groups:
+        contacts = db.execute(
+            'SELECT c.id, c.type, c.name, c.email, c.phone FROM contacts c '
+            'JOIN contact_lookup l ON l.contact_id = c.id '
+            'WHERE l.phone_key = ? ORDER BY c.name COLLATE NOCASE',
+            [row['phone_key']],
+        ).fetchall()
+        result['phone'].append(contacts)
 
     return result
 
@@ -385,6 +535,7 @@ def upcoming_birthdays(
     within_days: int = 30,
     *,
     today: datetime.date | None = None,
+    limit: int = MAX_UPCOMING_BIRTHDAYS,
 ) -> list[dict]:
     """Contacts whose 'birthday' custom field falls within the next N days.
 
@@ -426,7 +577,10 @@ def upcoming_birthdays(
         })
 
     result.sort(key=lambda r: (r['days_until'], r['name'].casefold()))
-    return result
+    # CL-0066: bound the rendered list. The sort runs first so the cap keeps the
+    # soonest birthdays rather than an arbitrary prefix. A caller that needs to
+    # tell a full result from a truncated one asks for one more than it shows.
+    return result[:max(1, limit)]
 
 
 def set_contact_photo(db: sqlite3.Connection, contact_id: int, ext: str) -> None:
@@ -648,6 +802,7 @@ def create_contact(
         # create_contact has its own INSERT path (not via _write_contact), so it
         # makes its own tag write inside this transaction (CL-0037).
         set_contact_tags(db, contact_id, tags or [])
+        sync_lookup(db, contact_id, name, phone)  # CL-0066
         _mark_edited(db, contact_id)
     return contact_id
 
@@ -686,6 +841,7 @@ def _write_contact(
             [(contact_id, fn, fv) for fn, fv in custom_fields],
         )
     set_contact_tags(db, contact_id, tags or [])  # CL-0037
+    sync_lookup(db, contact_id, name, phone)  # CL-0066
     # _write_contact backs update_contact AND merge_contacts (survivor); both are
     # genuine user edits, so mark the row edited (CL-0033). create_contact and
     # import_contact INSERT directly (not via here), so they mark separately.
@@ -789,13 +945,14 @@ def import_contact(
                     'VALUES (?, ?, ?)',
                     [(new_id, fn, fv) for fn, fv in custom_fields],
                 )
+            sync_lookup(db, new_id, name, phone)  # CL-0066
             _mark_edited(db, new_id)
             return new_id, 'created'
 
         # Additive update: fill a core field only when the existing value is
         # blank; keep the existing value otherwise (never overwrite).
         existing = db.execute(
-            'SELECT email, phone, notes FROM contacts WHERE id = ?', [match_id]
+            'SELECT name, email, phone, notes FROM contacts WHERE id = ?', [match_id]
         ).fetchone()
         def _fill(new: str | None, old: str | None) -> str | None:
             return new if (new and not (old or '').strip()) else old
@@ -811,6 +968,9 @@ def import_contact(
                 "updated_at=strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id=?",
                 [new_email, new_phone, new_notes, match_id],
             )
+            # CL-0066: this path never changes the name, but it can fill a blank
+            # phone, which re-keys the contact for duplicate detection.
+            sync_lookup(db, match_id, existing['name'], new_phone)
         # Add only custom-field names the contact doesn't already have
         # (case-insensitive, matching idx_cf_unique).
         existing_names = {

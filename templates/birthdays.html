@@ -20,7 +20,9 @@
     <a href="{{ url_for('contacts.contact_list') }}" class="btn btn-secondary mt-md">Back to contacts</a>
 </div>
 {% else %}
-<p class="toolbar-meta mb-md">{{ upcoming|length }} birthday{{ 's' if upcoming|length != 1 }} in the next {{ days }} days.</p>
+<p class="toolbar-meta mb-md">{{ upcoming|length }} birthday{{ 's' if upcoming|length != 1 }} in the next {{ days }} days.
+{%- if truncated %} Showing the first {{ cap }} — narrow the range to see fewer
+at a time.{% endif %}</p>
 
 <div class="card">
     <table>

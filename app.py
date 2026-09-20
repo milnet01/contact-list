@@ -45,6 +45,16 @@ def create_app(test_config: dict | None = None) -> Flask:
 
     with app.app_context():
         init_db()
+        # CL-0066: contacts written before migration 009 -- or by anything
+        # outside the app, such as a restored dump -- have no derived lookup
+        # row, which would leave them out of the alpha nav's counts and out of
+        # duplicate detection. One indexed anti-join; a no-op once every
+        # contact has a row.
+        import models
+
+        from db import get_db
+
+        models.backfill_lookup(get_db())
 
     # Contact photos dir (CL-0026). Default it from the credentials dir when a
     # test_config didn't set it explicitly (test_config uses update(), not

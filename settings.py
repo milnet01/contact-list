@@ -95,6 +95,18 @@ def update_settings(db: sqlite3.Connection, updates: dict[str, str]) -> list[str
             errors.append(f'Invalid value for {key}: {value!r}')
     if errors:
         return errors
+
+    # CL-0066: contact_lookup.phone_key holds each contact's E.164 form, and
+    # that form is derived under the phone region -- so changing the region
+    # invalidates every stored key. Read the old value before the upsert
+    # overwrites it, so the rebuild runs on a real change and not on a re-save.
+    old_region: str | None = None
+    if 'phone_region' in updates:
+        row = db.execute(
+            "SELECT value FROM settings WHERE key = 'phone_region'"
+        ).fetchone()
+        old_region = row['value'] if row else SETTINGS_DEFAULTS['phone_region']
+
     for key, value in updates.items():
         db.execute(
             'INSERT INTO settings (key, value) VALUES (?, ?) '
@@ -102,4 +114,14 @@ def update_settings(db: sqlite3.Connection, updates: dict[str, str]) -> list[str
             (key, value),
         )
     db.commit()
+
+    if old_region is not None and old_region != updates['phone_region']:
+        # Imported here rather than at module scope: models imports this module
+        # for SETTINGS_DEFAULTS, so a top-level import would be circular.
+        # Doing it here rather than in the route means every caller of
+        # update_settings gets the rebuild, not just the settings form.
+        import models
+
+        models.rebuild_phone_keys(db, updates['phone_region'])
+
     return []

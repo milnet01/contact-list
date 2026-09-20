@@ -644,6 +644,13 @@ def _upsert_person(
             [contact_type, name, email, phone, notes, google_id, etag],
         )
         contact_id = cursor.lastrowid
+        assert contact_id is not None  # lastrowid is always set after an INSERT
+
+    # CL-0066: both branches wrote contacts.name and contacts.phone, so the
+    # derived lookup keys have to be re-derived inside this same transaction.
+    # A pulled contact that skipped this would be absent from the alpha nav's
+    # counts and invisible to duplicate detection.
+    models.sync_lookup(db, contact_id, name, phone)
 
     # Custom fields from Google data
     cf: list[tuple[int, str, str]] = []

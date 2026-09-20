@@ -22,6 +22,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The contact list no longer re-derives its index keys on every render** (CL-0066)
+  The alpha-nav counts and the letter filter grouped on a Python callback SQLite cannot index, and duplicate detection re-parsed every stored phone number in Python. Both keys are now computed once when a contact is saved and held in a new indexed `contact_lookup` table, so each is an index lookup. Query plans confirm it: the counts, the letter filter, the phone lookup and the phone grouping all now use an index where every one of them previously scanned the whole table.
+
+- **Replaced an email index nothing could use, and dropped one nothing reads** (CL-0066)
+  `idx_contacts_email` indexed the raw column while every lookup wrapped it in `LOWER()`, so it cost a write on every save and served no query; it is now an index on the `LOWER(email)` expression, which the duplicate scan does use. `idx_contacts_phone` had one remaining reader, and this change removed it, so that index is gone too.
+
 - **Starting the app no longer opens a browser tab; the tray icon is the way in** (CL-0060)
   A start whose tray icon appears now opens nothing. Two cases still open the page: launching a second copy while one is already running, and a start where the tray could not appear at all (a desktop with no system tray) — without that fallback the app would be running with no icon, no tab and no visible address.
 
@@ -31,6 +37,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   existing instance. Without `PORT` the hand-off is unchanged.
 
 ### Fixed
+
+- **The duplicates and birthdays pages bound their results and say when they are truncated** (CL-0066)
+  Both returned every match, against the documented rule that all list endpoints bound their output. Each now shows at most 200 and says so when there is more, rather than presenting a partial list as if it were complete.
+
+- **Changing the phone region now re-derives every contact's stored phone key** (CL-0066)
+  The E.164 form used to match duplicates depends on the phone-region setting. Without this, changing that setting would leave every stored key derived under the old region and duplicate detection would quietly stop matching numbers typed in local form.
 
 - **Google Sync works in the downloadable app** (CL-0080)
   Opening the Google Sync page in a packaged build showed an error page
