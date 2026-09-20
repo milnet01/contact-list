@@ -364,3 +364,96 @@ class TestExpiredSyncTokenSelfHeal:
         ).fetchone()
         assert row['sync_token'] is None            # cleared by the self-heal
         assert row['last_synced_at'] == '2020-01-01T00:00:00Z'  # preserved, not wiped
+
+
+class TestFieldClear:
+    """CL-0064 / INV-8: clearing a managed field locally reaches Google.
+
+    Before this, an empty local value was omitted from both the body and
+    updatePersonFields, so Google kept its copy and put it back. These lock
+    both halves: the three fields a clear IS pushed on, and the four it is
+    deliberately not, where an empty local value does not imply a user clear.
+    """
+
+    def _cleared_phone(self, db, google_phones):
+        cid = models.create_contact(
+            db, 'individual', 'Clara', phone='+1 202-555-0100')
+        models.update_contact(db, cid, 'individual', 'Clara', phone=None)
+        _link(db, cid, 'people/clara')
+        _set_prev_sync(db, '2020-01-01T00:00:00Z')
+        _make_dirty_edit(db, cid)
+        return _FakeService(get_responses={'people/clara': {
+            'resourceName': 'people/clara', 'etag': 'e',
+            'phoneNumbers': google_phones,
+            'metadata': {'sources': [{'type': 'CONTACT',
+                                      'updateTime': '2019-06-01T00:00:00Z'}]},
+        }})
+
+    def test_clearing_a_phone_drops_googles_primary_and_keeps_the_rest(
+        self, app, db, monkeypatch
+    ):
+        service = self._cleared_phone(
+            db, [{'value': 'OLD-PRIMARY'}, {'value': 'SECOND-KEEP'}])
+        _run_sync(app, db, service, monkeypatch)
+        _res, fields, body = service.updated[0]
+        assert 'phoneNumbers' in fields, 'a cleared field must be listed, or Google never hears it'
+        assert [p['value'] for p in body['phoneNumbers']] == ['SECOND-KEEP']
+
+    def test_clearing_the_only_phone_sends_an_empty_list(
+        self, app, db, monkeypatch
+    ):
+        service = self._cleared_phone(db, [{'value': 'OLD-PRIMARY'}])
+        _run_sync(app, db, service, monkeypatch)
+        _res, fields, body = service.updated[0]
+        assert 'phoneNumbers' in fields
+        assert body['phoneNumbers'] == []
+
+    def test_a_field_empty_on_both_sides_is_omitted(self, app, db, monkeypatch):
+        # Nothing to clear. Listing it would write an empty list over an empty
+        # list, which is a pointless write against the etag.
+        service = self._cleared_phone(db, [])
+        _run_sync(app, db, service, monkeypatch)
+        _res, fields, body = service.updated[0]
+        assert 'phoneNumbers' not in fields
+        assert 'phoneNumbers' not in body
+
+    def test_a_company_contacts_organization_is_never_cleared(
+        self, app, db, monkeypatch
+    ):
+        # §6: the app does not manage organizations for a type='company'
+        # contact -- its org name lives in `name`. So the permanently-empty
+        # local value is NOT a clear, and pushing one would wipe Google's entry.
+        cid = models.create_contact(db, 'company', 'Acme Ltd')
+        _link(db, cid, 'people/acme')
+        _set_prev_sync(db, '2020-01-01T00:00:00Z')
+        _make_dirty_edit(db, cid)
+        service = _FakeService(get_responses={'people/acme': {
+            'resourceName': 'people/acme', 'etag': 'e',
+            'organizations': [{'name': 'KEEP-ME'}],
+            'metadata': {'sources': [{'type': 'CONTACT',
+                                      'updateTime': '2019-06-01T00:00:00Z'}]},
+        }})
+        _run_sync(app, db, service, monkeypatch)
+        _res, fields, body = service.updated[0]
+        assert 'organizations' not in fields
+        assert 'organizations' not in body
+
+    def test_a_birthday_the_import_never_stored_is_never_cleared(
+        self, app, db, monkeypatch
+    ):
+        # The import drops a Google birthday with no month+day, so an absent
+        # local birthday says nothing about what the user did.
+        cid = models.create_contact(db, 'individual', 'Bea')
+        _link(db, cid, 'people/bea')
+        _set_prev_sync(db, '2020-01-01T00:00:00Z')
+        _make_dirty_edit(db, cid)
+        service = _FakeService(get_responses={'people/bea': {
+            'resourceName': 'people/bea', 'etag': 'e',
+            'birthdays': [{'date': {'year': 1990}}],
+            'metadata': {'sources': [{'type': 'CONTACT',
+                                      'updateTime': '2019-06-01T00:00:00Z'}]},
+        }})
+        _run_sync(app, db, service, monkeypatch)
+        _res, fields, body = service.updated[0]
+        assert 'birthdays' not in fields
+        assert 'birthdays' not in body

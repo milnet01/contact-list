@@ -361,6 +361,31 @@ def _merge_primary(existing: list | None, value: str | dict, key: str) -> list:
     return entries
 
 
+def _clearable_entries(
+    existing: list | None, value: str | None, key: str
+) -> list | None:
+    """Entries to send for one CLEARABLE managed field (§6.1, INV-8).
+
+    A value replaces entry 0 in place, via _merge_primary. An EMPTY local value
+    is a clear: entry 0 is removed and the rest returned, so Google's secondary
+    entries survive -- INV-2 forbids removing a value the app does not manage,
+    and entry 0 is precisely the one it does. None means write nothing: empty on
+    both sides, so there is nothing to clear and listing the field would write
+    an empty list over an empty list.
+
+    Only email, phone and notes use this. _upsert_person takes those three from
+    Google's entry 0 unconditionally, so empty-locally with a value on Google
+    can only mean the user cleared it. For the other managed fields it cannot:
+    a name is never empty (the form rejects it), and a birthday or address is
+    dropped by the import on a partial date or a missing formattedValue, so
+    their emptiness says nothing about what the user did.
+    """
+    if value:
+        return _merge_primary(existing, value, key)
+    entries = [dict(e) for e in (existing or [])]
+    return entries[1:] if entries else None
+
+
 def _birthday_to_google_date(value: str) -> dict | None:
     """'YYYY-MM-DD' or 'MM-DD' -> a People API date {year?, month, day}."""
     match = models._BIRTHDAY_RE.match((value or '').strip())
@@ -383,22 +408,27 @@ def _person_body_for_push(
     body: dict = {}
     fields: list[str] = []
 
+    # names is NOT clearable: the contact form rejects a blank name, so the
+    # empty case cannot arise and an empty local name would mean a bug, not a
+    # user clear (§6.1).
     if contact['name']:
         body['names'] = _merge_primary(existing.get('names'), contact['name'],
                                        'unstructuredName')
         fields.append('names')
-    if contact['email']:
-        body['emailAddresses'] = _merge_primary(
-            existing.get('emailAddresses'), contact['email'], 'value')
-        fields.append('emailAddresses')
-    if contact['phone']:
-        body['phoneNumbers'] = _merge_primary(
-            existing.get('phoneNumbers'), contact['phone'], 'value')
-        fields.append('phoneNumbers')
-    if contact['notes']:
-        body['biographies'] = _merge_primary(
-            existing.get('biographies'), contact['notes'], 'value')
-        fields.append('biographies')
+
+    # The three clearable fields (§6.1, INV-8). Clearing one locally pushes the
+    # removal of Google's entry 0 rather than omitting the field -- omitting it
+    # is what let Google keep the old value and put it back (CL-0064).
+    for local_value, field_name in (
+        (contact['email'], 'emailAddresses'),
+        (contact['phone'], 'phoneNumbers'),
+        (contact['notes'], 'biographies'),
+    ):
+        entries = _clearable_entries(
+            existing.get(field_name), local_value, 'value')
+        if entries is not None:
+            body[field_name] = entries
+            fields.append(field_name)
 
     cf = {r['field_name'].lower(): r['field_value'] for r in custom_fields}
     date = _birthday_to_google_date(cf['birthday']) if cf.get('birthday') else None
