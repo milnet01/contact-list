@@ -647,7 +647,7 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   Kind: fix.
   Source: review-code 2026-09-07 (process-lifecycle lane); queued by close-findings.
 
-- 📋 [CL-0064] **Decide whether clearing a field locally should push the deletion to Google.**
+- ✅ [CL-0064] **Decide whether clearing a field locally should push the deletion to Google.**
   A field the user empties is omitted from both the request body and
   `updatePersonFields`, so Google never hears about it and keeps the old
   value; the next pull then re-imports that value locally and the
@@ -671,6 +671,15 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   which overstates INV-2; that cell needs amending. Amending it changes
   direction for work not yet built, so the spec edit takes CLAUDE.md
   rule 14's cold-read gate before implementation.
+  Resolved (2026-09-20). Spec first: §6.1 and INV-8 added to docs/specs/2026-07-02-two-way-google-sync.md, gated with review-contract (one loop at the user's instruction, two cold lanes, 5 verified, 5 fixed, 0 dismissed -- loop 5 in the spec's new §16 log). Both lanes independently caught a data-loss bug in the FIRST draft of the rule: as written it would have deleted the organizations entry off every type='company' contact on Google, because §6 says the app does not manage that field for them, so their local value is permanently empty and the draft read that as a clear. Lane A generalised it -- nothing records WHICH fields a save cleared, since _write_contact re-inserts custom fields wholesale, so 'empty locally' cannot by itself mean 'cleared'.
+
+  The shipped rule is therefore scoped: email, phone and notes are clearable, because _upsert_person takes those three from Google's entry 0 unconditionally. names, birthdays, addresses and organizations are never cleared by a push -- a name is never empty (the form rejects one), the import drops a birthday without month+day and an address without formattedValue, and organizations is not managed at all for a company contact. Clearing one of the three removes Google's entry 0 and sends the rest, so entries [1:] survive (INV-2); empty on both sides still writes nothing.
+
+  Five tests, each proven red against a reverted fix, files restored byte-identical. Two mutations were needed because the fix fails in opposite directions: reverting to omit-when-empty reddens the clear tests, and making organizations clearable reddens the company test -- the exact shape the lanes predicted.
+
+  NOT VERIFIED HERE, and it needs a real sync: that the People API treats a shortened value list as a removal. No Google credentials on this machine. §6 has asserted 'updateContact replaces the entire value list' since two-way sync shipped and this builds on it, but nothing in this session executed it. Watch the first clear against a real account.
+
+  Gates: ./local-ci.sh green on 3.12/3.13/3.14, 442 tests.
   **Layman:** If you delete someone's phone number here, Google keeps its copy and puts it back on the next sync.
   Kind: investigate.
   Source: review-code 2026-09-07 (google-sync lane); queued by close-findings.
@@ -901,7 +910,7 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   Kind: security.
   Source: review-code 2026-09-07 (app-core + process-lifecycle lanes).
 
-- 📋 [CL-0073] **The confirmation dialog on every destructive action has no dialog semantics.**
+- ✅ [CL-0073] **The confirmation dialog on every destructive action has no dialog semantics.**
   The modal gates delete contact, bulk delete, disconnect Google,
   restart server and shut down server. It carries no `role`, no
   `aria-modal` and no `aria-labelledby`, so the question in the message
@@ -919,6 +928,21 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
 
   The project names no accessibility standard, so none of these was
   raised above the level general principles support.
+  Resolved (2026-09-20) for the headline item only -- read the scope below before treating this bullet as fully closed.
+
+  The confirmation dialog now carries role="alertdialog", aria-modal="true" and aria-labelledby="confirm-message", so a screen reader reads what is being confirmed instead of "Confirm, button". Three behaviours back that up, because aria-modal is a promise about the rest of the page: one closeModal helper behind all four dismissal paths that restores focus to the opener, a Tab/Shift+Tab focus trap between the two buttons, and an early return in the global keydown handler while the dialog is open -- without that the single-character shortcuts still fired underneath it, so pressing "n" at a delete prompt navigated to /contacts/new and left the promise unresolved.
+
+  CORRECTION to this bullet's own text: it claimed "there is no Escape handler". There was one, in the Escape branch of the shortcut handler; verified against the pre-change file. The claim was wrong when filed.
+
+  STILL OPEN, and not covered by this fix -- the other findings in this bullet: the import page's file input and column-mapping selects, the merge page's tags label, the merge radio fieldset/legend, aria-sort on the sortable headers, the modifier guard on the three shortcuts, and the live region for the selection count.
+
+  COVERAGE GAP, stated rather than left to be found: only the markup is tested, via a rendered-page assertion proven red against the reverted attributes. The focus restore, the focus trap and the shortcut suppression are JavaScript and rest on `node --check` and on reading -- the project ships no JS test runner and adding one is a new dependency under DESIGN.md §3.
+
+  Implemented by a peer session under a scope fence; reviewed, tested and committed here. Gates: ./local-ci.sh green on 3.12/3.13/3.14, 443 tests.
+  The six findings listed as STILL OPEN above are now tracked as
+  CL-0084, so they are not lost inside a bullet marked shipped. This
+  bullet is closed on its headline item -- the confirm dialog -- and
+  nothing else.
   **Layman:** Someone using a screen reader is asked to confirm deleting a contact and hears only "Confirm, button" — never what they are deleting.
   Kind: accessibility.
   Source: review-code 2026-09-07 (templates + frontend-js lanes).
@@ -1221,6 +1245,31 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   **Layman:** A design document points at a line number in the code that has not been that line for a long time.
   Kind: doc-fix.
   Source: in-session-2026-09-20 (found while working CL-0066).
+
+- 📋 [CL-0084] **The rest of the accessibility findings CL-0073 carried but did not fix.**
+  CL-0073 bundled the confirm-dialog defect with six smaller ones. The
+  dialog shipped on 2026-09-20; these did not, and they would have been
+  invisible inside a bullet flipped to shipped.
+
+    - The import page's file input and its column-mapping selects have no
+      accessible labels.
+    - The merge page's tags field has no label.
+    - The merge page's radio group has no fieldset/legend, so the choices
+      are announced without the question.
+    - The sortable column headers carry no aria-sort, so the current sort
+      is invisible to a screen reader.
+    - The three single-character shortcuts have no modifier guard.
+    - The selection count is not in a live region, so it changes silently.
+
+  Also from CL-0073's close, and the reason it matters here: the project
+  ships no JavaScript test runner, so the dialog's focus restore, focus
+  trap and shortcut suppression rest on `node --check` and on reading
+  alone. Adding a runner is a new dependency under DESIGN.md §3 and is a
+  decision, not an edit. Settle that before the next JS-heavy
+  accessibility change, or this item ships untested the same way.
+  **Layman:** Several smaller screen-reader and keyboard problems are still there; the main one is fixed.
+  Kind: accessibility.
+  Source: in-session-2026-09-20 (split out of CL-0073 when its headline item shipped).
 
 ## Efficiency & Refactoring
 

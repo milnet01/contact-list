@@ -38,6 +38,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Clearing a contact field now reaches Google instead of coming back** (CL-0064)
+  Emptying an email, phone or note on a synced contact used to be dropped from the push, so Google kept its copy and the next sync put it back. The clear is now sent, and any additional values Google holds for that field are left alone. Deliberately limited to those three: for a name, birthday, address or company organization an empty local value does not reliably mean you cleared it, and pushing one would delete something you never touched.
+
+- **Screen readers now announce what a confirmation dialog is asking** (CL-0073)
+  Every destructive action uses one confirmation dialog, and it announced only "Confirm, button" without reading the question. It is now a proper dialog: the message is its name, focus returns to whatever opened it, Tab stays inside it, and keyboard shortcuts no longer fire underneath it — pressing "n" at a delete prompt used to navigate away and leave the dialog hanging.
+
 - **The duplicates and birthdays pages bound their results and say when they are truncated** (CL-0066)
   Both returned every match, against the documented rule that all list endpoints bound their output. Each now shows at most 200 and says so when there is more, rather than presenting a partial list as if it were complete.
 
