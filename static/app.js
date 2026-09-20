@@ -26,6 +26,21 @@
     var modalYes = document.getElementById('confirm-yes');
     var modalNo = document.getElementById('confirm-no');
     var pendingConfirm = null;
+    var modalOpener = null;
+
+    // Every dismissal path goes through here, so focus can never be left on an
+    // element that has just been hidden -- which strands a keyboard or screen
+    // reader user on the document body with no announced context.
+    function closeModal(answer) {
+        if (!modal || modal.hidden) return;
+        modal.hidden = true;
+        var opener = modalOpener;
+        var resolve = pendingConfirm;
+        modalOpener = null;
+        pendingConfirm = null;
+        if (opener && typeof opener.focus === 'function') { opener.focus(); }
+        if (resolve) resolve(answer);
+    }
 
     function showModal(message) {
         return new Promise(function (resolve) {
@@ -34,6 +49,7 @@
                 return;
             }
             modalMsg.textContent = message;
+            modalOpener = document.activeElement;
             modal.hidden = false;
             pendingConfirm = resolve;
             modalYes.focus();
@@ -41,25 +57,26 @@
     }
 
     if (modalYes) {
-        modalYes.addEventListener('click', function () {
-            modal.hidden = true;
-            if (pendingConfirm) pendingConfirm(true);
-            pendingConfirm = null;
-        });
+        modalYes.addEventListener('click', function () { closeModal(true); });
     }
     if (modalNo) {
-        modalNo.addEventListener('click', function () {
-            modal.hidden = true;
-            if (pendingConfirm) pendingConfirm(false);
-            pendingConfirm = null;
-        });
+        modalNo.addEventListener('click', function () { closeModal(false); });
     }
     if (modal) {
         modal.addEventListener('click', function (e) {
-            if (e.target === modal) {
-                modal.hidden = true;
-                if (pendingConfirm) pendingConfirm(false);
-                pendingConfirm = null;
+            if (e.target === modal) { closeModal(false); }
+        });
+        // Focus trap. `aria-modal` tells assistive technology the rest of the
+        // page is inert; without this, Tab walks out of the dialog anyway and
+        // the promise is false.
+        modal.addEventListener('keydown', function (e) {
+            if (e.key !== 'Tab' || modal.hidden || !modalYes || !modalNo) return;
+            if (e.shiftKey && document.activeElement === modalYes) {
+                e.preventDefault();
+                modalNo.focus();
+            } else if (!e.shiftKey && document.activeElement === modalNo) {
+                e.preventDefault();
+                modalYes.focus();
             }
         });
     }
@@ -94,6 +111,15 @@
     // Keyboard shortcuts
     // =================================================================
     document.addEventListener('keydown', function (e) {
+        // While the confirmation dialog is open it is the only thing on the
+        // page that answers a key -- which is what `aria-modal` promises.
+        // Without this the single-character shortcuts below still fire, so
+        // pressing "n" at a delete prompt navigates away from it.
+        if (modal && !modal.hidden) {
+            if (e.key === 'Escape') { closeModal(false); }
+            return;
+        }
+
         // Don't capture when typing in inputs
         var tag = (e.target.tagName || '').toLowerCase();
         if (tag === 'input' || tag === 'textarea' || tag === 'select') {
@@ -111,12 +137,7 @@
             // Navigate to new contact
             window.location.href = document.querySelector('a[href*="/contacts/new"]')?.href || '/contacts/new';
         } else if (e.key === 'Escape') {
-            // Dismiss modal if open
-            if (modal && !modal.hidden) {
-                modal.hidden = true;
-                if (pendingConfirm) pendingConfirm(false);
-                pendingConfirm = null;
-            }
+            // The modal branch above has already returned if one was open.
             // Dismiss all flash messages
             document.querySelectorAll('.flash').forEach(function (f) { f.remove(); });
         }

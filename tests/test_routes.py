@@ -774,3 +774,25 @@ class TestFavourites:
                     data={'_csrf_token': token, 'favourite': '1'})
         body = client.get('/contacts').data.decode()
         assert body.index('Zoe') < body.index('Aaron')
+
+
+class TestConfirmDialogSemantics:
+    """CL-0073: the confirmation dialog must announce what it is confirming.
+
+    Asserted against a RENDERED page, not the template file, so the test fails
+    if base.html stops being the layout as much as if the attributes are
+    dropped. The focus restore and focus trap live in static/app.js and are not
+    covered -- the project ships no JavaScript test runner, and adding one is a
+    new dependency (DESIGN.md §3). That gap is real and recorded on CL-0073.
+    """
+
+    def test_dialog_is_labelled_by_its_own_message(self, client):
+        body = client.get('/contacts').data.decode()
+        assert 'role="alertdialog"' in body, (
+            'without a dialog role a screen reader announces "Confirm, button" '
+            'and never reads what is being confirmed'
+        )
+        assert 'aria-modal="true"' in body
+        assert 'aria-labelledby="confirm-message"' in body
+        # The label must point at an element that exists, or it names nothing.
+        assert 'id="confirm-message"' in body
