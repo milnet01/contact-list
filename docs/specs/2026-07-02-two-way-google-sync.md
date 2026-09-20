@@ -134,8 +134,10 @@ user-triggered, no background threads (DESIGN.md §7.2 — sync adds no threads)
 
 **Explicit non-goals (kept out to bound risk — §15):**
 
-- **No deletions pushed to Google.** Deleting a linked contact locally leaves it
-  on Google. Because sync is delta (`syncToken`), a deleted-locally contact does
+- **No contact deletions pushed to Google.** Deleting a linked *contact* locally
+  leaves it on Google. This is about whole contacts, not about fields: clearing a
+  managed field on a contact that still exists **is** pushed, per §6.1 (CL-0064).
+  Because sync is delta (`syncToken`), a deleted-locally contact does
   **not** silently reappear on the next normal sync (Google only returns *changed*
   contacts); it can reappear only on a **full re-sync** (expired token). This
   trade-off was the maintainer's choice ("edits + new contacts", not "everything
@@ -460,6 +462,49 @@ contact's other emails on Google**. To prevent that, the update path does
   single-valued in this app's model and in normal use; replace index 0 in place and
   preserve any additional entries the same way.
 
+### 6.1 Clearing a managed field (CL-0064)
+
+The rules above describe replacing index 0 with a value. They did not say what
+happens when the local value is **empty** — the user cleared the field. The
+implementation omitted such a field from both the request body and
+`updatePersonFields`, so Google never heard about the change, kept its old
+value, and the next pull re-imported it: the clearing edit silently reverted.
+That contradicts §7's "local wins", under which a local edit that is newer than
+Google's is the one that survives. A clear is an edit.
+
+**The rule.** A managed field the user has cleared is pushed as a removal of
+**index 0 only**, and the field **is** listed in `updatePersonFields`:
+
+- **`emailAddresses` / `phoneNumbers`:** drop entry `[0]` from the live Google
+  list and send the remainder. Entries `[1:]` are preserved and keep their
+  order. A list that had one entry becomes empty; a list that had two leaves
+  Google holding the former secondary.
+- **`names` / `biographies` / `birthdays` / `addresses` / `organizations`:** the
+  same, which for the normal single-entry case means sending an empty list.
+- A field that is empty locally **and** absent on Google is omitted, as before.
+  There is nothing to clear, and listing it would write an empty list over an
+  empty list.
+
+**This does not weaken INV-2**, and that is the whole reason it is permitted.
+INV-2 forbids removing a value **the app does not manage**. Index 0 is
+precisely the value the app manages — it is the entry `_upsert_person` imported
+from and the entry the replace-in-place rule above already overwrites on every
+ordinary edit. Overwriting it with a new value and removing it are the same
+authority. Entries `[1:]` remain untouchable.
+
+**Consequence, stated rather than discovered later.** When a contact had two
+phone numbers and the user clears the app's one, the former `[1]` becomes
+Google's `[0]`, so the next pull imports **that** number as the contact's phone.
+The field does not stay empty. This is correct under the position-based rule the
+section above already accepts as a limitation ("if Google reordered the list so
+a *different* number is now `[0]`, we update that one"), and it is the same
+trade the app makes everywhere else it models one value for Google's many.
+
+**Not affected: deleting a contact.** §2's non-goal and INV-4 are about
+`deleteContact` — removing a whole contact from Google — which this app still
+never calls. Clearing a field on a contact that continues to exist is a
+different operation.
+
 **`createContact`** has no existing values to preserve, so it sends our managed
 fields directly (still only managed fields — never fabricates data). A birthday is
 emitted as a People API `birthdays[].date` `{year?, month, day}`, reversing the
@@ -640,7 +685,7 @@ subquery adds no per-row cost on the count path (same as `has_photo`). A NULL
 | Concern | Mitigation |
 |---------|------------|
 | Over-broad scope | Only `contacts` (read-write) is requested — the minimum for write-sync; no other Google scope. Disclosed on `/sync` + README (§3). |
-| Destroying Google data | INV-2 read-modify-write preserves values the app doesn't manage; **no deletions** are ever sent (§2). `updatePersonFields` is restricted to managed fields, so unmanaged Google fields are never overwritten. |
+| Destroying Google data | INV-2 read-modify-write preserves values the app doesn't manage; **no contact deletions** are ever sent (§2, INV-4). `updatePersonFields` is restricted to managed fields, so unmanaged Google fields are never overwritten. Clearing a managed field removes that field's index-0 entry and nothing else (§6.1) — the same authority the replace-in-place rule already exercises on every edit. |
 | Silent overwrite of newer data | Timestamp LWW + fresh-etag backstop (§7, INV-3). A tie is Google-wins. |
 | SSRF / new network surface | None new — all writes go through the same authenticated `people` service object and Google endpoints; no app-controlled URL is fetched (unlike the photo download, which is unchanged). |
 | CSRF | Push rides the existing `POST /sync/start` with its validated `_csrf_token`; unchanged. |
@@ -754,8 +799,14 @@ Test-first (TDD), mocking the Google API client at the external boundary (DESIGN
 - **INV-3** — `updateContact` always carries the etag from a `get` performed in
   the same sync step; an etag/precondition failure skips-and-reports, never
   silently overwrites newer Google data.
-- **INV-4** — v2.0 never calls `deleteContact`; no local deletion propagates to
-  Google.
+- **INV-4** — v2.0 never calls `deleteContact`; no local *contact* deletion
+  propagates to Google. Clearing a managed **field** is not a contact deletion
+  and is pushed (§6.1, INV-8).
+- **INV-8** — Clearing a managed field locally removes exactly that field's
+  index-0 entry on Google and leaves entries `[1:]` intact; a field empty on both
+  sides is omitted from `updatePersonFields` entirely. A cleared field is never
+  silently dropped from the push, which is what made a clearing edit revert on the
+  next pull (CL-0064).
 - **INV-5** — The scope requested is exactly `contacts` (nothing broader); `SCOPES`
   is a **single literal** (`google_auth.py` imports `google_sync.py`'s), so the two
   modules cannot diverge; and a legacy read-only token is rejected — via the token
@@ -771,9 +822,10 @@ Test-first (TDD), mocking the Google API client at the external boundary (DESIGN
 
 ## 15. Out of scope (v2.0)
 
-- **Pushing deletions** to Google (the maintainer chose "edits + new contacts").
-  A future opt-in would need a local tombstone table (deleted `google_id`s) since
-  the row is gone; deferred.
+- **Pushing contact deletions** to Google (the maintainer chose "edits + new
+  contacts"). A future opt-in would need a local tombstone table (deleted
+  `google_id`s) since the row is gone; deferred. Field clears are **not** in this
+  bucket — they ship per §6.1 (CL-0064).
 - **Per-contact "don't sync to Google" opt-out** — v2.0 pushes all local-only
   contacts; a suppress flag is future work.
 - **Editing/managing secondary emails/phones** — the app still models one each; it
