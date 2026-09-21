@@ -57,7 +57,7 @@ Makes bundled templates/static/migrations resolvable when frozen; a no-op change
 
 **Files:**
 - Create: `resources.py`
-- Modify: `db.py:66`, `app.py:17`
+- Modify: `db.py::init_db`, `app.py::create_app`
 - Test: `tests/test_packaging.py`
 
 **Interfaces:**
@@ -490,7 +490,7 @@ Replace the old flat-blue `static/icon.svg` favicon with a PNG rendered from the
 
 **Files:**
 - Create: `static/icon.png` (committed)
-- Modify: `templates/base.html:7`
+- Modify: `templates/base.html`
 - Remove: `static/icon.svg`
 
 - [ ] **Step 1: Generate the committed favicon PNG**
@@ -505,7 +505,7 @@ Expected: `static/icon.png` created (64×64).
 
 - [ ] **Step 2: Repoint the favicon link**
 
-In `templates/base.html:7`, change:
+In `templates/base.html`, change the `icon` link:
 
 ```html
     <link rel="icon" href="{{ url_for('static', filename='icon.svg') }}" type="image/svg+xml">

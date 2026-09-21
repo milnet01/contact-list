@@ -258,7 +258,7 @@ local tool; the action is still CSRF-gated and reversible by relaunch.
 `<!DOCTYPE html>` / `<head>` (carrying the meta-refresh and a
 `<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">`
 for basic styling) and a minimal `<body>`. Set `data-theme` on its `<html>` from
-the `settings` global (as `base.html:2` does) so a forced theme is respected;
+the `settings` global (as the `<html>` tag in `templates/base.html` does) so a forced theme is respected;
 otherwise this one transient page briefly flashes the default theme. It
 deliberately forgoes the nav header — during a restart those links point at a
 server that is momentarily down. (Adding a `{% block head %}` to `base.html` was the alternative; the

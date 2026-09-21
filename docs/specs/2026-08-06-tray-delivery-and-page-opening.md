@@ -101,9 +101,9 @@ two releases: nothing fails, an icon simply never appears.
 
 ### 2.2 The app opens a browser on every start (CL-0060)
 
-`launcher.py::main` starts a daemon thread running `launcher.py::_open_when_ready`,
-which polls the loopback port and calls `browser.open_url` as soon as it accepts a
-connection. This fires on **every** start that binds — including one driven by an
+`launcher.py::main` started a daemon thread running `launcher.py::_open_when_ready`,
+which polled the loopback port and called `browser.open_url` as soon as it accepted a
+connection. That happened on **every** start that bound — including one driven by an
 external process manager, and including a start whose whole purpose was to sit in
 the tray. The user's position (2026-08-06): *"I don't want the site automatically
 opened. That is why I wanted the tray icon or LWSM to be able to open the page."*

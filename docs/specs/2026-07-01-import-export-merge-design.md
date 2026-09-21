@@ -299,8 +299,8 @@ transaction wrapper). Then:
 - `merge_contacts` runs one `with db:` block: guard that ids exist, are
   distinct, and `survivor_id ∉ loser_ids`; call
   `_write_contact(db, survivor_id, …chosen…)`; then `DELETE` each loser (custom
-  fields cascade via the FK, `migrations/001:20`, with `PRAGMA foreign_keys=ON`,
-  `db.py:34`). One `with db:` → atomic (no nested transaction; `_write_contact`
+  fields cascade via the `ON DELETE CASCADE` in `migrations/001_initial.sql`,
+  with the `PRAGMA foreign_keys=ON` that `db.py::get_db` sets). One `with db:` → atomic (no nested transaction; `_write_contact`
   has no wrapper of its own).
 
 On success, redirect to the survivor's detail page with a success flash naming
@@ -310,7 +310,7 @@ how many were merged.
 
 Migration `004_import_profiles.sql` (§2.4). No change to `contacts` or
 `custom_fields`. `db.init_db()` sorts and applies every `migrations/*.sql` once,
-tracked in `schema_version` (`db.py:70-80`, dir at `db.py:66`); `004` is picked
+tracked in `schema_version` (`db.py::init_db`); `004` is picked
 up in order and must be idempotent (`CREATE TABLE IF NOT EXISTS`) — it is.
 
 ## 6. Security & robustness

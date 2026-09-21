@@ -1271,6 +1271,58 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   Kind: accessibility.
   Source: in-session-2026-09-20 (split out of CL-0073 when its headline item shipped).
 
+- ✅ [CL-0085] **Split CLAUDE.md's reasoning into docs/history/claude-md.md.**
+  CLAUDE.md states what is true now and what a breach looks like. The
+  argument that settled a rule moves to docs/history/claude-md.md,
+  linked from the foot. Trap warnings keep their failure-mode clause,
+  because that clause is itself what a breach looks like.
+  Resolved (2026-09-21): the arguments behind the local-CI mirror rule,
+  the documentation-only skip, and the two figures that now live in
+  DESIGN.md and pyproject.toml moved to docs/history/claude-md.md,
+  linked from the foot of CLAUDE.md. Every instruction stayed, checked
+  paragraph by paragraph against the diff. The launch-verification traps
+  kept their failure-mode clauses, because that clause is what a breach
+  looks like.
+  **Layman:** The project's instruction file keeps the rules; the arguments behind them move to a history file it links to.
+  Kind: doc.
+  Source: user-request-2026-09-21.
+
+- ✅ [CL-0086] **Design documents cite source line numbers that no longer resolve, and two describe superseded state in the present tense.**
+  db.py is shorter than the lines three documents cite. The convention
+  this project already adopted is to name the symbol, so these become
+  db.py::init_db. Separately, the launcher spec and plan describe the
+  state before their own change in the present tense, so they read as
+  claims about the tree today. Past tense keeps them true as records.
+  One stray code fence closes nothing.
+  Resolved (2026-09-21): the citations that pointed past the end of a
+  file now name the symbol -- db.py::init_db, db.py::get_db,
+  app.py::create_app, migrations/001_initial.sql, and the icon link in
+  templates/base.html. The launcher spec and plan describe their own
+  pre-change state in the past tense, so they read as records rather
+  than as claims about the tree today. One stray code fence removed. The
+  wider population of line citations that still resolve is CL-0087.
+  **Layman:** Some design documents point at lines that no longer exist, and two say a file is still in use after the same document retired it.
+  Kind: doc-fix.
+  Source: check-doc-run-2026-09-21.
+  Evidence: docs/specs/2026-07-10-standalone-launchers-design.md, docs/specs/2026-07-01-import-export-merge-design.md, docs/plans/2026-07-10-standalone-launchers.md, docs/specs/2026-08-06-tray-delivery-and-page-opening.md, docs/superpowers/specs/2026-06-30-settings-page-design.md
+
+- 📋 [CL-0087] **Specs cite source line numbers throughout, which the drive-level rule forbids.**
+  The drive-level CLAUDE.md forbids line numbers in documents: name the
+  symbol, the heading or the file instead. Specs across docs/specs/ still
+  cite them — `models.py`, `config.py`, `routes/contacts.py`, several
+  templates and several tests among them.
+
+  These differ from the ones CL-0086 fixed. Those pointed past the end of
+  the file, so they were provably wrong. These may still resolve today and
+  are merely stale-prone, which makes this a sweep rather than a defect
+  fix. Naming the symbol is the same remedy either way.
+
+  Out of scope: docs/reviews/ lane reports. A dated review record says what
+  a reviewer saw on that date and is not edited afterwards.
+  **Layman:** Many design documents point at numbered lines in code files. Those numbers drift every time the code is edited, so they quietly stop meaning anything.
+  Kind: doc-fix.
+  Source: check-doc-run-2026-09-21.
+
 ## Efficiency & Refactoring
 
 Performance and code-health opportunities surfaced during the 2026-06-30 review.

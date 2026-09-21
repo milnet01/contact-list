@@ -23,13 +23,15 @@ JS. No ORM. Google import is in `google_sync.py` / `google_auth.py`.
 - **CSRF:** signed token validated on every POST/PUT/DELETE.
 - **Secrets:** Google credentials/tokens live in `~/.config/contact-list/`, never
   in the repo or database. `.gitignore` enforces this.
-- **No new dependencies** without justification (budget: <8 direct pip packages).
+- **No new dependencies** without justification. DESIGN.md §3 holds the
+  budget and the exception register.
 - **Dependencies track latest.** All deps — runtime, dev/CI tools, GitHub
   Actions, Python — stay on their latest stable release, for features and
   security. Holding a version back requires a documented exception in DESIGN.md
   §3 (*Dependency Exceptions & Breakage Register*) recording the breaking version
   and a re-test trigger.
-- Type hints on all signatures; PEP 8; line length 100; specific exceptions only.
+- Type hints on all signatures; PEP 8; specific exceptions only. `ruff`
+  enforces the line length set in `pyproject.toml`.
 
 ## Running & testing
 
@@ -41,15 +43,11 @@ git config core.hooksPath .githooks   # once per clone: run local CI before ever
 ```
 
 **`./local-ci.sh` must be green before any push**, and `.githooks/pre-push`
-enforces it once `core.hooksPath` is set. It mirrors `ci.yml` exactly — same
-Python matrix, same dev-tool pins, same three checks in the same order — and
-fetches any matrix Python the machine lacks via `uv`, so a local pass really
-does mean all jobs. A version it cannot obtain is a **failure**, not a warning:
-a green light that silently skipped a third of the matrix is worse than none.
+enforces it once `core.hooksPath` is set. It mirrors `ci.yml`. A matrix Python
+it cannot obtain is a **failure**, not a warning.
 
 Documentation-only pushes (every changed file a `*.md` or under `docs/`) skip it
-automatically — no code changed, so there is nothing for CI to catch.
-`SKIP_LOCAL_CI=1 git push` is the emergency override.
+automatically. `SKIP_LOCAL_CI=1 git push` is the emergency override.
 
 ### Verifying a launch by hand
 
@@ -69,3 +67,9 @@ automatically — no code changed, so there is nothing for CI to catch.
 
 Use `SUDO_ASKPASS=/usr/libexec/ssh/ksshaskpass sudo -A -p "Claude Code: <reason>"`
 for anything needing root — never bare `sudo` (see the drive-level CLAUDE.md).
+
+---
+
+The arguments behind these rules are in
+[docs/history/claude-md.md](docs/history/claude-md.md). This file holds what is
+true now; that one holds why.

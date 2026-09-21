@@ -137,7 +137,7 @@ Three read-only resource trees are loaded relative to the source today and must 
 - **`templates/`** and **`static/`** — Flask's `Flask(__name__)` in `create_app`
   resolves these relative to the module's `root_path`, which is wrong inside a
   frozen binary.
-- **`migrations/*.sql`** — `db.py:66` reads
+- **`migrations/*.sql`** — `db.py::init_db` reads
   `os.path.dirname(os.path.abspath(__file__))/migrations`.
 
 A single helper gives the correct base directory in both modes:
@@ -456,13 +456,13 @@ committed assets (§5.2).
 
 ### 5.1 App favicon refresh (pending — build wiring)
 
-The browser-tab favicon currently uses the old flat-blue `static/icon.svg`
-(`templates/base.html:7`, `<link rel="icon" ... filename='icon.svg'>`). This spec
+The browser-tab favicon used the old flat-blue `static/icon.svg`
+(the `icon` link in `templates/base.html`). This spec
 **will** replace it, for visual consistency with the launcher: `make-icons.sh`
 generates `static/icon.png` (e.g. 64px) from `packaging/icon.png` **once, and that
 PNG is then committed** (unlike the per-OS `.ico`/`.icns`, which stay gitignored)
-so source runs have a favicon with no build step; `base.html:7`'s
-`<link>` is repointed (`href` → `icon.png` **and** `type="image/svg+xml"` →
+so source runs have a favicon with no build step; the `icon` `<link>` in
+`templates/base.html` is repointed (`href` → `icon.png` **and** `type="image/svg+xml"` →
 `type="image/png"` — both attributes change, not just the href), and the stale
 `static/icon.svg` is retired. **None of
 this is done yet** — it is implementation work tracked in §9's file table.

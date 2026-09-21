@@ -360,5 +360,3 @@ so most assertions hold as-is).
 | Timezone list is long (~600 entries) in a `<select>` | Acceptable for a native select; a curated "common" optgroup can be added later if needed (not in scope). |
 | Removing browser theme breaks a user mid-session | Theme now server-rendered; first load after deploy shows the DB default (auto) until the user re-picks — acceptable for a single-user local app. |
 | Sync path lacks request context | Region passed into `phoneutil.format_phone` from the caller, not read from `g` inside `google_sync.py` (§7). |
-```
-
