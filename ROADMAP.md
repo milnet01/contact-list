@@ -986,6 +986,13 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
 
   The group-prefix and CR-escaping halves of this lane's findings were
   fixed on 2026-09-07 and are not part of this item.
+  Open decision (2026-09-21), blocking release placement: does the
+  import side keep reading the private X-CL properties after export
+  switches to standard BDAY/ADR/ORG? Keeping them is a minor -- new
+  capability, every vCard exported from 1.x still loads. Dropping them
+  is a major, because those files stop round-tripping. The work cannot
+  be scheduled until this is answered, and it is the only open item in
+  that position.
   **Layman:** Birthdays and addresses exported from here are not recognised by other contact apps, and theirs are ignored by ours.
   Kind: fix.
   Source: review-code 2026-09-07 (routes-io lane).
@@ -1242,6 +1249,10 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   Remedy: name the symbol instead of the line, matching the convention
   CL-0058 applied to the other spec citations. Check the same document
   for other line-number citations while there.
+  Overlap (2026-09-21): this is one instance of the class CL-0087 now
+  covers -- a spec citing a source line number. Left as its own item
+  pending a decision to merge. Whichever survives, the remedy is the
+  same: name the symbol.
   **Layman:** A design document points at a line number in the code that has not been that line for a long time.
   Kind: doc-fix.
   Source: in-session-2026-09-20 (found while working CL-0066).
