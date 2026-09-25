@@ -56,6 +56,7 @@ class _FakeService:
         self.updated: list = []
         self.deleted: list = []
         self.retries_seen: list = []  # num_retries of every execute() (CL-0070)
+        self.got: list = []  # resourceNames passed to get()
         self._page = 0
 
     def people(self):
@@ -80,6 +81,7 @@ class _FakeService:
 
     def get(self, resourceName=None, personFields=None):
         def run():
+            self.got.append(resourceName)
             return self.get_responses.get(
                 resourceName, {'resourceName': resourceName, 'etag': 'g-etag'})
         return _Exec(run, self.retries_seen)
@@ -186,6 +188,42 @@ class TestRateLimitRetries:
 
         assert google_sync._is_write_scope_denied(_Err()) is False
         assert google_sync._is_write_scope_denied(_ScopeErr()) is True
+
+
+class TestTombstoneForAnEditedContact:
+    """CL-0070, INV-9: a delete tombstone is checked before the deferral."""
+
+    _TOMBSTONE = {'connections': [{'resourceName': 'people/lee',
+                                   'metadata': {'deleted': True}}],
+                  'nextSyncToken': 'TOK'}
+
+    def test_edited_contact_is_kept_unlinked_and_recreated(
+            self, app, db, monkeypatch):
+        cid = models.create_contact(db, 'individual', 'Linked Lee', 'lee@x.com')
+        _link(db, cid, 'people/lee')
+        _set_prev_sync(db, '2020-01-01T00:00:00Z')
+        _make_dirty_edit(db, cid)
+        service = _FakeService(pull_pages=[self._TOMBSTONE])
+        result = _run_sync(app, db, service, monkeypatch)
+        assert result.error is None
+        row = db.execute('SELECT name, email, google_id, etag FROM contacts '
+                         'WHERE id=?', [cid]).fetchone()
+        assert row is not None, 'the locally-edited contact was deleted'
+        assert (row['name'], row['email']) == ('Linked Lee', 'lee@x.com')
+        # Re-created on Google in the same run, never updated at its old address.
+        assert result.created == 1 and len(service.created) == 1
+        assert service.updated == [] and 'people/lee' not in service.got
+        assert (row['google_id'], row['etag']) == ('people/new1', 'etag-new1')
+
+    def test_unedited_contact_is_still_deleted(self, app, db, monkeypatch):
+        cid = models.create_contact(db, 'individual', 'Linked Lee', 'lee@x.com')
+        _link(db, cid, 'people/lee')
+        _set_prev_sync(db, '2099-06-01T00:00:00Z')  # after the edit: not dirty
+        service = _FakeService(pull_pages=[self._TOMBSTONE])
+        result = _run_sync(app, db, service, monkeypatch)
+        assert result.error is None
+        assert db.execute('SELECT 1 FROM contacts WHERE id=?', [cid]).fetchone() is None
+        assert service.created == []
 
 
 class TestPushUpdate:

@@ -35,6 +35,17 @@ class SyncResult:
 # two modules can never request different scopes (INV-5).
 SCOPES = ['https://www.googleapis.com/auth/contacts']
 
+class GoogleUnreachable(Exception):
+    """A token refresh failed for a network or temporary reason (CL-0070).
+
+    Distinct from a lost grant: the token is kept and the user is not sent to
+    reconnect, because a temporary outage would otherwise invite a full re-auth.
+    """
+
+
+# §9: surfaced verbatim to the user, so the wording is part of the contract.
+_UNREACHABLE_MESSAGE = "Couldn't reach Google. Check your connection and try again."
+
 # Retries per People API call on 429, 5xx and a rate-limit 403 (CL-0070). The
 # client library backs off rand() * 2**n seconds before retry n, so six retries
 # average about a minute of waiting -- enough to outlast a per-minute write
@@ -76,12 +87,20 @@ def needs_reconsent(config: dict) -> bool:
 
 
 def is_authenticated(config: dict) -> bool:
-    creds = _load_credentials(config)
+    try:
+        creds = _load_credentials(config)
+    except GoogleUnreachable:
+        # The grant is presumably fine; offer Sync, which reports the outage.
+        return True
     return creds is not None and creds.valid
 
 
 def _load_credentials(config: dict):
-    """Load and refresh stored OAuth credentials. Returns None if unavailable."""
+    """Load and refresh stored OAuth credentials. Returns None if unavailable.
+
+    Raises GoogleUnreachable when the refresh failed for a network or temporary
+    reason; only a refusal Google calls permanent (``invalid_grant``) returns
+    None, because that is the case where reconnecting is the fix (CL-0070)."""
     token_path = config['GOOGLE_TOKEN_FILE']
     if not os.path.isfile(token_path):
         return None
@@ -94,11 +113,19 @@ def _load_credentials(config: dict):
 
     creds = Credentials.from_authorized_user_file(token_path, SCOPES)
     if creds.expired and creds.refresh_token:
+        from google.auth.exceptions import RefreshError, TransportError
         from google.auth.transport.requests import Request
 
         try:
             creds.refresh(Request())
             _save_credentials(config, creds)
+        except TransportError as exc:
+            raise GoogleUnreachable('token refresh could not reach Google') from exc
+        except RefreshError as exc:
+            if getattr(exc, 'retryable', False):
+                raise GoogleUnreachable('token refresh failed temporarily') from exc
+            log.exception('Google refused the token refresh')
+            return None
         except Exception:
             log.exception('Failed to refresh Google token')
             return None
@@ -132,7 +159,12 @@ def revoke_credentials(config: dict) -> None:
     disconnect is the worse failure.
     """
     token_path = config['GOOGLE_TOKEN_FILE']
-    creds = _load_credentials(config)
+    try:
+        creds = _load_credentials(config)
+    except GoogleUnreachable:
+        log.warning('Could not reach Google to revoke the token; removing the '
+                    'local copy anyway.', exc_info=True)
+        creds = None
     if creds is not None:
         try:
             # Imported locally, as every other google-library use in this module
@@ -178,7 +210,11 @@ def _is_expired_sync_token(exc) -> bool:
 def sync_contacts(config: dict, db: sqlite3.Connection, region: str) -> SyncResult:
     """Bidirectional Google Contacts sync (CL-0033): pull changed Google contacts,
     then push local creates + edits back. Returns a SyncResult."""
-    creds = _load_credentials(config)
+    try:
+        creds = _load_credentials(config)
+    except GoogleUnreachable:
+        log.warning('Google sync could not refresh the token', exc_info=True)
+        return SyncResult(error=_UNREACHABLE_MESSAGE)
     if not creds:
         return SyncResult(error='Not authenticated with Google.')
 
@@ -543,7 +579,20 @@ def _push_local_changes(service, db, region, dirty_linked, local_only,
     result and the push stops."""
     prev_dt = _parse_dt(prev_sync)
 
-    for contact_id in local_only:
+    # §5 Step 2: a dirty contact the pull just unlinked (a tombstone, INV-9) is
+    # local-only now, so it is created rather than updated -- a get on its old
+    # resourceName would fail.
+    creates = list(local_only)
+    updates = []
+    for row in dirty_linked:
+        current = db.execute(
+            'SELECT google_id FROM contacts WHERE id = ?', [row['id']]).fetchone()
+        if current is not None and current['google_id'] is None:
+            creates.append(row['id'])
+        else:
+            updates.append(row)
+
+    for contact_id in creates:
         try:
             contact = models.get_contact(db, contact_id)
             if not contact:
@@ -565,7 +614,7 @@ def _push_local_changes(service, db, region, dirty_linked, local_only,
             log.exception('Failed to create Google contact for %s', contact_id)
             result.skipped += 1
 
-    for row in dirty_linked:
+    for row in updates:
         contact_id, google_id = row['id'], row['google_id']
         try:
             person = service.people().get(
@@ -687,13 +736,23 @@ def _upsert_person(
     A resourceName in skip_google_ids is a locally-edited contact whose pull we
     DEFER so the local edit survives for the push phase to resolve (CL-0033)."""
     metadata = person.get('metadata', {})
-    if person.get('resourceName') in skip_google_ids:
-        return None
     google_id = person.get('resourceName')
 
+    # The tombstone is checked BEFORE the deferral: a skipped tombstone is
+    # consumed by the sync token and never resent (CL-0070, INV-9).
     if metadata.get('deleted'):
-        if google_id:
+        if google_id in skip_google_ids:
+            # Edited here since the last sync: keep the local edit and unlink,
+            # so the push re-creates it on Google. Name and phone are untouched,
+            # so the contact_lookup keys stay valid.
+            db.execute(
+                'UPDATE contacts SET google_id = NULL, etag = NULL WHERE google_id = ?',
+                [google_id])
+        elif google_id:
             db.execute('DELETE FROM contacts WHERE google_id = ?', [google_id])
+        return None
+
+    if google_id in skip_google_ids:
         return None
 
     names = person.get('names', [])

@@ -136,7 +136,7 @@ it changes what the app promises a user.
   Kind: security.
   Source: review-code 2026-09-07 (app-core lane).
 
-- 📋 [CL-0070] **Google sync robustness: SSRF redirect, rate limits, and a lock held across a download.**
+- ✅ [CL-0070] **Google sync robustness: SSRF redirect, rate limits, and a lock held across a download.**
   Six findings in `google_sync.py`, one subject:
 
     - The photo host allow-list validates only the INITIAL URL.
@@ -169,6 +169,17 @@ it changes what the app promises a user.
   contact, unlink it, re-create it on Google) and telling a network
   outage apart from an invalid grant. Both change the two-way sync
   spec, so they go through its gate first.
+  Resolved (2026-09-25). The last two findings are built. A
+  tombstone is now checked before the deferral: a contact edited here is
+  kept, unlinked, and re-created on Google in the same run (INV-9; the
+  user chose this over deleting it). A token refresh that fails for a
+  network or temporary reason raises GoogleUnreachable, so the token is
+  kept, the Sync page still offers Sync, and a sync reports "Couldn't
+  reach Google". Only a non-retryable RefreshError asks the user to
+  reconnect. The spec amendment went through review-contract first
+  (loop 6: three lanes, one loop at the user's instruction, 5 verified,
+  5 fixed). Every new test was proven red against its reverted part. The
+  photo re-fetch finding is CL-0088.
   **Layman:** The Google sync has several rough edges that show up on large address books or slow networks.
   Kind: security.
   Source: review-code 2026-09-07 (google-sync lane).

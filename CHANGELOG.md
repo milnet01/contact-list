@@ -38,6 +38,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A contact deleted on Google no longer lingers here pointing at nothing** (CL-0070)
+  If you had edited a contact here and it was deleted on Google before the next sync, the sync skipped the deletion and Google never sent it again. The contact stayed here, still linked to a Google contact that no longer existed. Now your edited copy is kept and put back on Google in the same sync. A contact you had not edited is removed here, as before.
+
+- **A network hiccup no longer asks you to reconnect to Google** (CL-0070)
+  When the app couldn't reach Google to renew its sign-in, it treated that as a lost connection, so a brief outage sent you to reconnect. Now the Sync page stays as it is and a sync says "Couldn't reach Google. Check your connection and try again." You are asked to reconnect only when Google has actually refused the sign-in.
+
 - **Google sync rides out rate limits instead of skipping contacts** (CL-0070)
   When Google said "too many requests", every contact after that point was skipped. That is most likely on the first two-way sync, which uploads every contact that exists only here. Each call to Google now waits and retries, taking longer between attempts. A rate limit that outlasts the retries is no longer reported as a lost permission that needs reconnecting.
 

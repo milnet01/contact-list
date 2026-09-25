@@ -153,7 +153,8 @@ never in the database or the repository.
 your changes back: local edits to synced contacts, and brand-new local contacts (which
 become new Google contacts). When both sides changed the same contact since the last sync,
 the **newest edit wins**. Deletions are **not** pushed — deleting a contact here leaves it
-on Google. If you previously connected with the old read-only permission, the Sync page
+on Google. A contact deleted on Google that you had edited here since the last sync is
+kept, and the sync puts it back on Google; delete it again if you meant to. If you previously connected with the old read-only permission, the Sync page
 will ask you to reconnect.
 
 ## Running the tests

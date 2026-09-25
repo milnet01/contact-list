@@ -463,6 +463,79 @@ def _write_token(path, scopes):
         }, f)
 
 
+class TestOutageIsNotALostGrant:
+    """CL-0070 (§3): a refresh that could not reach Google, or that Google
+    calls temporary, keeps the token and does not send the user to reconnect.
+    Only a permanent refusal (invalid_grant) is a lost grant."""
+
+    def _expired_token(self, app):
+        import json
+        path = app.config['GOOGLE_TOKEN_FILE']
+        _write_token(path, _WRITE)
+        with open(path) as f:
+            data = json.load(f)
+        data['expiry'] = '2000-01-01T00:00:00Z'  # expired -> refresh runs
+        with open(path, 'w') as f:
+            json.dump(data, f)
+        return path
+
+    def _refresh_raises(self, monkeypatch, exc):
+        from google.oauth2.credentials import Credentials
+
+        def refresh(self, request):
+            raise exc
+        monkeypatch.setattr(Credentials, 'refresh', refresh)
+
+    @pytest.mark.parametrize('exc', [
+        'transport', 'retryable',
+    ])
+    def test_outage_keeps_token_and_reports_unreachable(self, app, monkeypatch, exc):
+        import google.auth.exceptions as gae
+        import google_sync
+        from db import get_db
+        path = self._expired_token(app)
+        self._refresh_raises(monkeypatch, gae.TransportError('network down')
+                             if exc == 'transport'
+                             else gae.RefreshError('unavailable', retryable=True))
+        assert google_sync.is_authenticated(app.config) is True
+        with app.app_context():
+            result = google_sync.sync_contacts(app.config, get_db(), 'US')
+        assert result.error == google_sync._UNREACHABLE_MESSAGE
+        assert os.path.isfile(path)
+
+    def test_invalid_grant_is_a_lost_grant(self, app, monkeypatch):
+        import google.auth.exceptions as gae
+        import google_sync
+        from db import get_db
+        self._expired_token(app)
+        self._refresh_raises(monkeypatch, gae.RefreshError(
+            'invalid_grant: Token has been expired or revoked.', retryable=False))
+        assert google_sync.is_authenticated(app.config) is False
+        with app.app_context():
+            result = google_sync.sync_contacts(app.config, get_db(), 'US')
+        assert result.error == 'Not authenticated with Google.'
+
+    def test_sync_page_offers_sync_during_an_outage(self, app, monkeypatch):
+        import google.auth.exceptions as gae
+        self._expired_token(app)
+        # has_credentials must be true, or the page stops at "file not found".
+        with open(app.config['GOOGLE_CREDENTIALS_FILE'], 'w') as f:
+            f.write('{}')
+        self._refresh_raises(monkeypatch, gae.TransportError('network down'))
+        resp = app.test_client().get('/sync')
+        assert resp.status_code == 200
+        assert b'Sync Now' in resp.data
+        assert b'Connect Google Account' not in resp.data
+
+    def test_disconnect_during_an_outage_removes_the_token(self, app, monkeypatch):
+        import google.auth.exceptions as gae
+        import google_sync
+        path = self._expired_token(app)
+        self._refresh_raises(monkeypatch, gae.TransportError('network down'))
+        google_sync.revoke_credentials(app.config)
+        assert not os.path.isfile(path)
+
+
 class TestReconsent:
     def test_no_token_neither_authenticated_nor_reconsent(self, app):
         import google_sync
