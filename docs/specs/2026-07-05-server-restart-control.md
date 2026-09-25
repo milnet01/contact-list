@@ -82,9 +82,45 @@ current process. Rationale it works cleanly here:
   reparented to init. `cwd`/`env` are passed explicitly so `CONTACT_LIST_PORT` and
   the working directory carry over; the **absolute** script path makes it
   CWD-independent.
-- **No launcher change / no duplicate browser tab.** `run.sh` is untouched; its
-  one-shot `xdg-open` ran in a separate backgrounded subshell that already
-  completed, and the child runs only `python app.py`, so no second tab opens.
+- **No duplicate browser tab.** `run.sh` is untouched. The child runs
+  `launcher.py`, whose normal start opens no browser (CL-0060).
+
+#### 2.1.1 The command the child runs (CL-0063)
+
+The `Popen` argv above is the from-source case. `server_control._respawn_command()`
+returns the argv and the environment for all three cases:
+
+| Case | argv | env |
+|------|------|-----|
+| From source (`sys.frozen` unset) | `[sys.executable, abspath(sys.argv[0]), *sys.argv[1:]]` | `os.environ` |
+| Frozen, `APPIMAGE` set | `[os.environ['APPIMAGE'], *sys.argv[1:]]` | `browser._system_env()` |
+| Frozen, no `APPIMAGE` | `[sys.executable, *sys.argv[1:]]` | `browser._system_env()` |
+
+Frozen, `sys.executable` and `sys.argv[0]` are the same binary, so the
+from-source argv passes that binary its own path as its first argument. In an
+AppImage both also point into the type-2 runtime's temporary mount, which is
+unmounted the moment this process exits. A child started from there dies
+part-loaded, and a child that did load would run the OLD code even after an
+update. The runtime sets `APPIMAGE` to the AppImage file's own path, which
+survives the exit and holds whatever version is on disk now.
+
+`browser._system_env()` drops the PyInstaller bundle from `LD_LIBRARY_PATH`, as
+it already does for `xdg-open`. Left in place, the child would load libraries
+from the bundle that is about to disappear.
+
+#### 2.1.2 The child waits for the port (CL-0054)
+
+The child runs `launcher.py`, whose first act is to check whether the port is
+already serving; if it is, it opens a browser and exits. If the child reaches
+that check before the parent's `os._exit(0)` has released the port, no server is
+left running. The parent's exit is normally far faster than the child's start,
+but nothing guarantees it.
+
+So the parent adds `CONTACT_LIST_RESTARTING=1` to the child's environment. When
+`launcher.main()` finds it, it removes it from `os.environ`, so it does not pass
+to the child's own children. It then polls the port every 50 ms for up to 5 s
+until nothing is serving, before the usual check. If the port is still held
+after 5 s, the usual check runs unchanged.
 
 If the `Popen` spawn raises `OSError` the delay thread **logs** it and returns
 **without** exiting — leaving the **old** server serving (a failed restart
@@ -307,6 +343,16 @@ test, below.
 - **Route: missing CSRF** → `403` (global hook), recorder **not** called.
 - **Settings GET** shows both buttons (`value="restart"` / `value="shutdown"`
   present in the HTML).
+- **Respawn command (INV-9)** — with `sys.frozen`, `sys.executable`, `sys.argv`
+  and `APPIMAGE` patched, `_respawn_command()` returns each row of §2.1.1's table,
+  and a frozen env has the bundle removed from `LD_LIBRARY_PATH`.
+- **Restart marker (INV-10)** — with `CONTACT_LIST_RESTARTING=1` set and the port
+  probe patched to report serving twice then free, the launcher's wait returns
+  once the port is free and the marker is gone from `os.environ`; with the probe
+  always serving, it gives up at its timeout. With no marker it does not probe.
+- **Live check, owed:** a real restart of a built AppImage. Deferred at the
+  user's instruction (2026-09-25) until RAM allows the build; CL-0063 stays open
+  until it has run.
 
 ## 6. Security (DESIGN.md §6)
 
@@ -316,8 +362,9 @@ test, below.
   forge the token, so it cannot restart/kill the server.
 - **Capability framing.** This is a *local process-control* action, deliberately
   scoped to `restart` | `shutdown` (an allow-list, not an arbitrary command) — it
-  respawns `python app.py` or exits, nothing user-supplied ever reaches the
-  `subprocess.Popen` argv (built only from `sys.executable` + `sys.argv`). The
+  respawns the running program or exits, nothing user-supplied ever reaches the
+  `subprocess.Popen` argv (built only from `sys.executable`, `sys.argv` and the
+  `APPIMAGE` path the AppImage runtime set, §2.1.1). The
   `Popen` call passes a **list** (no `shell=True`), so there is no shell or
   argument-injection surface.
 - **No CSP relaxation.** The confirm guard uses `data-confirm` + the existing
@@ -371,6 +418,7 @@ threads). Listed in §8.
 | `templates/settings.html` | Server `<fieldset>` (2 button-forms) | ~15 |
 | `templates/server_action.html` | **new** — restart/shutdown result page | ~20 |
 | `tests/test_server_control.py` | **new** — tests §5 | ~50 |
+| `server_control.py`, `launcher.py` | CL-0063/CL-0054: `_respawn_command()` and the restart marker (§2.1.1, §2.1.2) | ~30 |
 | `DESIGN.md` | §9 routes rows (`/settings/server` + the missing `/settings` GET/POST) + §6.3 security note + §7.2 background-thread carve-out (§6.1) | ~5 |
 | `docs/specs/2026-07-02-two-way-google-sync.md` | reword line 115 `§7.2 unchanged` parenthetical (§6.1) | ~1 |
 
@@ -378,8 +426,9 @@ threads). Listed in §8.
 
 - **INV-1** Nothing user-supplied reaches the `subprocess.Popen` argv: the only
   variable is `action ∈ {restart, shutdown}` (allow-list, else `400`). The respawn
-  argv is built solely from `sys.executable` + `sys.argv`, passed as a list (no
-  `shell=True`). *(Testable: invalid action → 400, no schedule.)*
+  argv is built solely from `sys.executable`, `sys.argv` and the runtime-set
+  `APPIMAGE` path (§2.1.1), passed as a list (no `shell=True`). *(Testable:
+  invalid action → 400, no schedule.)*
 - **INV-2** The view returns its response **before** the action runs: the action
   is deferred to a separate daemon thread that sleeps `_FLUSH_DELAY_S`. This is a
   best-effort ordering heuristic, not a hard guarantee — the delay is not a lock
@@ -388,9 +437,8 @@ threads). Listed in §8.
 - **INV-3** **On a successful restart**, a fresh child re-binds the same
   `127.0.0.1:PORT`: the `Popen` default `close_fds=True` keeps the parent's
   inheritable listening socket out of the child, and the parent's `os._exit(0)`
-  releases it
-  before the child (which takes ~150 ms to import + bind) gets there; `SO_REUSEADDR`
-  covers any TIME_WAIT. *(Verified by the port-5099 smoke test: after-restart the
+  releases it; the child waits for that release rather than relying on being
+  slower (§2.1.2, INV-10); `SO_REUSEADDR` covers any TIME_WAIT. *(Verified by the port-5099 smoke test: after-restart the
   port is held by a new PID, zero bind errors. In-place `os.execv` was tried first
   and FAILED here — the Werkzeug socket survives `execve` — hence the respawn.)*
 - **INV-4** Shutdown terminates the **whole process** (`os._exit`), not just the
@@ -409,3 +457,18 @@ threads). Listed in §8.
 - **INV-8** No test process is ever spawned-from or killed: `_run_after_delay`
   returns early when `PYTEST_CURRENT_TEST` is set. *(Testable: call it under
   pytest, assert `subprocess.Popen`/`os._exit` are not invoked.)*
+- **INV-9** A frozen restart never re-executes a path inside its own bundle when
+  the AppImage runtime has published the AppImage's path, and never passes the
+  binary its own path as an argument (§2.1.1). *(Testable: §5 respawn command.)*
+- **INV-10** A restart child does not take the "already serving" exit while the
+  parent still holds the port, for up to 5 s, and the marker that tells it so
+  never reaches its own children (§2.1.2). *(Testable: §5 restart marker.)*
+
+## 10. Cold-eyes loop log
+
+The five loops the Status line records ran under the predecessor gate
+(`/cold-eyes`) before this table existed, and are not back-filled here.
+Numbering continues from them.
+
+| Loop | Date | Lanes | Q1 | Q2 | Q3 | Q4 | Outcome |
+|------|------|-------|----|----|----|----|---------|
