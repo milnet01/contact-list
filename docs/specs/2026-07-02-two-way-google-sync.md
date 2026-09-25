@@ -203,6 +203,20 @@ this guard is **net-new code**, not a tweak to an existing check.
   False for no-token — so the `/sync` route can render "Reconnect to Google (new
   permission needed)" for a legacy token vs the plain "authorise" prompt when no
   token exists.
+- **An outage is not a lost grant (CL-0070).** A token refresh can fail two ways,
+  and only one means the user must reconnect. `google-auth` raises
+  `TransportError` when the request never reached Google, and `RefreshError`
+  with `retryable=True` when Google answered that the failure is temporary.
+  Both are an **outage**: `_load_credentials` raises `GoogleUnreachable` (a new
+  exception in `google_sync.py`) and leaves the token file alone. A
+  `RefreshError` with `retryable=False` — `invalid_grant`, a revoked or expired
+  refresh token — is a **lost grant** and returns `None`, as every refresh
+  failure did before. This is DESIGN.md §6.2's "re-auth on persistent
+  `RefreshError`". During an outage `is_authenticated` returns True, so the
+  `/sync` page offers Sync rather than Connect; `sync_contacts` returns
+  `SyncResult(error="Couldn't reach Google. Check your connection and try
+  again.")`; and `revoke_credentials` removes the local token without the
+  revoke call, as it already does when the revoke itself fails.
 - **Re-auth path:** the `/sync` template gains a **Reconnect button** (new UI) that
   POSTs to the existing `/sync/authorize` route (`routes/sync.py`; the route is
   unchanged), which runs the **standalone `google_auth.py` script as a subprocess**.
@@ -357,6 +371,25 @@ because `skip_google_ids` defaults to empty. (CL-0070 later dropped `config`, wh
 only the photo fetch used: the signature is now
 `_upsert_person(db, person, region, skip_google_ids=frozenset())`.)
 
+**A delete tombstone is checked before the deferral (CL-0070).** A pulled person
+with `metadata.deleted` set is handled first:
+
+- **Not edited here** (`resourceName` not in `skip_google_ids`): the local contact
+  is deleted, as before.
+- **Edited here since the last sync** (`resourceName` in `skip_google_ids`): the
+  local contact is **kept and unlinked** — `google_id` and `etag` set to NULL —
+  and nothing else about it changes. The local edit is the newer deliberate act,
+  so it is not destroyed. An unlinked contact is local-only, so Step 2 creates it
+  on Google again in this same run. The cost, accepted by the user on
+  2026-09-25: a deletion made on Google is undone, and the user deletes the
+  contact again by hand.
+
+Checking the deferral first skipped the tombstone. The sync token then consumed
+it, so Google never sent it again, and the local row kept pointing at a deleted
+resource. The unlink runs inside the same per-contact `SAVEPOINT`. It writes
+neither `contacts.name` nor `contacts.phone`, so the `contact_lookup` keys
+(DESIGN.md §4.7) stay valid.
+
 **Step 2 — Push.** Runs **after** Step 1's final `db.commit()` (the pull commits
 each page and the sync-token/`last_synced_at` write is deferred to Step 3), so the
 push never interleaves with an uncommitted pull page. Each pushed contact is its
@@ -371,6 +404,12 @@ for any pulled contact with a photo. **Resolved in CL-0045**: the photo
 helpers no longer commit; the caller owns the commit.)
 For each id captured in Step 0:
 
+- **A `dirty_linked` contact that Step 1 unlinked is created, not updated.**
+  Before the creates, re-read each `dirty_linked` contact's `google_id`. One that
+  is now NULL was unlinked by a tombstone (Step 1). It moves to the create list
+  and leaves the update list, because a `get` on its old `resourceName` would
+  fail. This re-routes contacts that are already in the Step 0 sets. It does not
+  recompute dirtiness, and it adds no contact that Step 0 did not capture.
 - **`local_only` → `createContact`.** Build a full person body from the local row
   (§6), call `people().createContact(body=…)`, then store the returned
   `resourceName` into `contacts.google_id` and the returned `etag` into
@@ -723,6 +762,9 @@ subquery adds no per-row cost on the count path (same as `has_photo`). A NULL
   logged, and surfaced as "Google needs the write permission — reconnect."
   A 403 whose reason is a rate limit is not a scope 403 and takes the
   per-contact path above.
+- **Google unreachable (CL-0070).** A token refresh that fails for a network or
+  temporary reason stops the sync with "Couldn't reach Google. Check your
+  connection and try again." The token is kept and nothing is written (§3).
 - **Rate limits (CL-0070).** Every People API call passes `num_retries` to
   `execute()`, so the client library retries a 429, a 5xx or a rate-limit 403
   with growing randomised back-off before the call counts as failed. The
@@ -838,6 +880,17 @@ Test-first (TDD), mocking the Google API client at the external boundary (DESIGN
   `updateTime` resolves Google-wins (no `updateContact` call).
 - **Per-contact isolation** — one push raising is caught, logged, counted in
   `skipped`, and does not abort the other pushes.
+- **Tombstone for a locally-edited contact (INV-9)** — a dirty linked contact
+  whose pulled person carries `metadata.deleted` survives the sync with its
+  local edit intact, is created on Google in the same run (one `createContact`,
+  no `get` or `updateContact` for its old `resourceName`), and ends linked to
+  the new `resourceName`. A tombstone for a contact not edited here still
+  deletes it.
+- **Outage vs lost grant (§3)** — a refresh raising `TransportError`, or
+  `RefreshError` with `retryable=True`, makes `sync_contacts` return the
+  unreachable message, leaves the token file in place, and makes
+  `is_authenticated` True. A `RefreshError` with `retryable=False` makes it
+  False, as before.
 - **Report** — `SyncResult` counts match the operations performed; the `/sync`
   flash renders them.
 - **Existing tests** that call `sync_contacts`/`_upsert_person` are updated for the
@@ -880,6 +933,10 @@ Test-first (TDD), mocking the Google API client at the external boundary (DESIGN
 - **INV-7** — On a conflict, the contact ends in exactly one of {Google applied
   locally, local pushed to Google, skipped-for-retry} — never a partial merge and
   never both writes.
+- **INV-9** — A pull never deletes a contact the user edited since the last
+  sync. A delete tombstone for one unlinks it instead, and the same run's push
+  creates it on Google again (§5 Step 1, CL-0070). A tombstone is never skipped
+  unapplied, because the sync token consumes it and Google does not resend it.
 
 ## 15. Out of scope (v2.0)
 
