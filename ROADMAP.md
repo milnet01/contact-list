@@ -1213,6 +1213,13 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   NOT VERIFIED HERE, and it needs a real sync: that the People API treats a shortened value list as a removal. No Google credentials on this machine. §6 has asserted 'updateContact replaces the entire value list' since two-way sync shipped and this builds on it, but nothing in this session executed it. Watch the first clear against a real account.
 
   Gates: ./local-ci.sh green on 3.12/3.13/3.14, 442 tests.
+  Decision (2026-09-25): the user will run the live check themselves, and
+  has the steps: make a throwaway Google contact with a phone and an
+  email, sync, empty the phone in the app, sync again, and confirm on
+  contacts.google.com that the phone is gone and the email stayed. If the
+  phone survives, the People API does not treat a shortened list as a
+  removal and this fix needs another approach. Do not re-ask; wait for
+  the user's result.
   **Layman:** If you delete someone's phone number here, Google keeps its copy and puts it back on the next sync.
   Kind: investigate.
   Source: review-code 2026-09-07 (google-sync lane); queued by close-findings.
