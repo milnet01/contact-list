@@ -196,9 +196,9 @@ this guard is **net-new code**, not a tweak to an existing check.
   exists but `not _token_has_write_scope(config)`, return `None` (unusable — same as
   no token) so nothing attempts a write that 403s; otherwise load with `SCOPES` as
   today (that object keeps `SCOPES`, which refresh needs — **do not** strip them).
-  `is_authenticated(config)` is unchanged in shape (`creds = _load_credentials(...)`;
+  `is_authenticated(config)` keeps its shape (`creds = _load_credentials(...)`;
   `creds is not None and creds.valid`) and so is False for a legacy token *by
-  construction*. `needs_reconsent(config) -> bool` returns `token-file-exists AND
+  construction*. It also catches `GoogleUnreachable` and returns True (below). `needs_reconsent(config) -> bool` returns `token-file-exists AND
   NOT _token_has_write_scope(config)` — True only for a legacy/insufficient token,
   False for no-token — so the `/sync` route can render "Reconnect to Google (new
   permission needed)" for a legacy token vs the plain "authorise" prompt when no
@@ -358,8 +358,8 @@ because this snapshot precedes the Step-3 write.
 signature `_upsert_person(db, person, region, config)` and matches an existing row
 by `person['resourceName']` (= `google_id`). Give it one new parameter —
 `_upsert_person(db, person, region, config, skip_google_ids: frozenset[str] = frozenset())`
-— and, at its top, `if person.get('resourceName') in skip_google_ids: return
-False` (deferred, treated like the existing no-op returns). `sync_contacts` passes
+— and, after the tombstone check below, `if person.get('resourceName') in
+skip_google_ids: return None` (deferred, treated like the existing no-op returns). `sync_contacts` passes
 `dirty_google_ids` (from Step 0) as `skip_google_ids`. Effect: a pulled person that
 matches a locally-edited contact is **not overwritten** — the local edit survives
 for Step 2 to resolve — while a brand-new Google contact, or a linked-but-not-dirty
@@ -762,8 +762,8 @@ subquery adds no per-row cost on the count path (same as `has_photo`). A NULL
   logged, and surfaced as "Google needs the write permission — reconnect."
   A 403 whose reason is a rate limit is not a scope 403 and takes the
   per-contact path above.
-- **Google unreachable (CL-0070).** A token refresh that fails for a network or
-  temporary reason stops the sync with "Couldn't reach Google. Check your
+- **Google unreachable (CL-0070).** The token refresh at the start of a sync
+  (§3), when it fails for a network or temporary reason, stops the sync with "Couldn't reach Google. Check your
   connection and try again." The token is kept and nothing is written (§3).
 - **Rate limits (CL-0070).** Every People API call passes `num_retries` to
   `execute()`, so the client library retries a 429, a 5xx or a rate-limit 403
@@ -933,8 +933,8 @@ Test-first (TDD), mocking the Google API client at the external boundary (DESIGN
 - **INV-7** — On a conflict, the contact ends in exactly one of {Google applied
   locally, local pushed to Google, skipped-for-retry} — never a partial merge and
   never both writes.
-- **INV-9** — A pull never deletes a contact the user edited since the last
-  sync. A delete tombstone for one unlinks it instead, and the same run's push
+- **INV-9** — A pull never deletes a contact in Step 0's `dirty_linked` set
+  (§4). A delete tombstone for one unlinks it instead, and the same run's push
   creates it on Google again (§5 Step 1, CL-0070). A tombstone is never skipped
   unapplied, because the sync token consumes it and Google does not resend it.
 
@@ -967,3 +967,4 @@ older logs use.
 | Loop | Date | Lanes | Q1 | Q2 | Q3 | Q4 | Verified | Fixed | Outcome |
 |------|------|-------|----|----|----|----|----------|-------|---------|
 | 5 | 2026-09-20 | 2 | 0 | 4 | 1 | 0 | 5 | 5 | Gate armed by the CL-0064 amendment (§6.1, INV-8, and the contact-vs-field wording in §2/§10/§15/INV-4). **One loop only, at the user's instruction** — not run to convergence, so this is not a converged pass. Both lanes independently found the decisive defect: §6.1 as drafted would have deleted the `organizations` entry off every `type='company'` contact on Google, since §6 says the app does not manage that field for them while §6.1 read their permanent local emptiness as a clear — INV-8 against INV-2. Lane A generalised it (Q3): nothing records *which* fields a save cleared, so "empty locally" cannot by itself mean "cleared". §6.1 is now scoped to `email`/`phone`/`notes`, the three the import round-trips unconditionally, with `names` (never empty — the form rejects it), `birthdays` and `addresses` (the import drops a partial date or a `formattedValue`-less address) excluded and each exclusion given its reason. Also fixed: §5 Step 2's `updatePersonFields=<managed>` placeholder, which under the new rule would have cleared every empty managed field on every push; §6.1's revert claim, which contradicted §2's delta-sync rule — the accurate account is that the stale value returns via §5's self-echo path when the same save wrote another field, and only via a full re-sync when the clear was the sole change; and §13, which enumerated a test for every other invariant and none for INV-8. Two collateral fixes from the 4b sweep (§3's "never deletes" note, §10's risk cell) and two self-corrections at 4a step 3 (a birthday claim citing the push side instead of the import, and an overstated index-0 claim). 0 dismissed. **Unverifiable region, declared:** no Google credentials on this machine, so no claim about People API behaviour was executed — §6.1 rests on §6's pre-existing "`updateContact` **replaces** the entire value list" claim, which shipped with two-way sync. First real sync confirms it. |
+| 6 | 2026-09-25 | 3 | 1 | 4 | 0 | 0 | 5 | 5 | Gate armed by the CL-0070 amendment (commit `6f7bc2b`: §3 outage vs lost grant, §5 Step 1 tombstone before deferral, §5 Step 2 re-routing, §9, §13, INV-9). **One loop only, at the user's standing instruction** — not run to convergence. Partition: every lane held all four questions; no lane lost. All three lanes independently found that §3 still called `is_authenticated` "unchanged in shape" while the amendment had it catch `GoogleUnreachable` and return True — followed literally, the /sync page crashes during an outage. All three also found §5 Step 1's deferral still said `return False`, where the code returns `None` since CL-0070's first commit; one lane found the same sentence still put the deferral "at its top", against the new tombstone-first order. One lane found INV-9's "never deletes a contact the user edited since the last sync" wider than the rule, since §4's dirty set is empty until a sync completes; INV-9 now names Step 0's `dirty_linked` set. Three lanes' open question about a refresh failing mid-sync became a verified finding: §9 is scoped to the refresh at the start of a sync (§3). 4 of 5 findings anchor inside the armed span; the `return False` one was stale text from CL-0070's code commit. Open questions resolved clean, not tallied: `_push_update` passes `num_retries`; DESIGN §6.2's revoke wording changes no path; the unlink branch's return value is local. All three lanes disclosed arriving with the git snapshot naming this amendment's commit subject. |
