@@ -35,10 +35,13 @@ def db(app):
 
 
 class _Exec:
-    def __init__(self, fn):
+    def __init__(self, fn, retries_seen=None):
         self._fn = fn
+        self._retries_seen = retries_seen
 
-    def execute(self):
+    def execute(self, num_retries=0):
+        if self._retries_seen is not None:
+            self._retries_seen.append(num_retries)
         return self._fn()
 
 
@@ -52,6 +55,7 @@ class _FakeService:
         self.created: list = []
         self.updated: list = []
         self.deleted: list = []
+        self.retries_seen: list = []  # num_retries of every execute() (CL-0070)
         self._page = 0
 
     def people(self):
@@ -65,26 +69,26 @@ class _FakeService:
             page = self.pull_pages[min(self._page, len(self.pull_pages) - 1)]
             self._page += 1
             return page
-        return _Exec(run)
+        return _Exec(run, self.retries_seen)
 
     def createContact(self, body=None):
         def run():
             self.created.append(body)
             n = len(self.created)
             return {'resourceName': f'people/new{n}', 'etag': f'etag-new{n}'}
-        return _Exec(run)
+        return _Exec(run, self.retries_seen)
 
     def get(self, resourceName=None, personFields=None):
         def run():
             return self.get_responses.get(
                 resourceName, {'resourceName': resourceName, 'etag': 'g-etag'})
-        return _Exec(run)
+        return _Exec(run, self.retries_seen)
 
     def updateContact(self, resourceName=None, updatePersonFields=None, body=None):
         def run():
             self.updated.append((resourceName, updatePersonFields, body))
             return {'resourceName': resourceName, 'etag': 'etag-upd'}
-        return _Exec(run)
+        return _Exec(run, self.retries_seen)
 
     def deleteContact(self, resourceName=None):
         def run():
@@ -143,6 +147,45 @@ class TestPushCreate:
         result = _run_sync(app, db, service2, monkeypatch)
         assert result.created == 0
         assert service2.created == []
+
+
+class TestRateLimitRetries:
+    """CL-0070: every People API call asks the client library to retry, so a
+    429 during the one-time bulk create backs off instead of skipping contacts."""
+
+    def test_every_api_call_requests_retries(self, app, db, monkeypatch):
+        models.create_contact(db, 'individual', 'New Nancy')
+        cid = models.create_contact(db, 'individual', 'Linked Lee', 'lee@x.com')
+        _link(db, cid, 'people/lee')
+        _set_prev_sync(db, '2020-01-01T00:00:00Z')
+        _make_dirty_edit(db, cid)
+        service = _FakeService(get_responses={'people/lee': {
+            'resourceName': 'people/lee', 'etag': 'fresh-etag',
+            'metadata': {'sources': [{'type': 'CONTACT',
+                                      'updateTime': '2019-06-01T00:00:00Z'}]},
+        }})
+        result = _run_sync(app, db, service, monkeypatch)
+        assert (result.created, result.updated) == (1, 1)
+        # list, createContact, get, updateContact: all four call sites.
+        assert len(service.retries_seen) == 4
+        assert set(service.retries_seen) == {google_sync._API_RETRIES}
+        assert google_sync._API_RETRIES > 0
+
+    def test_a_rate_limit_403_is_not_reported_as_lost_scope(self):
+        class _Resp:
+            status = 403
+
+        class _Err(Exception):
+            resp = _Resp()
+            content = (b'{"error": {"errors": '
+                       b'[{"reason": "rateLimitExceeded"}]}}')
+
+        class _ScopeErr(Exception):
+            resp = _Resp()
+            content = b'{"error": {"status": "PERMISSION_DENIED"}}'
+
+        assert google_sync._is_write_scope_denied(_Err()) is False
+        assert google_sync._is_write_scope_denied(_ScopeErr()) is True
 
 
 class TestPushUpdate:

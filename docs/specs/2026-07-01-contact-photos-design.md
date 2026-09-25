@@ -227,8 +227,12 @@ dir. The signature changes from `_upsert_person(db, person, region)` to
 (signature `sync_contacts(config, db, region)`, which already holds `config`).
 The existing test call-sites `google_sync._upsert_person(db, person, 'US')`
 (`tests/test_hardening.py:77` and `:89`) must be updated to pass `config` — a
-required change in the same commit, or those tests break. After the contact row
-is written and its id known, for the person's photos:
+required change in the same commit, or those tests break. (CL-0070 later removed
+`config` again: `_upsert_person` no longer fetches photos.) `sync_contacts`
+fetches each imported contact's photo through `_store_person_photo` **after that
+contact's page has committed**, so the download runs with no transaction open
+and never holds SQLite's write lock across the network (CL-0070). For the
+person's photos:
 
 - Take the first entry in `person['photos']` **whose `default` is not true** —
   the People API flags its generated grey silhouette with `"default": true`, and
@@ -237,17 +241,19 @@ is written and its id known, for the person's photos:
   `googleusercontent.com` (the People API's photo CDN). This bounds the fetch to
   Google's own servers — the sync payload is already authenticated, this guards
   against a malformed record pointing the downloader elsewhere (SSRF defence).
+  The same test applies to **every redirect hop**, not only the first URL: a
+  redirect to any other host aborts the download (CL-0070).
 - Download with `urllib.request` (stdlib — no `requests` dependency) under a short
-  timeout (10 s), read at most `MAX_PHOTO_BYTES + 1` bytes, then run the same
+  per-read timeout (10 s) and a 30 s budget for the whole download, read at most `MAX_PHOTO_BYTES + 1` bytes, then run the same
   `save_photo` validation + `set_contact_photo`. The `+1` is deliberate: reading
   one byte past the cap means a body larger than the cap yields
   `len == MAX_PHOTO_BYTES + 1` and is rejected by the size check. Reading only
   `MAX_PHOTO_BYTES` would make an oversize body indistinguishable from an
   exactly-at-cap one and silently store a truncated image — do **not** do that.
 - A photo failure (network, oversize, non-image) is **non-fatal**: log at
-  `warning`, leave the contact photo-less, continue. Sync's per-contact SAVEPOINT
-  already isolates DB failures; the photo download is wrapped in its own
-  `try/except` so it cannot abort the contact import.
+  `warning`, leave the contact photo-less, continue. The contact row is already
+  committed before the download starts, and the photo step is wrapped in its own
+  `try/except`, so it cannot abort the contact import.
 
 Re-sync is idempotent: `save_photo` overwrites and `set_contact_photo` upserts.
 (v1.2 always re-downloads a present non-default photo; it does not diff Google's
@@ -356,7 +362,7 @@ unlink implementation, so the `old_ext` (keyword-only on `save_photo`) and `ext`
 |---------|------------|
 | Script-carrying upload (SVG, polyglot) | Magic-byte allow-list rejects SVG and anything non-{JPEG,PNG,GIF,WebP}; served with explicit image MIME + global `nosniff` + `default-src 'self'` so the browser can't execute it (§3). |
 | Path traversal | File path = private dir + int id + own-allow-list ext. No request-supplied filename or path segment used. |
-| SSRF on sync download | Only fetch `https` URLs whose host ends `googleusercontent.com`; short timeout; capped read (§4). |
+| SSRF on sync download | Only fetch `https` URLs whose host ends `googleusercontent.com`, re-checked on every redirect hop; short timeout and whole-download budget; capped read (§4). |
 | Decompression bomb | 4 MiB byte cap before store; the browser (not the app) decodes; single-user localhost bounds blast radius. Noted as accepted residual risk. |
 | Secret leakage | Photos are not secrets, but live under `~/.config/contact-list/` `0700` beside tokens; never in the repo or DB (only the ext string is in the DB). `.gitignore` already covers the config dir; no repo change needed. |
 | CSP regression | None — same-origin serving adds/removes no CSP directive, so the CSP string is unchanged; both CSP tests (`tests/test_routes.py:404` `test_csp_header` and `tests/test_hardening.py:226` `test_style_src_has_no_unsafe_inline`) still hold. |
@@ -423,7 +429,9 @@ Test-first (TDD), following the existing `tests/` fixtures (`app`, `db`,
 - **sync** — a People payload with a real photo stores it; one with
   `"default": true` stores nothing; a non-googleusercontent URL is skipped; a
   download error leaves the contact imported and photo-less (monkeypatch the
-  fetch — no real network in tests).
+  fetch — no real network in tests). The download runs with no transaction
+  open; a redirect to a disallowed host is not followed (a loopback server stands
+  in for both ends); a download past its budget is abandoned.
 - **hardening/CSP** — both `test_csp_header` (`tests/test_routes.py:404`) and
   `test_style_src_has_no_unsafe_inline` (`tests/test_hardening.py:226`) unchanged
   and still pass (no CSP edit).
@@ -441,7 +449,8 @@ Test-first (TDD), following the existing `tests/` fixtures (`app`, `db`,
 - **INV-5** — A photo download/validation failure during sync never aborts the
   contact import; the contact is stored photo-less.
 - **INV-6** — Sync stores a Google photo only when it is non-`default` and comes
-  from an `https` `*.googleusercontent.com` URL.
+  from an `https` `*.googleusercontent.com` URL, with every redirect hop meeting
+  the same test.
 - **INV-7** — Deleting or merging a contact leaves no orphaned photo file for the
   removed contact id.
 

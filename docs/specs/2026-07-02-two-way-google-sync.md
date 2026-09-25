@@ -285,9 +285,10 @@ own `_mark_edited` call — putting it only in `_write_contact` would miss creat
     must **not** move `edited_at` (it wasn't an edit).
 
 `edited_at` is **never** written by `google_sync._upsert_person` (the pull). Note
-`_upsert_person` *does* call one model helper — `set_contact_photo` (via
-`_store_person_photo`) — but that writes `contact_photos`, not `contact_edits`, and
-never calls `_mark_edited`; so the pull leaves `edited_at` untouched (INV-1 holds).
+the pull *does* call one model helper — `set_contact_photo` (via
+`_store_person_photo`, which `sync_contacts` runs after each page commits) — but
+that writes `contact_photos`, not `contact_edits`, and never calls `_mark_edited`;
+so the pull leaves `edited_at` untouched (INV-1 holds).
 Combined with the no-backfill decision above, a contact the user has never edited —
 imported or pre-existing — has **no** `contact_edits` row (`edited_at` is NULL),
 correctly "not edited by you", for **all** contacts (not just post-migration ones).
@@ -352,7 +353,9 @@ one, is imported exactly as today. Keying is by `google_id` on both sides (that 
 why Step 0 built `dirty_google_ids`, not just the local-`id` set). The per-contact
 `SAVEPOINT` isolation and per-page commit are unchanged. All existing
 `_upsert_person(...)` call-sites (including `tests/test_hardening.py`) keep working
-because `skip_google_ids` defaults to empty.
+because `skip_google_ids` defaults to empty. (CL-0070 later dropped `config`, which
+only the photo fetch used: the signature is now
+`_upsert_person(db, person, region, skip_google_ids=frozenset())`.)
 
 **Step 2 — Push.** Runs **after** Step 1's final `db.commit()` (the pull commits
 each page and the sync-token/`last_synced_at` write is deferred to Step 3), so the
@@ -718,6 +721,12 @@ subquery adds no per-row cost on the count path (same as `has_photo`). A NULL
   the pull's "commit each page; token last" robustness (CL-0020).
 - **Scope 403 on write** (should not happen given §3's pre-check) is caught,
   logged, and surfaced as "Google needs the write permission — reconnect."
+  A 403 whose reason is a rate limit is not a scope 403 and takes the
+  per-contact path above.
+- **Rate limits (CL-0070).** Every People API call passes `num_retries` to
+  `execute()`, so the client library retries a 429, a 5xx or a rate-limit 403
+  with growing randomised back-off before the call counts as failed. The
+  one-time bulk create (§2) is where the write quota trips.
 
 ## 10. Security
 

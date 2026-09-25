@@ -605,7 +605,7 @@ class TestEditedAt:
         import google_sync
         person = {'resourceName': 'people/c1',
                   'names': [{'displayName': 'Pulled Person'}]}
-        google_sync._upsert_person(db, person, 'US', app.config)
+        google_sync._upsert_person(db, person, 'US')
         cid = db.execute(
             "SELECT id FROM contacts WHERE name = 'Pulled Person'"
         ).fetchone()['id']
@@ -622,7 +622,7 @@ class TestEditedAt:
         import google_sync
         person = {'resourceName': 'people/c2', 'names': [{'displayName': 'Nora'}],
                   'emailAddresses': [{'value': 'nora@x.com'}]}
-        google_sync._upsert_person(db, person, 'US', app.config)
+        google_sync._upsert_person(db, person, 'US')
         cid, action = models.import_contact(
             db, {'name': 'Nora', 'email': 'nora@x.com', 'type': 'individual'})
         assert action == 'updated'
@@ -631,7 +631,7 @@ class TestEditedAt:
     def test_import_additive_change_sets_edited_at(self, app, db):
         import google_sync
         person = {'resourceName': 'people/c3', 'names': [{'displayName': 'Omar'}]}
-        google_sync._upsert_person(db, person, 'US', app.config)
+        google_sync._upsert_person(db, person, 'US')
         cid, action = models.import_contact(
             db, {'name': 'Omar', 'phone': '+1 202-555-0111', 'type': 'individual'})
         assert action == 'updated'

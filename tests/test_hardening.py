@@ -74,7 +74,7 @@ class TestCompanyDetection:
             'names': [{'displayName': 'Acme Inc'}],
             'organizations': [{'name': 'Acme Inc'}],
         }
-        google_sync._upsert_person(db, person, 'US', {})
+        google_sync._upsert_person(db, person, 'US')
         row = db.execute("SELECT type FROM contacts WHERE name = 'Acme Inc'").fetchone()
         assert row['type'] == 'company'
 
@@ -86,7 +86,7 @@ class TestCompanyDetection:
                        'familyName': 'Smith'}],
             'organizations': [{'name': 'Acme Inc'}],  # employer, but a person
         }
-        google_sync._upsert_person(db, person, 'US', {})
+        google_sync._upsert_person(db, person, 'US')
         row = db.execute("SELECT type FROM contacts WHERE name = 'Bob Smith'").fetchone()
         assert row['type'] == 'individual'
 
@@ -103,7 +103,7 @@ class TestMidPaginationPreservesPages:
             def __init__(self, fn):
                 self._fn = fn
 
-            def execute(self):
+            def execute(self, num_retries=0):
                 return self._fn()
 
         class _FakeService:
@@ -294,8 +294,8 @@ class TestSyncPhotos:
         import models
         monkeypatch.setattr(google_sync, '_fetch_photo_bytes', lambda url: self._PNG)
         person = self._person('https://lh3.googleusercontent.com/abc')
-        google_sync._upsert_person(db, person, 'US', app.config)
-        cid = self._cid(db)
+        cid = google_sync._upsert_person(db, person, 'US')
+        google_sync._store_person_photo(app.config, db, cid, person)
         assert models.get_contact_photo_ext(db, cid) == 'png'
         assert os.path.exists(os.path.join(app.config['PHOTOS_DIR'], f'{cid}.png'))
 
@@ -304,8 +304,9 @@ class TestSyncPhotos:
         import models
         monkeypatch.setattr(google_sync, '_fetch_photo_bytes', lambda url: self._PNG)
         person = self._person('https://lh3.googleusercontent.com/abc', default=True)
-        google_sync._upsert_person(db, person, 'US', app.config)
-        assert models.get_contact_photo_ext(db, self._cid(db)) is None
+        cid = google_sync._upsert_person(db, person, 'US')
+        google_sync._store_person_photo(app.config, db, cid, person)
+        assert models.get_contact_photo_ext(db, cid) is None
 
     def test_non_google_host_skipped(self, app, db, monkeypatch):
         import google_sync
@@ -313,8 +314,9 @@ class TestSyncPhotos:
         # Even if the fetch would succeed, a non-googleusercontent host is skipped.
         monkeypatch.setattr(google_sync, '_fetch_photo_bytes', lambda url: self._PNG)
         person = self._person('https://evil.example.com/abc.png')
-        google_sync._upsert_person(db, person, 'US', app.config)
-        assert models.get_contact_photo_ext(db, self._cid(db)) is None
+        cid = google_sync._upsert_person(db, person, 'US')
+        google_sync._store_person_photo(app.config, db, cid, person)
+        assert models.get_contact_photo_ext(db, cid) is None
 
     def test_download_error_leaves_contact_photoless(self, app, db, monkeypatch):
         import google_sync
@@ -326,24 +328,120 @@ class TestSyncPhotos:
         monkeypatch.setattr(google_sync, '_fetch_photo_bytes', boom)
         person = self._person('https://lh3.googleusercontent.com/abc')
         # Import must still succeed; the contact is stored without a photo.
-        assert google_sync._upsert_person(db, person, 'US', app.config) is True
-        assert models.get_contact_photo_ext(db, self._cid(db)) is None
+        cid = google_sync._upsert_person(db, person, 'US')
+        assert cid == self._cid(db)
+        google_sync._store_person_photo(app.config, db, cid, person)  # must not raise
+        assert models.get_contact_photo_ext(db, cid) is None
 
-    def test_photo_upsert_inside_savepoint_survives(self, app, db, monkeypatch):
-        """Regression (CL-0045): a photo'd contact imported inside the per-contact
-        ``SAVEPOINT person`` must not blow up the sync. ``set_contact_photo`` used
-        to ``db.commit()`` mid-savepoint, which destroys the savepoint, so the real
-        sync loop's ``RELEASE SAVEPOINT person`` raised ``no such savepoint`` and
-        the whole /sync/start 500'd. This mirrors that loop structure."""
+    def test_sync_stores_the_photo_with_no_transaction_open(
+            self, app, db, monkeypatch):
+        """Through the real sync loop. CL-0045: a photo'd contact must not blow up
+        the per-contact SAVEPOINT (a commit inside it once made ``RELEASE`` raise
+        and /sync/start 500). CL-0070: the download must run with no transaction
+        open, or SQLite's write lock is held across the network call."""
+        import googleapiclient.discovery
         import google_sync
         import models
-        monkeypatch.setattr(google_sync, '_fetch_photo_bytes', lambda url: self._PNG)
+
         person = self._person('https://lh3.googleusercontent.com/abc')
-        db.execute('SAVEPOINT person')
-        google_sync._upsert_person(db, person, 'US', app.config)
-        db.execute('RELEASE SAVEPOINT person')   # must not raise
-        db.commit()
+        in_txn_during_fetch = []
+
+        def fetch(url):
+            in_txn_during_fetch.append(db.in_transaction)
+            return self._PNG
+
+        class _Exec:
+            def __init__(self, value):
+                self._value = value
+
+            def execute(self, num_retries=0):
+                return self._value
+
+        class _FakeService:
+            def people(self):
+                return self
+
+            def connections(self):
+                return self
+
+            def list(self, **kwargs):
+                return _Exec({'connections': [person], 'nextSyncToken': 'T'})
+
+        monkeypatch.setattr(google_sync, '_fetch_photo_bytes', fetch)
+        monkeypatch.setattr(google_sync, '_load_credentials', lambda config: object())
+        monkeypatch.setattr(googleapiclient.discovery, 'build',
+                            lambda *a, **k: _FakeService())
+        result = google_sync.sync_contacts(app.config, db, 'US')
+        assert result.error is None and result.pulled == 1
+        assert in_txn_during_fetch == [False]
         assert models.get_contact_photo_ext(db, self._cid(db)) == 'png'
+
+
+class TestPhotoFetchGuards:
+    """CL-0070: the SSRF guard holds on every redirect hop, and the whole
+    download has a time budget."""
+
+    def test_redirect_to_a_disallowed_host_is_not_followed(self, monkeypatch):
+        import http.server
+        import threading
+        import urllib.error
+
+        import google_sync
+
+        hits = []
+
+        class _Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                hits.append(self.path)
+                if self.path == '/start':
+                    self.send_response(302)
+                    self.send_header('Location', '/internal-secret')
+                    self.end_headers()
+                else:
+                    self.send_response(200)
+                    self.end_headers()
+                    self.wfile.write(b'secret')
+
+            def log_message(self, *args):
+                pass
+
+        server = http.server.HTTPServer(('127.0.0.1', 0), _Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            base = f'http://127.0.0.1:{server.server_port}'
+            # Stand in for Google's CDN: only the first URL is approved, so the
+            # redirect target plays the part of a local address.
+            monkeypatch.setattr(google_sync, '_is_allowed_photo_url',
+                                lambda url: url == f'{base}/start')
+            with pytest.raises(urllib.error.HTTPError):
+                google_sync._fetch_photo_bytes(f'{base}/start')
+        finally:
+            server.shutdown()
+            server.server_close()
+        assert hits == ['/start']
+
+    def test_a_download_past_its_time_budget_is_abandoned(self, monkeypatch):
+        import google_sync
+
+        class _Trickle:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def read(self, n):
+                return b'x'
+
+        class _Opener:
+            def open(self, url, timeout=None):
+                return _Trickle()
+
+        monkeypatch.setattr(google_sync, '_photo_opener', _Opener())
+        monkeypatch.setattr(google_sync, '_PHOTO_DEADLINE_SECONDS', -1)
+        with pytest.raises(TimeoutError):
+            google_sync._fetch_photo_bytes('https://lh3.googleusercontent.com/a')
 
 
 # --- Two-way sync: OAuth scope upgrade & re-consent (CL-0033) ---------------

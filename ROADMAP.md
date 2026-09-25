@@ -160,6 +160,15 @@ it changes what the app promises a user.
       as an orphan pointing at a deleted resource.
     - A transient network failure is indistinguishable from an invalid
       grant, so a temporary outage invites a full re-auth.
+  Progress (2026-09-25): three of six done. Photo redirects are
+  re-checked per hop; every People API call passes num_retries, and a
+  rate-limit 403 no longer reads as a lost scope; photos are fetched
+  after the page commits, with a whole-download time budget. The
+  photo re-fetch finding is split out as CL-0088. Remaining: the
+  tombstone-vs-deferral order (user decided 2026-09-25: keep the
+  contact, unlink it, re-create it on Google) and telling a network
+  outage apart from an invalid grant. Both change the two-way sync
+  spec, so they go through its gate first.
   **Layman:** The Google sync has several rough edges that show up on large address books or slow networks.
   Kind: security.
   Source: review-code 2026-09-07 (google-sync lane).
@@ -563,6 +572,18 @@ and the judgement is that no release waits on them.
   **Layman:** Many design documents point at numbered lines in code files. Those numbers drift every time the code is edited, so they quietly stop meaning anything.
   Kind: doc-fix.
   Source: check-doc-run-2026-09-21.
+
+- 📋 [CL-0088] **Google sync re-downloads every contact's photo on every sync.**
+  Split out of CL-0070 at the user's instruction (2026-09-25).
+  Nothing stores the photo's URL or etag, so an unchanged photo cannot
+  be told apart from a new one and each pulled contact's photo is
+  fetched again. The fix stores the Google photo URL per contact (a
+  new column, so a migration) and skips the fetch when it is unchanged.
+  The photo spec's out-of-scope list already names this as "photo etag
+  diffing on re-sync".
+  **Layman:** Every sync downloads all your contacts' photos again, even ones that haven't changed.
+  Kind: perf.
+  Source: review-code 2026-09-07 (google-sync lane), split from CL-0070.
 
 ## Unplaced
 

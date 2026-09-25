@@ -38,6 +38,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Google sync rides out rate limits instead of skipping contacts** (CL-0070)
+  When Google said "too many requests", every contact after that point was skipped. That is most likely on the first two-way sync, which uploads every contact that exists only here. Each call to Google now waits and retries, taking longer between attempts. A rate limit that outlasts the retries is no longer reported as a lost permission that needs reconnecting.
+
+- **Photo downloads no longer lock the database during a sync** (CL-0070)
+  Each page of contacts downloaded its photos while holding the database's write lock, so a slow photo server kept every other save waiting. Photos are now fetched after the page is saved. Each download also has a total time limit, so a server sending bytes very slowly cannot stall the sync.
+
 - **Clearing a contact field now reaches Google instead of coming back** (CL-0064)
   Emptying an email, phone or note on a synced contact used to be dropped from the push, so Google kept its copy and the next sync put it back. The clear is now sent, and any additional values Google holds for that field are left alone. Deliberately limited to those three: for a name, birthday, address or company organization an empty local value does not reliably mean you cleared it, and pushing one would delete something you never touched.
 
@@ -150,6 +156,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unchanged.
 
 ### Security
+
+- **A Google photo download can no longer be redirected to another host** (CL-0070)
+  The sync only fetches photos from Google's photo servers, but it checked that only for the first address. A redirect from there to any other address, including one on your own machine, was followed. Every redirect is now checked the same way, and one leading anywhere else stops the download.
 
 - **Search terms are no longer written to the log file, and contact pages are not cached** (CL-0072)
   The request log recorded full URLs, and a contact search puts what you

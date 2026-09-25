@@ -634,7 +634,7 @@ class TestEditedDisplay:
             google_sync._upsert_person(
                 db, {'resourceName': 'people/x1',
                      'names': [{'displayName': 'Synced Sam'}]},
-                'US', client.application.config)
+                'US')
             db.commit()
             cid = db.execute(
                 "SELECT id FROM contacts WHERE name='Synced Sam'").fetchone()['id']

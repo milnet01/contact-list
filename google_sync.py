@@ -4,6 +4,8 @@ import datetime
 import logging
 import os
 import sqlite3
+import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
@@ -32,6 +34,12 @@ class SyncResult:
 # dropped. Single source of truth — google_auth.py imports this constant, so the
 # two modules can never request different scopes (INV-5).
 SCOPES = ['https://www.googleapis.com/auth/contacts']
+
+# Retries per People API call on 429, 5xx and a rate-limit 403 (CL-0070). The
+# client library backs off rand() * 2**n seconds before retry n, so six retries
+# average about a minute of waiting -- enough to outlast a per-minute write
+# quota, which the one-time bulk create of every local-only contact trips.
+_API_RETRIES = 6
 
 
 # ---------------------------------------------------------------------------
@@ -217,7 +225,8 @@ def sync_contacts(config: dict, db: sqlite3.Connection, region: str) -> SyncResu
             kwargs['pageToken'] = next_page_token
 
         try:
-            results = service.people().connections().list(**kwargs).execute()
+            results = service.people().connections().list(**kwargs).execute(
+                num_retries=_API_RETRIES)
         except HttpError as exc:
             if sync_token and synced == 0 and _is_expired_sync_token(exc):
                 # Expired sync token: restart a clean full resync from page 1.
@@ -253,6 +262,9 @@ def sync_contacts(config: dict, db: sqlite3.Connection, region: str) -> SyncResu
             result.error = 'A Google API error occurred. Check the logs for details.'
             return result
 
+        # Photos are fetched after the page commits (CL-0070): a download inside
+        # the page's transaction held SQLite's write lock across the network.
+        photo_jobs: list[tuple[int, dict]] = []
         for person in results.get('connections', []):
             # Isolate each contact in its own SAVEPOINT: a malformed record must
             # not abort the run, nor leave a half-applied upsert behind (the
@@ -263,20 +275,29 @@ def sync_contacts(config: dict, db: sqlite3.Connection, region: str) -> SyncResu
             # (<=3.11) sqlite3 a SAVEPOINT in autocommit can weaken the rollback.
             try:
                 db.execute('SAVEPOINT person')
-                imported = _upsert_person(db, person, region, config, dirty_google_ids)
+                imported = _upsert_person(db, person, region, dirty_google_ids)
                 db.execute('RELEASE SAVEPOINT person')
             except Exception:
                 db.execute('ROLLBACK TO SAVEPOINT person')
                 db.execute('RELEASE SAVEPOINT person')
                 log.exception('Skipping a contact that failed to import')
             else:
-                if imported:
+                if imported is not None:
                     synced += 1
+                    photo_jobs.append((imported, person))
 
         # Commit each page before fetching the next, so a transient API error on
         # a later page can't discard contacts already imported. Safe because the
         # upsert is idempotent on google_id — a re-run re-applies cleanly (CL-0020).
         db.commit()
+
+        for contact_id, person in photo_jobs:
+            try:
+                _store_person_photo(config, db, contact_id, person)
+                db.commit()
+            except Exception:
+                db.rollback()
+                log.exception('Skipping the photo for contact %s', contact_id)
 
         next_page_token = results.get('nextPageToken')
         # Never let a None on a later page clobber a token seen earlier.
@@ -288,7 +309,7 @@ def sync_contacts(config: dict, db: sqlite3.Connection, region: str) -> SyncResu
     result.pulled = synced
 
     # --- Step 2: push local changes back to Google (per-contact commits inside).
-    _push_local_changes(service, db, region, config, dirty_linked, local_only,
+    _push_local_changes(service, db, region, dirty_linked, local_only,
                         prev_sync, result)
 
     # --- Step 3: finalise. last_synced_at advances UNCONDITIONALLY on a clean
@@ -454,12 +475,12 @@ def _person_body_for_push(
     return body, fields
 
 
-def _apply_google_to_local(db, person: dict, region: str, config) -> None:
+def _apply_google_to_local(db, person: dict, region: str) -> None:
     """Overwrite the local row with Google's copy (a Google-wins conflict). Reuses
     the pull's upsert, so it writes updated_at, never edited_at (INV-1)."""
     db.execute('SAVEPOINT applygoogle')
     try:
-        _upsert_person(db, person, region, config)
+        _upsert_person(db, person, region)
         db.execute('RELEASE SAVEPOINT applygoogle')
     except Exception:
         db.execute('ROLLBACK TO SAVEPOINT applygoogle')
@@ -480,7 +501,7 @@ def _push_update(service, db, contact_id: int, google_id: str, person: dict) -> 
     body['etag'] = person.get('etag')
     updated = service.people().updateContact(
         resourceName=google_id, updatePersonFields=','.join(fields), body=body,
-    ).execute()
+    ).execute(num_retries=_API_RETRIES)
     models.set_contact_etag(db, contact_id, updated.get('etag'))
     db.commit()
     return True
@@ -496,12 +517,21 @@ def _is_write_scope_denied(exc: Exception) -> bool:
     A token that has lost the write scope fails the same way on every contact,
     so without this the whole push reported as N per-contact skips with no clue
     that reconnecting is the fix.
+
+    A 403 whose reason is a rate limit is not a scope problem: the client
+    library retries it, and one that outlasts the retries must not tell the
+    user to reconnect (CL-0070).
     """
     status = getattr(getattr(exc, 'resp', None), 'status', None)
-    return status == 403
+    if status != 403:
+        return False
+    content = getattr(exc, 'content', b'') or b''
+    if isinstance(content, str):
+        content = content.encode('utf-8', 'replace')
+    return b'ratelimitexceeded' not in content.lower()
 
 
-def _push_local_changes(service, db, region, config, dirty_linked, local_only,
+def _push_local_changes(service, db, region, dirty_linked, local_only,
                         prev_sync, result: SyncResult) -> None:
     """Step 2: create local-only contacts on Google, and push locally-edited
     linked contacts with per-contact conflict resolution (§7). Each push is its own
@@ -520,7 +550,8 @@ def _push_local_changes(service, db, region, config, dirty_linked, local_only,
                 continue
             cfs = models.get_custom_fields(db, contact_id)
             body, _fields = _person_body_for_push(contact, cfs, None)
-            created = service.people().createContact(body=body).execute()
+            created = service.people().createContact(body=body).execute(
+                num_retries=_API_RETRIES)
             models.link_google_contact(
                 db, contact_id, created.get('resourceName'), created.get('etag'))
             db.commit()  # persist the link at once so a re-run never re-creates
@@ -539,7 +570,7 @@ def _push_local_changes(service, db, region, config, dirty_linked, local_only,
         try:
             person = service.people().get(
                 resourceName=google_id, personFields=_MANAGED_FIELDS,
-            ).execute()
+            ).execute(num_retries=_API_RETRIES)
             google_dt = _contact_update_time(person)
             if google_dt is None:
                 # Can't prove our edit is newer -> Google-wins, don't push. Counted
@@ -550,7 +581,7 @@ def _push_local_changes(service, db, region, config, dirty_linked, local_only,
             google_changed = prev_dt is None or google_dt > prev_dt
             if google_changed and not (local_dt is not None and local_dt > google_dt):
                 # Both changed and Google is newer-or-equal -> Google wins.
-                _apply_google_to_local(db, person, region, config)
+                _apply_google_to_local(db, person, region)
                 db.commit()
                 result.conflicts_google += 1
             else:
@@ -569,14 +600,55 @@ def _push_local_changes(service, db, region, config, dirty_linked, local_only,
             result.skipped += 1
 
 
+def _is_allowed_photo_url(url: str) -> bool:
+    """True for an https URL on Google's photo CDN (SSRF guard, INV-6)."""
+    parsed = urllib.parse.urlparse(url)
+    host = parsed.hostname or ''
+    return parsed.scheme == 'https' and (
+        host == 'googleusercontent.com' or host.endswith('.googleusercontent.com')
+    )
+
+
+class _PhotoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Re-applies the photo host guard to every redirect hop (CL-0070).
+
+    urlopen follows redirects by default, so checking only the first URL let an
+    approved host bounce the download to a local address."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if not _is_allowed_photo_url(newurl):
+            raise urllib.error.HTTPError(
+                newurl, code, 'photo redirect to a disallowed host', headers, fp)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+_photo_opener = urllib.request.build_opener(_PhotoRedirectHandler)
+
+# Whole-download budget. The socket timeout bounds each read, not the total, so
+# a server trickling bytes could otherwise stall the sync indefinitely.
+_PHOTO_DEADLINE_SECONDS = 30
+
+
 def _fetch_photo_bytes(url: str) -> bytes:
     """Download at most MAX_PHOTO_BYTES + 1 bytes from a photo URL (stdlib only).
 
     The +1 lets the size check detect an oversize body without buffering the
     whole stream. Wrapped by the caller in try/except so a failure is non-fatal.
     """
-    with urllib.request.urlopen(url, timeout=10) as resp:  # noqa: S310 (host is validated by caller)
-        return resp.read(photos.MAX_PHOTO_BYTES + 1)
+    limit = photos.MAX_PHOTO_BYTES + 1
+    deadline = time.monotonic() + _PHOTO_DEADLINE_SECONDS
+    chunks: list[bytes] = []
+    received = 0
+    with _photo_opener.open(url, timeout=10) as resp:  # noqa: S310 (host is validated by caller and per redirect)
+        while received < limit:
+            if time.monotonic() > deadline:
+                raise TimeoutError('photo download exceeded its time budget')
+            chunk = resp.read(min(65536, limit - received))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            received += len(chunk)
+    return b''.join(chunks)
 
 
 def _store_person_photo(config, db: sqlite3.Connection, contact_id: int, person: dict) -> None:
@@ -584,17 +656,13 @@ def _store_person_photo(config, db: sqlite3.Connection, contact_id: int, person:
 
     Non-fatal: any network/validation error is logged and swallowed so it never
     aborts the contact import (INV-5). Only https ``*.googleusercontent.com``
-    URLs are fetched (SSRF guard, INV-6)."""
+    URLs are fetched (SSRF guard, INV-6), on every redirect hop too. Call it with
+    no transaction open: the download must not hold the write lock (CL-0070)."""
     for entry in person.get('photos', []):
         if entry.get('default'):
             continue  # Google's generated silhouette — worse than our initials
         url = entry.get('url')
-        if not url:
-            continue
-        host = urllib.parse.urlparse(url).hostname or ''
-        if urllib.parse.urlparse(url).scheme != 'https' or not (
-            host == 'googleusercontent.com' or host.endswith('.googleusercontent.com')
-        ):
+        if not url or not _is_allowed_photo_url(url):
             continue
         try:
             data = _fetch_photo_bytes(url)
@@ -608,28 +676,30 @@ def _store_person_photo(config, db: sqlite3.Connection, contact_id: int, person:
 
 
 def _upsert_person(
-    db: sqlite3.Connection, person: dict, region: str, config,
+    db: sqlite3.Connection, person: dict, region: str,
     skip_google_ids: frozenset[str] = frozenset(),
-) -> bool:
-    """Import one Google person. Returns True if a contact was imported/updated,
-    False for a delete tombstone, a record with no usable name, or a deferred one.
+) -> int | None:
+    """Import one Google person. Returns the contact's id if it was imported or
+    updated, None for a delete tombstone, a record with no usable name, or a
+    deferred one. It does not fetch the photo: the caller does that with
+    ``_store_person_photo`` once its transaction has committed (CL-0070).
 
     A resourceName in skip_google_ids is a locally-edited contact whose pull we
     DEFER so the local edit survives for the push phase to resolve (CL-0033)."""
     metadata = person.get('metadata', {})
     if person.get('resourceName') in skip_google_ids:
-        return False
+        return None
     google_id = person.get('resourceName')
 
     if metadata.get('deleted'):
         if google_id:
             db.execute('DELETE FROM contacts WHERE google_id = ?', [google_id])
-        return False
+        return None
 
     names = person.get('names', [])
     name = names[0].get('displayName', '') if names else ''
     if not name:
-        return False
+        return None
 
     etag = person.get('etag')
     emails = person.get('emailAddresses', [])
@@ -715,6 +785,4 @@ def _upsert_person(
             cf,
         )
 
-    _store_person_photo(config, db, contact_id, person)
-
-    return True
+    return contact_id
