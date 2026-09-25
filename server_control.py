@@ -23,6 +23,10 @@ import time
 
 log = logging.getLogger(__name__)
 
+# Set in a restart child's environment; launcher.py waits for the parent to
+# release the port when it sees it (CL-0054, spec §2.1.2).
+RESTART_MARKER = 'CONTACT_LIST_RESTARTING'
+
 # Long enough for a sub-kilobyte response to flush to a loopback socket before we
 # replace/exit the process; short enough to feel instant. Best-effort, not a lock.
 _FLUSH_DELAY_S = 0.4
@@ -36,12 +40,47 @@ def schedule(action: str) -> None:
     threading.Thread(target=_run_after_delay, args=(action,), daemon=True).start()
 
 
+def _is_within(path: str, directory: str) -> bool:
+    try:
+        real_dir = os.path.realpath(directory)
+        return os.path.commonpath([os.path.realpath(path), real_dir]) == real_dir
+    except ValueError:  # different drives on Windows
+        return False
+
+
+def _respawn_command() -> tuple[list[str], dict[str, str]]:
+    """The argv and environment for a restart child (CL-0063, spec §2.1.1).
+
+    Frozen, ``sys.executable`` is the program itself, so it is not passed its own
+    path again; inside an AppImage it also lives on a mount that vanishes when
+    this process exits, so the AppImage file (``$APPIMAGE``) is re-run instead.
+    The ``APPDIR`` test matters because ``APPIMAGE`` is inherited by anything an
+    AppImage starts. A frozen child also gets the bundle off ``LD_LIBRARY_PATH``
+    and PyInstaller's inherited state reset, or it would load from the old bundle.
+    """
+    if not getattr(sys, 'frozen', False):
+        argv = [sys.executable, os.path.abspath(sys.argv[0]), *sys.argv[1:]]
+        env = dict(os.environ)
+    else:
+        from browser import _system_env
+
+        env = _system_env()
+        env['PYINSTALLER_RESET_ENVIRONMENT'] = '1'
+        appimage = os.environ.get('APPIMAGE')
+        appdir = os.environ.get('APPDIR')
+        if appimage and appdir and _is_within(sys.executable, appdir):
+            argv = [appimage, *sys.argv[1:]]
+        else:
+            argv = [sys.executable, *sys.argv[1:]]
+    env[RESTART_MARKER] = '1'
+    return argv, env
+
+
 def _run_after_delay(action: str) -> None:
     """Wait for the response to flush, then restart or shut down.
 
-    Restart spawns a **fresh, detached** copy of the current entrypoint
-    (``launcher.py`` from source, or the frozen binary when frozen — it
-    respawns ``sys.argv[0]``) and then exits this one. We deliberately do NOT
+    Restart spawns a **fresh, detached** copy of the current program (the
+    command ``_respawn_command`` builds) and then exits this one. We deliberately do NOT
     ``os.execv`` in place: Werkzeug's dev-server
     listening socket is not close-on-exec, so it survives ``execve`` and the
     replacement image fails to re-bind the port ("Address already in use").
@@ -60,9 +99,9 @@ def _run_after_delay(action: str) -> None:
     time.sleep(_FLUSH_DELAY_S)
     if action == 'restart':
         try:
+            argv, env = _respawn_command()
             subprocess.Popen(
-                [sys.executable, os.path.abspath(sys.argv[0]), *sys.argv[1:]],
-                cwd=os.getcwd(), env=os.environ, start_new_session=True,
+                argv, cwd=os.getcwd(), env=env, start_new_session=True,
             )
         except OSError:
             # Spawn failed: leave the old server serving rather than exit into

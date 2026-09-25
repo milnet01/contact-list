@@ -139,3 +139,108 @@ class TestServerControlRoute:
         assert b'name="theme"' in body        # Appearance
         assert b'name="timezone"' in body      # Dates & Time
         assert b'name="per_page"' in body      # Contacts & Phone
+
+
+# --- Respawn command and restart marker (CL-0063, CL-0054; spec §2.1.1-2) ---
+
+import os  # noqa: E402
+import sys  # noqa: E402
+
+import launcher  # noqa: E402
+
+
+class TestRespawnCommand:
+    """INV-9: the child's argv and env for each row of spec §2.1.1."""
+
+    def _frozen(self, monkeypatch, exe, appimage=None, appdir=None):
+        monkeypatch.setattr(sys, 'frozen', True, raising=False)
+        monkeypatch.setattr(sys, 'executable', exe)
+        monkeypatch.setattr(sys, 'argv', [exe, '--flag'])
+        for key, value in (('APPIMAGE', appimage), ('APPDIR', appdir)):
+            if value is None:
+                monkeypatch.delenv(key, raising=False)
+            else:
+                monkeypatch.setenv(key, value)
+        monkeypatch.setenv('LD_LIBRARY_PATH', '/bundle/lib')
+        monkeypatch.setenv('LD_LIBRARY_PATH_ORIG', '/usr/lib')
+
+    def test_from_source_keeps_the_script_and_marks_the_child(self, monkeypatch):
+        monkeypatch.delattr(sys, 'frozen', raising=False)
+        monkeypatch.setattr(sys, 'argv', ['launcher.py', '--x'])
+        argv, env = server_control._respawn_command()
+        assert argv == [sys.executable, os.path.abspath('launcher.py'), '--x']
+        assert env[server_control.RESTART_MARKER] == '1'
+        assert server_control.RESTART_MARKER not in os.environ
+
+    def test_appimage_reruns_the_appimage_file(self, monkeypatch, tmp_path):
+        mount = tmp_path / 'mount'
+        (mount / 'usr').mkdir(parents=True)
+        self._frozen(monkeypatch, str(mount / 'usr' / 'contact-list'),
+                     appimage='/home/u/Contact-List.AppImage', appdir=str(mount))
+        argv, env = server_control._respawn_command()
+        assert argv == ['/home/u/Contact-List.AppImage', '--flag']
+        assert env['PYINSTALLER_RESET_ENVIRONMENT'] == '1'
+        assert env['LD_LIBRARY_PATH'] == '/usr/lib'
+        assert env[server_control.RESTART_MARKER] == '1'
+
+    def test_inherited_appimage_from_another_app_is_ignored(
+            self, monkeypatch, tmp_path):
+        # APPIMAGE/APPDIR belong to some OTHER AppImage that started us.
+        self._frozen(monkeypatch, '/opt/contact-list/contact-list',
+                     appimage='/home/u/SomeOtherTool.AppImage',
+                     appdir=str(tmp_path / 'other-mount'))
+        argv, env = server_control._respawn_command()
+        assert argv == ['/opt/contact-list/contact-list', '--flag']
+        assert env['PYINSTALLER_RESET_ENVIRONMENT'] == '1'
+
+    def test_frozen_binary_is_not_passed_its_own_path(self, monkeypatch):
+        self._frozen(monkeypatch, 'C:\\Apps\\contact-list.exe')
+        argv, env = server_control._respawn_command()
+        assert argv == ['C:\\Apps\\contact-list.exe', '--flag']
+        assert env['PYINSTALLER_RESET_ENVIRONMENT'] == '1'
+        assert env[server_control.RESTART_MARKER] == '1'
+
+
+class TestRestartWait:
+    """INV-10: a restart child waits for the parent to release the port."""
+
+    def test_waits_until_the_port_is_free_and_drops_the_marker(self, monkeypatch):
+        monkeypatch.setenv(server_control.RESTART_MARKER, '1')
+        answers = iter([True, True, False])
+        calls = []
+
+        def probe(host, port, timeout=0.25):
+            calls.append(port)
+            return next(answers)
+        monkeypatch.setattr(launcher, '_port_is_serving', probe)
+        launcher._wait_for_restart_release(5002, timeout=5, interval=0)
+        assert calls == [5002, 5002, 5002]
+        assert server_control.RESTART_MARKER not in os.environ
+
+    def test_gives_up_at_the_timeout(self, monkeypatch):
+        monkeypatch.setenv(server_control.RESTART_MARKER, '1')
+        monkeypatch.setattr(launcher, '_port_is_serving', lambda *a, **k: True)
+        launcher._wait_for_restart_release(5002, timeout=0.05, interval=0.01)
+        assert server_control.RESTART_MARKER not in os.environ
+
+    def test_without_the_marker_it_does_not_probe(self, monkeypatch):
+        monkeypatch.delenv(server_control.RESTART_MARKER, raising=False)
+
+        def probe(*a, **k):
+            raise AssertionError('probed without a restart marker')
+        monkeypatch.setattr(launcher, '_port_is_serving', probe)
+        launcher._wait_for_restart_release(5002)
+
+    def test_main_waits_before_the_already_serving_check(self, monkeypatch):
+        order = []
+        monkeypatch.setattr(launcher, '_wait_for_restart_release',
+                            lambda port: order.append('wait'))
+
+        def probe(*a, **k):
+            order.append('probe')
+            return True
+        monkeypatch.setattr(launcher, '_port_is_serving', probe)
+        monkeypatch.setattr(launcher, 'open_url', lambda url: None)
+        monkeypatch.delenv('PORT', raising=False)
+        assert launcher.main() == 0
+        assert order == ['wait', 'probe']

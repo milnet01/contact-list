@@ -14,8 +14,15 @@ efficiency / coding standards every item must comply with.
 Defects in what 1.1.0 already shipped. Nothing here adds capability, so none of
 it changes what the app promises a user.
 
-- 📋 [CL-0054] **Harden the restart-respawn against the launcher port-check race.**
+- ✅ [CL-0054] **Harden the restart-respawn against the launcher port-check race.**
   After CL-0052 repointed run.sh through launcher.py, the restart child (subprocess spawn of sys.argv[0]) now passes through launcher's _port_is_serving short-circuit. If the child checks the port before the parent's os._exit(0) releases it, the child opens a browser and exits, leaving no server running — a silent failure (the old app.py path failed loudly with 'Address already in use'). Effectively unreachable in practice (~microsecond os._exit vs ~100ms child startup) but worth hardening: e.g. have the restart child skip the short-circuit, or retry-with-backoff on the bind. Found by the CL-0052 final whole-branch review.
+  Resolved (2026-09-25). The restart child carries
+  CONTACT_LIST_RESTARTING=1; launcher._wait_for_restart_release removes
+  it and polls the port every 50 ms, for up to 5 s, before the
+  already-serving check. With no marker it returns without probing.
+  Spec amendment gated first (restart spec loop 6: three lanes, one
+  loop, 5 verified, 5 fixed). Tests proven red against each reverted
+  part.
   **Layman:** A rare timing quirk on Restart could in theory leave the app closed instead of reopening; make Restart robust against it.
   Kind: fix.
   Source: in-session-2026-07-12 CL-0052 final-review.
@@ -39,7 +46,17 @@ it changes what the app promises a user.
   covered the frozen case. So this needs the spec amended and gated
   before the code moves, not an inline edit during a fix pass.
 
-  Blocked-by: a spec amendment to 2026-07-05-server-restart-control.md.
+  Blocked-by: a live restart of a built AppImage (deferred for RAM).
+  Progress (2026-09-25): built, not yet live-verified. The spec
+  amendment was gated (restart spec loop 6), so the Blocked-by above is
+  cleared. server_control._respawn_command() re-runs $APPIMAGE when
+  sys.executable lies under $APPDIR, otherwise sys.executable without its
+  own path, and gives a frozen child browser._system_env() plus
+  PYINSTALLER_RESET_ENVIRONMENT=1. A throwaway AppImage confirmed that
+  the runtime sets APPIMAGE to the file's path. The installed PyInstaller
+  6.20 bootloader reads the reset variable. Remaining: a real restart of
+  a built AppImage, which the user deferred until RAM allows the build.
+  Close this item after that run.
   **Layman:** Restarting the app from the tray or the Settings page probably kills it instead, on the Linux download most people use.
   Kind: fix.
   Source: review-code 2026-09-07 (process-lifecycle lane); queued by close-findings.

@@ -22,8 +22,10 @@ import signal
 import socket
 import sys
 import threading
+import time
 
 from browser import open_url
+from server_control import RESTART_MARKER
 
 
 def _port_is_serving(host: str, port: int, timeout: float = 0.25) -> bool:
@@ -32,6 +34,21 @@ def _port_is_serving(host: str, port: int, timeout: float = 0.25) -> bool:
             return True
     except OSError:
         return False
+
+
+def _wait_for_restart_release(port: int, timeout: float = 5.0,
+                              interval: float = 0.05) -> None:
+    """In a restart child, wait for the parent to let go of the port (CL-0054).
+
+    Otherwise the already-serving check below can see the parent's socket, open
+    a browser and exit, leaving nothing running. The marker is removed first so
+    it never reaches this process's own children. No marker: return at once.
+    """
+    if os.environ.pop(RESTART_MARKER, None) is None:
+        return
+    deadline = time.monotonic() + timeout
+    while _port_is_serving('127.0.0.1', port) and time.monotonic() < deadline:
+        time.sleep(interval)
 
 
 def _install_file_logging() -> None:
@@ -81,6 +98,7 @@ def main() -> int:
         _emit(f'error: {exc}', err=True)
         return 2
 
+    _wait_for_restart_release(port)
     if _port_is_serving('127.0.0.1', port):
         if port_explicit:
             # PORT named this port and something else already holds it. The

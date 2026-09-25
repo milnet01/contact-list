@@ -38,6 +38,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Restart relaunches the app from the right place in the downloadable builds** (CL-0063)
+  The Linux download relaunched itself from a temporary folder that disappears as the old copy closes, so Restart most likely just closed the app, and at best brought back the old version after an update. It now relaunches the AppImage file itself. Every packaged build also starts the new copy as a clean, independent program. Not yet tried on a real AppImage build.
+
+- **Restart can no longer leave the app closed if the new copy starts too quickly** (CL-0054)
+  A relaunched copy that started before the old one had let go of its network port decided the app was already running and quit, so nothing was left open. The relaunched copy now waits up to five seconds for the old one to finish.
+
 - **A contact deleted on Google no longer lingers here pointing at nothing** (CL-0070)
   If you had edited a contact here and it was deleted on Google before the next sync, the sync skipped the deletion and Google never sent it again. The contact stayed here, still linked to a Google contact that no longer existed. Now your edited copy is kept and put back on Google in the same sync. A contact you had not edited is removed here, as before.
 
