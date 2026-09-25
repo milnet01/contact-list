@@ -58,8 +58,8 @@ except OSError:
 os._exit(0)                     # shutdown takes this path directly (no Popen)
 ```
 
-Restart spawns a **fresh, detached** `python app.py` child and then exits the
-current process. Rationale it works cleanly here:
+Restart spawns a **fresh, detached** child of the current entrypoint
+(`sys.argv[0]`) and then exits the current process. Rationale it works cleanly here:
 
 - **`os.execv` in place does NOT work** — verified empirically. Werkzeug
   **deliberately** marks its listening socket inheritable
@@ -92,9 +92,12 @@ returns the argv and the environment for all three cases:
 
 | Case | argv | env |
 |------|------|-----|
-| From source (`sys.frozen` unset) | `[sys.executable, abspath(sys.argv[0]), *sys.argv[1:]]` | `os.environ` |
-| Frozen, `APPIMAGE` set | `[os.environ['APPIMAGE'], *sys.argv[1:]]` | `browser._system_env()` |
-| Frozen, no `APPIMAGE` | `[sys.executable, *sys.argv[1:]]` | `browser._system_env()` |
+| From source (`sys.frozen` unset) | `[sys.executable, abspath(sys.argv[0]), *sys.argv[1:]]` | copy of `os.environ` |
+| Frozen, `APPIMAGE` set and `sys.executable` under `APPDIR` | `[os.environ['APPIMAGE'], *sys.argv[1:]]` | `browser._system_env()` + `PYINSTALLER_RESET_ENVIRONMENT=1` |
+| Frozen, otherwise | `[sys.executable, *sys.argv[1:]]` | `browser._system_env()` + `PYINSTALLER_RESET_ENVIRONMENT=1` |
+
+Every returned env also carries `CONTACT_LIST_RESTARTING=1` (§2.1.2). The
+parent's own `os.environ` is not changed.
 
 Frozen, `sys.executable` and `sys.argv[0]` are the same binary, so the
 from-source argv passes that binary its own path as its first argument. In an
@@ -102,25 +105,37 @@ AppImage both also point into the type-2 runtime's temporary mount, which is
 unmounted the moment this process exits. A child started from there dies
 part-loaded, and a child that did load would run the OLD code even after an
 update. The runtime sets `APPIMAGE` to the AppImage file's own path, which
-survives the exit and holds whatever version is on disk now.
+survives the exit and holds whatever version is on disk now. The `APPDIR` test
+is there because `APPIMAGE` is inherited by everything an AppImage starts: a
+frozen build launched from inside some other AppImage sees that one's path.
 
 `browser._system_env()` drops the PyInstaller bundle from `LD_LIBRARY_PATH`, as
 it already does for `xdg-open`. Left in place, the child would load libraries
-from the bundle that is about to disappear.
+from the bundle that is about to disappear. PyInstaller's bootloader also
+passes its own state to child processes (`_PYI_APPLICATION_HOME_DIR`,
+`_PYI_PARENT_PROCESS_LEVEL`), so an unreset child takes itself for a
+subprocess of the dying instance and looks for its files in that instance's
+bundle. `PYINSTALLER_RESET_ENVIRONMENT=1`, which the bootloader reads, makes it
+start as a fresh instance.
 
 #### 2.1.2 The child waits for the port (CL-0054)
 
-The child runs `launcher.py`, whose first act is to check whether the port is
+A child started from a `launcher.py` run (every packaged build, and `run.sh`)
+runs `launcher.py`, whose first act is to check whether the port is
 already serving; if it is, it opens a browser and exits. If the child reaches
 that check before the parent's `os._exit(0)` has released the port, no server is
 left running. The parent's exit is normally far faster than the child's start,
 but nothing guarantees it.
 
-So the parent adds `CONTACT_LIST_RESTARTING=1` to the child's environment. When
-`launcher.main()` finds it, it removes it from `os.environ`, so it does not pass
-to the child's own children. It then polls the port every 50 ms for up to 5 s
-until nothing is serving, before the usual check. If the port is still held
-after 5 s, the usual check runs unchanged.
+So the child's environment carries `CONTACT_LIST_RESTARTING=1` (§2.1.1).
+`launcher.main()` calls `_wait_for_restart_release(port)` before the usual
+check. With no marker it returns at once without probing. With the marker it
+removes it from `os.environ`, so it does not pass to the child's own children,
+then polls the port every 50 ms for up to 5 s until nothing is serving. If the
+port is still held after 5 s, the usual check runs unchanged.
+
+A bare `python app.py` start is not covered: its restart child re-runs
+`app.py`, which neither waits nor removes the marker.
 
 If the `Popen` spawn raises `OSError` the delay thread **logs** it and returns
 **without** exiting — leaving the **old** server serving (a failed restart
@@ -135,7 +150,7 @@ clicked Restart/Shutdown; there are no concurrent callers to disrupt.
 **Launcher caveat.** Restart needs no supervisor because the child is
 self-spawned. If the app is ever started **not** via `run.sh` (e.g. bare
 `python app.py` from an odd CWD), the child still inherits `cwd=os.getcwd()` and
-the absolute script path, so it launches correctly regardless.
+the absolute script path, so it launches, without §2.1.2's port wait.
 
 ### 2.2 Shutdown — process exit
 
@@ -170,7 +185,7 @@ def _run_after_delay(action: str) -> None:
     if os.environ.get('PYTEST_CURRENT_TEST'):
         return
     time.sleep(_FLUSH_DELAY_S)
-    ...  # restart: Popen a fresh app.py (try/except OSError) then os._exit(0);
+    ...  # restart: Popen _respawn_command() (try/except OSError) then os._exit(0);
          # shutdown: os._exit(0)
 ```
 
@@ -344,12 +359,16 @@ test, below.
 - **Settings GET** shows both buttons (`value="restart"` / `value="shutdown"`
   present in the HTML).
 - **Respawn command (INV-9)** — with `sys.frozen`, `sys.executable`, `sys.argv`
-  and `APPIMAGE` patched, `_respawn_command()` returns each row of §2.1.1's table,
-  and a frozen env has the bundle removed from `LD_LIBRARY_PATH`.
-- **Restart marker (INV-10)** — with `CONTACT_LIST_RESTARTING=1` set and the port
-  probe patched to report serving twice then free, the launcher's wait returns
-  once the port is free and the marker is gone from `os.environ`; with the probe
-  always serving, it gives up at its timeout. With no marker it does not probe.
+  `APPIMAGE` and `APPDIR` patched, `_respawn_command()` returns each row of
+  §2.1.1's table, including `APPIMAGE` set with `sys.executable` outside
+  `APPDIR` (row 3). A frozen env has the bundle removed from `LD_LIBRARY_PATH`
+  and `PYINSTALLER_RESET_ENVIRONMENT=1`; every env has the marker; the parent's
+  `os.environ` is unchanged.
+- **Restart marker (INV-10)** — with `CONTACT_LIST_RESTARTING=1` set and
+  `launcher._port_is_serving` patched to report serving twice then free,
+  `launcher._wait_for_restart_release` returns once the port is free and the
+  marker is gone from `os.environ`; with the probe always serving, it gives up
+  at its timeout. With no marker it returns without calling the probe.
 - **Live check, owed:** a real restart of a built AppImage. Deferred at the
   user's instruction (2026-09-25) until RAM allows the build; CL-0063 stays open
   until it has run.
@@ -457,12 +476,14 @@ threads). Listed in §8.
 - **INV-8** No test process is ever spawned-from or killed: `_run_after_delay`
   returns early when `PYTEST_CURRENT_TEST` is set. *(Testable: call it under
   pytest, assert `subprocess.Popen`/`os._exit` are not invoked.)*
-- **INV-9** A frozen restart never re-executes a path inside its own bundle when
-  the AppImage runtime has published the AppImage's path, and never passes the
-  binary its own path as an argument (§2.1.1). *(Testable: §5 respawn command.)*
-- **INV-10** A restart child does not take the "already serving" exit while the
-  parent still holds the port, for up to 5 s, and the marker that tells it so
-  never reaches its own children (§2.1.2). *(Testable: §5 restart marker.)*
+- **INV-9** A frozen restart re-executes the AppImage file, not a path inside its
+  own bundle, whenever it is running from that AppImage; never passes the binary
+  its own path as an argument; and starts the child with PyInstaller's inherited
+  state reset (§2.1.1). *(Testable: §5 respawn command.)*
+- **INV-10** A restart child started through `launcher.py` does not take the
+  "already serving" exit while the parent still holds the port, for up to 5 s,
+  and the marker that tells it so never reaches its own children (§2.1.2).
+  *(Testable: §5 restart marker.)*
 
 ## 10. Cold-eyes loop log
 
@@ -472,3 +493,4 @@ Numbering continues from them.
 
 | Loop | Date | Lanes | Q1 | Q2 | Q3 | Q4 | Outcome |
 |------|------|-------|----|----|----|----|---------|
+| 6 | 2026-09-25 | 3 | 2 | 2 | 0 | 1 | Gate armed by the CL-0063/CL-0054 amendment (commit `ff89d7c`: §2.1.1 respawn command, §2.1.2 restart marker, INV-1/3/9/10). **One loop only, at the user's standing instruction** — not run to convergence. Partition: every lane held all four questions; no lane lost. 5 verified, 5 fixed, 0 dismissed. All three lanes found the §2.1.1 env table silent on the restart marker §2.1.2 said the child gets, while the INV-9 test asserts the table; every env row now carries it. Two lanes found the spec still calling the child `python app.py` while the wait lives only in `launcher.py`, with the caveat claiming a bare `python app.py` start was covered; the wait is now scoped to launcher starts and the gap stated. One lane found `APPIMAGE` inherited by anything an AppImage starts, so the AppImage row also requires `sys.executable` under `APPDIR`. Two lanes found the frozen env missing PyInstaller's reset; the orchestrator confirmed the installed 6.20 bootloader reads `PYINSTALLER_RESET_ENVIRONMENT` and passes `_PYI_APPLICATION_HOME_DIR` / `_PYI_PARENT_PROCESS_LEVEL`, so both frozen rows set it. One lane found "with no marker it does not probe" unobservable without a seam; the wait is now `launcher._wait_for_restart_release`. All five anchor in the armed span. Open questions resolved clean, not tallied: the stale `os.execv` rationale and the threaded-server claim change nothing built; the AppImage row sidesteps `sys.argv[0]` inside the mount. Unrunnable region declared: a real AppImage restart (build deferred for RAM). All three lanes disclosed arriving with the git snapshot naming this amendment's commit subject. |
