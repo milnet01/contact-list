@@ -542,6 +542,17 @@ and the judgement is that no release waits on them.
   adding it changes what a conformer does -- they would isolate a
   directory they do not isolate today -- which is rule 14's Yes branch
   and owes the review gate. Small edit, one gate; worth doing.
+  Correction (2026-09-25): the remedy above is WRONG. config.py builds
+  _CONFIG_DIR as os.path.expanduser('~/.config/contact-list') and never
+  reads XDG_CONFIG_HOME, so setting it isolates nothing. What works is
+  HOME=<scratch dir> AND CONTACT_LIST_DB=<scratch>/x.db, both set. Also:
+  from source the default database is NOT under the config dir. It is
+  contacts.db next to the code (config._default_db_path), which holds the
+  user's real contacts. A seeding script that set HOME alone opened that
+  file, and create_app ran migration 009 on it before an assertion stopped
+  the run. No contact rows changed; the same migration runs on the next
+  normal launch anyway. The CLAUDE.md edit this item proposes must name
+  both variables, and should assert Config.DATABASE before create_app().
   **Layman:** A note for future sessions: testing the app by running it can touch your real Google login and photo folder unless the whole settings folder is pointed somewhere else.
   Kind: doc.
   Source: in-session-2026-09-07 (learned the expensive way during verify-delivery).
@@ -595,6 +606,17 @@ and the judgement is that no release waits on them.
   **Layman:** Every sync downloads all your contacts' photos again, even ones that haven't changed.
   Kind: perf.
   Source: review-code 2026-09-07 (google-sync lane), split from CL-0070.
+
+- 📋 [CL-0089] **The breadcrumb is spread across the full page width.**
+  Seen in headless Chrome at 1280x800 while taking project-site
+  screenshots (docs/screenshots/contact-detail.png, birthdays.png,
+  new-contact.png). "Contacts", "/" and the page name sit at the left
+  edge, the centre and the right edge instead of together at the left.
+  Not investigated; likely a flex or grid rule on the breadcrumb list.
+  Confirm in a normal browser window before fixing.
+  **Layman:** The "Contacts / page name" trail at the top of each page is stretched across the whole width instead of sitting together.
+  Kind: ux.
+  Source: in-session-2026-09-25 (hub screenshots).
 
 ## Unplaced
 
