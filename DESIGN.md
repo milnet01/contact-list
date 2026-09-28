@@ -448,7 +448,20 @@ These are **mandatory** for all current and future code.
 - **Error pages** must not leak stack traces, file paths, or SQL. Use Flask `errorhandler` decorators.
 - **HTTPS only** if ever deployed beyond localhost. v1 runs on `127.0.0.1` only.
 - **Content-Security-Policy** header: `default-src 'self'; style-src 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'`. Inline `style=` attributes were moved into the stylesheet so `style-src` no longer needs `'unsafe-inline'` (CL-0012).
-- **Local process control** (`POST /settings/server`, CL-0046). The Settings page can restart or shut down the server (the app is launched from a desktop icon with no terminal). This process-control power is safe because it is reachable only on `127.0.0.1`, is CSRF-gated like every other POST, and is scoped to a `restart`/`shutdown` allow-list — nothing user-supplied ever reaches the `subprocess.Popen` argv, which is built only from `sys.executable` + `sys.argv` and passed as a list (no `shell=True`, no argument injection).
+- **Local process control** (`POST /settings/server`, CL-0046). The Settings page can restart or shut down the server (the app is launched from a desktop icon with no terminal). This process-control power is safe because it is reachable only on `127.0.0.1`, is CSRF-gated like every other POST, and is scoped to a `restart`/`shutdown` allow-list — nothing user-supplied ever reaches the `subprocess.Popen` argv. `server_control._respawn_command` builds it from the process's own launch — the AppImage file (`$APPIMAGE`) or `sys.executable`, plus the original arguments — and passes it as a list (no `shell=True`, no argument injection).
+
+### 6.4 Output Handling (CL-0065)
+
+Contact data is untrusted: it arrives from imported files and from Google. It
+is escaped for the format it is written into, at the point it is written.
+
+| Output | Rule |
+|--------|------|
+| HTML | Jinja2 autoescaping (§6.1's XSS row). |
+| CSV export | Every contact-data field passes `_csv_safe` (`routes/import_export.py`): a leading `=`, `@`, tab or CR gets a `'` prefix, and so does a leading `+` or `-` unless the rest is number- or phone-shaped. This stops a spreadsheet running the field as a formula. |
+| vCard export | Every property value passes `vcard._escape` (backslash, comma, semicolon and line breaks, CR included, so a value cannot start a new property or card). Parameter values come only from names that passed `valid_field_name`. |
+| A new export format | Its escaping ships in the same change as the format, with a test that writes a hostile value and reads it back as data. |
+| HTTP headers | No contact data in a header. Download filenames are fixed strings. |
 
 ---
 
