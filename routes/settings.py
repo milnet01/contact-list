@@ -11,6 +11,7 @@ from flask import (
     request,
     url_for,
 )
+from flask.typing import ResponseReturnValue
 
 import server_control
 import settings as settings_mod
@@ -33,12 +34,12 @@ def _choices() -> dict:
 
 
 @bp.route('/settings')
-def settings_page():
+def settings_page() -> ResponseReturnValue:
     return render_template('settings.html', settings=g.settings, **_choices())
 
 
 @bp.route('/settings', methods=['POST'])
-def save_settings():
+def save_settings() -> ResponseReturnValue:
     updates = {k: request.form[k] for k in _FORM_KEYS if k in request.form}
     errors = settings_mod.update_settings(get_db(), updates)
     if errors:
@@ -53,7 +54,7 @@ def save_settings():
 
 
 @bp.route('/settings/server', methods=['POST'])
-def server_control_route():
+def server_control_route() -> ResponseReturnValue:
     """Restart or shut down the local server (CL-0046).
 
     Named ``server_control_route`` so it does not shadow the imported

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import re
+import sqlite3
 from urllib.parse import urlparse
 
 from flask import (
@@ -16,6 +17,8 @@ from flask import (
     send_from_directory,
     url_for,
 )
+from flask.typing import ResponseReturnValue
+from werkzeug.datastructures import MultiDict
 
 import phoneutil
 import photos
@@ -60,7 +63,7 @@ _EMAIL_RE = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
 _PHONE_RE = re.compile(r'^[\d\s\+\-\(\)\.]{3,30}$')
 
 
-def _validate_custom_fields(form) -> tuple[list[tuple[str, str]], list[str]]:
+def _validate_custom_fields(form: MultiDict[str, str]) -> tuple[list[tuple[str, str]], list[str]]:
     """Parse and validate custom fields from the form. Returns (custom_fields, errors)."""
     cf_names = form.getlist('cf_name')
     cf_values = form.getlist('cf_value')
@@ -86,7 +89,7 @@ def _validate_custom_fields(form) -> tuple[list[tuple[str, str]], list[str]]:
     return custom_fields, errors
 
 
-def _submitted_custom_fields(form) -> list[dict[str, str]]:
+def _submitted_custom_fields(form: MultiDict[str, str]) -> list[dict[str, str]]:
     """Every non-empty custom-field row as submitted, for an error re-render.
 
     Not the validated list: that drops the rows that failed, so the error named
@@ -140,7 +143,7 @@ def validate_core_fields(
     return fields, errors
 
 
-def _validate_form(form) -> tuple[dict, list[tuple[str, str]], list[str]]:
+def _validate_form(form: MultiDict[str, str]) -> tuple[dict, list[tuple[str, str]], list[str]]:
     """Parse and validate the contact form. Returns (fields, custom_fields, errors)."""
     fields, errors = validate_core_fields(
         form.get('type', '').strip(),
@@ -155,12 +158,12 @@ def _validate_form(form) -> tuple[dict, list[tuple[str, str]], list[str]]:
 
 
 @bp.route('/')
-def index():
+def index() -> ResponseReturnValue:
     return redirect(url_for('contacts.contact_list'))
 
 
 @bp.route('/contacts')
-def contact_list():
+def contact_list() -> ResponseReturnValue:
     s = g.settings
     page = max(request.args.get('page', 1, type=int), 1)
 
@@ -216,7 +219,7 @@ def contact_list():
 
 
 @bp.route('/contacts/duplicates')
-def duplicates():
+def duplicates() -> ResponseReturnValue:
     """Scan all contacts and show duplicate names, emails, and phone numbers."""
     db = get_db()
     # CL-0066: ask for one group more than we will show, per category, so a
@@ -235,7 +238,7 @@ def duplicates():
 
 
 @bp.route('/contacts/birthdays')
-def birthdays():
+def birthdays() -> ResponseReturnValue:
     """Contacts whose 'birthday' custom field falls within the next N days (CL-0038)."""
     db = get_db()
     try:
@@ -279,7 +282,7 @@ def _safe_ref(ref: str) -> str:
 
 
 @bp.route('/contacts/new')
-def new_contact():
+def new_contact() -> ResponseReturnValue:
     ref = _safe_ref(_get_ref())
     return render_template(
         'contact_form.html', contact=None, custom_fields=[], editing=False,
@@ -287,7 +290,7 @@ def new_contact():
     )
 
 
-def _apply_photo(db, contact_id: int) -> None:
+def _apply_photo(db: sqlite3.Connection, contact_id: int) -> None:
     """Apply a photo upload or removal from the current request to a contact.
 
     Upload wins over remove: if a new file is present it is stored (ignoring
@@ -326,7 +329,7 @@ def _apply_photo(db, contact_id: int) -> None:
 
 
 @bp.route('/contacts/<int:contact_id>/photo')
-def photo(contact_id: int):
+def photo(contact_id: int) -> ResponseReturnValue:
     db = get_db()
     ext = get_contact_photo_ext(db, contact_id)
     if not ext:
@@ -349,7 +352,7 @@ def photo(contact_id: int):
 
 
 @bp.route('/contacts', methods=['POST'])
-def create():
+def create() -> ResponseReturnValue:
     ref = _safe_ref(_get_ref())
     fields, custom_fields, errors = _validate_form(request.form)
 
@@ -381,7 +384,7 @@ def create():
 
 
 @bp.route('/contacts/<int:contact_id>')
-def detail(contact_id: int):
+def detail(contact_id: int) -> ResponseReturnValue:
     db = get_db()
     contact = get_contact(db, contact_id)
     if not contact:
@@ -406,7 +409,7 @@ def detail(contact_id: int):
 
 
 @bp.route('/contacts/<int:contact_id>/edit')
-def edit(contact_id: int):
+def edit(contact_id: int) -> ResponseReturnValue:
     db = get_db()
     contact = get_contact(db, contact_id)
     if not contact:
@@ -422,7 +425,7 @@ def edit(contact_id: int):
 
 
 @bp.route('/contacts/<int:contact_id>', methods=['POST'])
-def update(contact_id: int):
+def update(contact_id: int) -> ResponseReturnValue:
     db = get_db()
     contact = get_contact(db, contact_id)
     if not contact:
@@ -456,7 +459,7 @@ def update(contact_id: int):
 
 
 @bp.route('/contacts/bulk-delete', methods=['POST'])
-def bulk_delete():
+def bulk_delete() -> ResponseReturnValue:
     ids = request.form.getlist('selected')
     ref = _safe_ref(request.form.get('ref', ''))
     redirect_to = ref or url_for('contacts.contact_list')
@@ -478,7 +481,7 @@ def bulk_delete():
 
 
 @bp.route('/contacts/<int:contact_id>/delete', methods=['POST'])
-def delete(contact_id: int):
+def delete(contact_id: int) -> ResponseReturnValue:
     db = get_db()
     contact = get_contact(db, contact_id)
     if not contact:
@@ -493,7 +496,7 @@ def delete(contact_id: int):
 
 
 @bp.route('/contacts/<int:contact_id>/favourite', methods=['POST'])
-def toggle_favourite(contact_id: int):
+def toggle_favourite(contact_id: int) -> ResponseReturnValue:
     """Star / un-star a contact (CL-0039). Sets the posted desired end-state
     (`favourite=1` stars, anything else un-stars); returns to the carried list
     `ref` or, when none, back to the contact's detail page."""

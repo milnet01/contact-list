@@ -14,6 +14,7 @@ from flask import (
     render_template,
     url_for,
 )
+from flask.typing import ResponseReturnValue
 
 from db import get_db
 import google_sync
@@ -36,7 +37,7 @@ def _auth_command(frozen: bool) -> list[str]:
 
 
 @bp.route('/sync')
-def sync_page():
+def sync_page() -> ResponseReturnValue:
     config = current_app.config
     db = get_db()
 
@@ -52,7 +53,7 @@ def sync_page():
 
 
 @bp.route('/sync/authorize', methods=['POST'])
-def authorize():
+def authorize() -> ResponseReturnValue:
     config = current_app.config
 
     if not google_sync.has_credentials(config):
@@ -83,7 +84,7 @@ def authorize():
 
 
 @bp.route('/sync/start', methods=['POST'])
-def start_sync():
+def start_sync() -> ResponseReturnValue:
     config = current_app.config
     db = get_db()
 
@@ -113,7 +114,7 @@ def start_sync():
 
 
 @bp.route('/sync/disconnect', methods=['POST'])
-def disconnect():
+def disconnect() -> ResponseReturnValue:
     google_sync.revoke_credentials(current_app.config)
     flash('Disconnected from Google.', 'success')
     return redirect(url_for('sync.sync_page'))

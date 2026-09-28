@@ -18,6 +18,8 @@ from __future__ import annotations
 import io
 import os
 import tempfile
+from collections.abc import Mapping
+from typing import Any
 
 from PIL import Image, ImageOps
 
@@ -105,19 +107,19 @@ def generate_thumbnail(data: bytes, ext: str) -> bytes:
         raise ValueError(f'Cannot generate thumbnail: {exc}') from exc
 
 
-def _photo_path(config, contact_id: int, ext: str) -> str:
+def _photo_path(config: Mapping[str, Any], contact_id: int, ext: str) -> str:
     # int() on the id + an allow-listed ext means no request string reaches the
     # path — no traversal vector.
     return os.path.join(config['PHOTOS_DIR'], f'{int(contact_id)}.{ext}')
 
 
-def _thumb_path(config, contact_id: int, ext: str) -> str:
+def _thumb_path(config: Mapping[str, Any], contact_id: int, ext: str) -> str:
     # Same traversal guarantee as _photo_path: int id + allow-listed ext + a
     # fixed literal suffix.
     return os.path.join(config['PHOTOS_DIR'], f'{int(contact_id)}_thumb.{ext}')
 
 
-def _write_thumbnail(config, contact_id: int, ext: str, data: bytes) -> bool:
+def _write_thumbnail(config: Mapping[str, Any], contact_id: int, ext: str, data: bytes) -> bool:
     """Generate + atomically write a contact's thumbnail. Return success.
 
     Returns ``True`` when a thumbnail was written, ``False`` on any swallowed
@@ -156,7 +158,7 @@ def _write_thumbnail(config, contact_id: int, ext: str, data: bytes) -> bool:
         return False
 
 
-def save_photo(config, contact_id: int, data: bytes, *, old_ext: str | None = None) -> str:
+def save_photo(config: Mapping[str, Any], contact_id: int, data: bytes, *, old_ext: str | None = None) -> str:
     """Validate ``data`` and store it as ``<contact_id>.<ext>``. Return the ext.
 
     Checks size first (so an oversize non-image is reported as oversize), then
@@ -199,7 +201,7 @@ def save_photo(config, contact_id: int, data: bytes, *, old_ext: str | None = No
     return ext
 
 
-def avatar_filename(config, contact_id: int, ext: str) -> str:
+def avatar_filename(config: Mapping[str, Any], contact_id: int, ext: str) -> str:
     """Return the basename to serve for a contact's avatar (CL-0035).
 
     Prefer the cached ``<id>_thumb.<ext>``. If it is missing (a photo saved
@@ -223,7 +225,7 @@ def avatar_filename(config, contact_id: int, ext: str) -> str:
     return orig_name                     # undecodable original — serve it full-size
 
 
-def delete_photo(config, contact_id: int, ext: str | None) -> None:
+def delete_photo(config: Mapping[str, Any], contact_id: int, ext: str | None) -> None:
     """Remove a contact's photo file and its thumbnail. No-op if ``ext`` is falsy
     or the files are absent."""
     if not ext:

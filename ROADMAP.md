@@ -521,7 +521,7 @@ and the judgement is that no release waits on them.
   Kind: doc-fix.
   Source: review-code 2026-09-07 (routes-contacts, routes-io and templates lanes).
 
-- 📋 [CL-0076] **Five production modules are outside mypy's file list, including both untrusted-text parsers.**
+- ✅ [CL-0076] **Five production modules are outside mypy's file list, including both untrusted-text parsers.**
   `[tool.mypy]`'s `files` list omits `importer.py`, `photos.py`,
   `server_control.py`, `tray.py` and `vcard.py`. Three lanes noticed
   independently, and the sharpest framing is that the two modules
@@ -552,6 +552,13 @@ and the judgement is that no release waits on them.
   catches it as configured -- ruff selects no ANN rules and mypy runs
   without disallow_untyped_defs. Turning either on is the real fix and is
   its own piece of work.
+  Resolved (2026-09-28): the second half. All 51 unannotated functions
+  (every route, the form and photo helpers, the google_sync push/pull
+  helpers, app.py's hooks) now carry full signatures -- routes return
+  flask.typing.ResponseReturnValue, untyped Google objects are Any. mypy
+  now runs with disallow_untyped_defs and disallow_incomplete_defs, so
+  the rule is enforced rather than reviewed. local-ci green on
+  3.12/3.13/3.14 under the pinned mypy.
   **Layman:** The type checker skips five of our files — including the two that read files other people send us.
   Kind: chore.
   Source: review-code 2026-09-07 (five lanes).

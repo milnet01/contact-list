@@ -26,6 +26,10 @@ addopts = "-v"
 python_version = "3.12"
 warn_redundant_casts = true
 warn_unused_ignores = true
+# CLAUDE.md requires type hints on all signatures; these make mypy enforce it
+# rather than leave it to review (CL-0076).
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
 # Ignore build outputs (present locally after a packaging build; absent in CI).
 # Without this, the bundled google/ copies under dist/ and build/ trip mypy's
 # duplicate-module check on a dev machine that has run packaging/build-linux.sh.

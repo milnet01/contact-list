@@ -15,6 +15,7 @@ from flask import (
     request,
     url_for,
 )
+from flask.typing import ResponseReturnValue
 
 import photos
 from db import get_db
@@ -31,7 +32,7 @@ from routes.contacts import _safe_ref, bp, validate_core_fields
 
 
 @bp.route('/contacts/merge', methods=['POST'])
-def merge_preview():
+def merge_preview() -> ResponseReturnValue:
     ids: list[int] = []
     for s in request.form.getlist('selected'):
         try:
@@ -85,7 +86,7 @@ def merge_preview():
 
 
 @bp.route('/contacts/merge/apply', methods=['POST'])
-def merge_apply():
+def merge_apply() -> ResponseReturnValue:
     db = get_db()
     try:
         survivor_id = int(request.form['survivor_id'])

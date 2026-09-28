@@ -8,7 +8,10 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections.abc import Mapping
 from dataclasses import dataclass
+from http.client import HTTPMessage
+from typing import IO, Any
 
 import models
 import phoneutil
@@ -95,7 +98,7 @@ def is_authenticated(config: dict) -> bool:
     return creds is not None and creds.valid
 
 
-def _load_credentials(config: dict):
+def _load_credentials(config: dict) -> Any:
     """Load and refresh stored OAuth credentials. Returns None if unavailable.
 
     Raises GoogleUnreachable when the refresh failed for a network or temporary
@@ -132,7 +135,7 @@ def _load_credentials(config: dict):
     return creds if creds.valid else None
 
 
-def _save_credentials(config: dict, creds) -> None:
+def _save_credentials(config: dict, creds: Any) -> None:
     from config import ensure_private_dir
 
     token_path = config['GOOGLE_TOKEN_FILE']
@@ -186,7 +189,7 @@ def revoke_credentials(config: dict) -> None:
 # Contact sync
 # ---------------------------------------------------------------------------
 
-def _is_expired_sync_token(exc) -> bool:
+def _is_expired_sync_token(exc: Exception) -> bool:
     """True if ``exc`` is the People API's expired-sync-token error.
 
     The People API returns HTTP 400 with the machine-readable reason
@@ -511,7 +514,7 @@ def _person_body_for_push(
     return body, fields
 
 
-def _apply_google_to_local(db, person: dict, region: str) -> None:
+def _apply_google_to_local(db: sqlite3.Connection, person: dict, region: str) -> None:
     """Overwrite the local row with Google's copy (a Google-wins conflict). Reuses
     the pull's upsert, so it writes updated_at, never edited_at (INV-1)."""
     db.execute('SAVEPOINT applygoogle')
@@ -524,7 +527,9 @@ def _apply_google_to_local(db, person: dict, region: str) -> None:
         raise
 
 
-def _push_update(service, db, contact_id: int, google_id: str, person: dict) -> bool:
+def _push_update(
+    service: Any, db: sqlite3.Connection, contact_id: int, google_id: str, person: dict,
+) -> bool:
     """updateContact with the fresh etag + a preserving body. Returns True if a
     write happened (False when there was nothing managed to write)."""
     contact = models.get_contact(db, contact_id)
@@ -567,8 +572,11 @@ def _is_write_scope_denied(exc: Exception) -> bool:
     return b'ratelimitexceeded' not in content.lower()
 
 
-def _push_local_changes(service, db, region, dirty_linked, local_only,
-                        prev_sync, result: SyncResult) -> None:
+def _push_local_changes(
+    service: Any, db: sqlite3.Connection, region: str,
+    dirty_linked: list[sqlite3.Row], local_only: list[int],
+    prev_sync: str | None, result: SyncResult,
+) -> None:
     """Step 2: create local-only contacts on Google, and push locally-edited
     linked contacts with per-contact conflict resolution (§7). Each push is its own
     committed unit, isolated so one failure is logged + skipped, never fatal.
@@ -664,7 +672,10 @@ class _PhotoRedirectHandler(urllib.request.HTTPRedirectHandler):
     urlopen follows redirects by default, so checking only the first URL let an
     approved host bounce the download to a local address."""
 
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
+    def redirect_request(
+        self, req: urllib.request.Request, fp: IO[bytes], code: int, msg: str,
+        headers: HTTPMessage, newurl: str,
+    ) -> urllib.request.Request | None:
         if not _is_allowed_photo_url(newurl):
             raise urllib.error.HTTPError(
                 newurl, code, 'photo redirect to a disallowed host', headers, fp)
@@ -700,7 +711,7 @@ def _fetch_photo_bytes(url: str) -> bytes:
     return b''.join(chunks)
 
 
-def _store_person_photo(config, db: sqlite3.Connection, contact_id: int, person: dict) -> None:
+def _store_person_photo(config: Mapping[str, Any], db: sqlite3.Connection, contact_id: int, person: dict) -> None:
     """Download and store the first real (non-default) Google photo, if any.
 
     Non-fatal: any network/validation error is logged and swallowed so it never

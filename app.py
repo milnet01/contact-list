@@ -7,7 +7,8 @@ import secrets
 from datetime import date, datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from flask import Flask, abort, g, render_template, request, session
+from flask import Flask, Response, abort, g, render_template, request, session
+from flask.typing import ResponseReturnValue
 
 from config import APP_VERSION, Config, ensure_private_dir
 from db import close_db, init_db
@@ -184,7 +185,7 @@ def create_app(test_config: dict | None = None) -> Flask:
     # ------------------------------------------------------------------
 
     @app.after_request
-    def _security_headers(response):
+    def _security_headers(response: Response) -> Response:
         csp = (
             "default-src 'self'; "
             "style-src 'self'; "
@@ -211,15 +212,15 @@ def create_app(test_config: dict | None = None) -> Flask:
     # ------------------------------------------------------------------
 
     @app.errorhandler(403)
-    def forbidden(e):
+    def forbidden(e: Exception) -> ResponseReturnValue:
         return render_template('error.html', code=403, message='Forbidden.'), 403
 
     @app.errorhandler(404)
-    def not_found(e):
+    def not_found(e: Exception) -> ResponseReturnValue:
         return render_template('error.html', code=404, message='Page not found.'), 404
 
     @app.errorhandler(500)
-    def server_error(e):
+    def server_error(e: Exception) -> ResponseReturnValue:
         log.error('500 Internal Server Error: %s', e, exc_info=True)
         return render_template(
             'error.html', code=500, message='Something went wrong.'

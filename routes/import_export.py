@@ -10,6 +10,7 @@ from __future__ import annotations
 import csv
 import io
 import re
+from collections.abc import Iterator
 
 from flask import (
     Response,
@@ -22,6 +23,7 @@ from flask import (
     stream_with_context,
     url_for,
 )
+from flask.typing import ResponseReturnValue
 
 import importer
 import vcard
@@ -38,9 +40,9 @@ from routes.contacts import bp
 
 
 @bp.route('/contacts/export')
-def export():
+def export() -> ResponseReturnValue:
     """Export all contacts as a CSV download, streamed row by row (DESIGN.md §7.2)."""
-    def rows():
+    def rows() -> Iterator[str]:
         # The connection is opened in here, not in the view: Flask closes the
         # view's connection before the first chunk is sent (CL-0067).
         buf = io.StringIO()
@@ -112,7 +114,7 @@ def _count_vcard_blocks(text: str) -> int:
     )
 
 
-def _import_vcard_text(text: str):
+def _import_vcard_text(text: str) -> ResponseReturnValue:
     """Import a vCard document immediately (no mapping needed) and show the
     summary. Additive import (import_contact) is non-destructive, so there is
     nothing to preview-gate."""
@@ -172,7 +174,7 @@ def _import_vcard_text(text: str):
 
 
 @bp.route('/contacts/import', methods=['GET', 'POST'])
-def import_view():
+def import_view() -> ResponseReturnValue:
     if request.method == 'GET':
         return render_template('import.html', stage='upload')
 
@@ -222,7 +224,7 @@ def import_view():
 
 
 @bp.route('/contacts/import/apply', methods=['POST'])
-def import_apply():
+def import_apply() -> ResponseReturnValue:
     csv_text = request.form.get('csv_text', '')
     default_type = request.form.get('default_type', 'individual')
     if default_type not in ('individual', 'company'):
@@ -269,10 +271,10 @@ def import_apply():
 
 
 @bp.route('/contacts/export/vcard')
-def export_vcard():
+def export_vcard() -> ResponseReturnValue:
     """Export all contacts (with their custom fields) as a vCard download,
     streamed card by card (DESIGN.md §7.2)."""
-    def cards():
+    def cards() -> Iterator[str]:
         # Opened in here for the same reason as the CSV export's rows().
         yield from vcard.iter_emit(export_contacts_with_fields(get_db()))
 
