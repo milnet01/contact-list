@@ -57,8 +57,8 @@ emergency override, and it skips the gate only, not the secret scan.
 
 - **Wait for the port, never for a duration.** `run.sh` pip-installs on every
   launch, so a fixed `sleep` gives a false negative on a server that was
-  starting perfectly. Poll instead:
-  `for _ in $(seq 90); do ss -ltn "sport = :$1" | grep -q LISTEN && break; sleep 1; done`
+  starting perfectly. Poll instead, with your port in `port`:
+  `port=5002; for _ in $(seq 90); do ss -ltn "sport = :$port" | grep -q LISTEN && break; sleep 1; done`
 - **Background the server** (`./run.sh &`). A foreground launch never returns,
   so anything written after it on its own line never runs.
 - **Intercept the browser-open** rather than letting it spray tabs — and to
@@ -67,12 +67,15 @@ emergency override, and it skips the gate only, not the secret scan.
   `webbrowser`, so `BROWSER='/path/to/recorder %s'` catches it; when frozen it
   shells out to `xdg-open`, so put a fake `xdg-open` first on `PATH`.
 - **Isolate the home folder AND the database, both** —
-  `HOME=<scratch> CONTACT_LIST_DB=<scratch>/x.db`. Photos, the Google token and
-  the log live under `~/.config/contact-list/`, and a page that checks Google
-  refreshes and rewrites the real token. From source, the default database is
-  `contacts.db` next to the code: the user's real contacts. A script that
-  builds the app itself asserts `config.Config.DATABASE` is under the scratch
-  folder before calling `create_app()`.
+  `HOME=<scratch> CONTACT_LIST_DB=<scratch>/x.db`, set before anything imports
+  `config`, which fixes the folder at import. Photos, the Google token and the
+  log live under `~/.config/contact-list/`, and a page that checks Google
+  refreshes an expired token and writes it back. From source, the default
+  database is `contacts.db` next to the code: the user's real contacts. A
+  script that builds the app itself asserts, before `create_app()`, that
+  `config._CONFIG_DIR` and the database the app will open — `test_config
+  ['DATABASE']` when it passes one, else `config.Config.DATABASE` — are both
+  under the scratch folder.
 
 ## Privileged commands
 

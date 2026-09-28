@@ -1,0 +1,5 @@
+# docs/standards/versioning-overrides.md — review-contract loop log
+
+| Loop | Date | Lanes | Q1 | Q2 | Q3 | Verified | Fixed | Outcome |
+|------|------|-------|----|----|----|----------|-------|---------|
+| 1 | 2026-09-28 | 2 | 2 | 0 | 2 | 4 | 4 | New document; genre standard. **One loop only, at the user's standing instruction.** Both lanes held Q1–Q3. Both found the CSV promise "imports with nothing lost" cited INV-2, which covers vCard only — CSV carries no custom fields; it now promises the five core columns import back. Both found `contacts.db` missing from the config-folder list although frozen builds keep it there. One lane found the Google-sync surface named no field list and no direction (now DESIGN §8.2's table, either direction breaking), and "page URLs" ambiguous between GET pages and POST form targets (now GET only). Checked while verifying: CSV import targets are name/type/email/phone/notes/custom (`importer.TARGETS`); migrations have no down path. Neither lane arrived with a git snapshot. |
