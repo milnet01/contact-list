@@ -27,6 +27,7 @@ jobs:
   version-lockstep:
     needs: ci
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
       - name: Version lockstep (config.py vs CHANGELOG)
@@ -46,6 +47,7 @@ jobs:
   build-linux:
     needs: version-lockstep
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       # appindicator tray needs the Ayatana/GI/GTK stack at build time so
@@ -77,6 +79,7 @@ jobs:
   build-windows:
     needs: version-lockstep
     runs-on: windows-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -96,6 +99,7 @@ jobs:
   build-macos:
     needs: version-lockstep
     runs-on: macos-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -111,6 +115,7 @@ jobs:
   release:
     needs: [build-linux, build-windows, build-macos]
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     # Both halves are load-bearing. The ref test alone does not check for `v`,
     # and it is satisfied by a workflow_dispatch run launched against a tag ref
     # -- the Actions UI ref picker offers tags -- so a manual "rehearsal" on
