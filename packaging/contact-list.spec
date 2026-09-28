@@ -63,15 +63,27 @@ hiddenimports = [
 # it and reintroduce CL-0057, shipping a tray-less AppImage. Naming the
 # subpackages explicitly is what works.
 #
-# CL-0061 tracks the sixty "Hidden import not found" lines this still logs. Do
-# not silence them by removing these entries: that produces a bundle with no
-# _internal/google/ directory at all.
+# Do not remove these entries: without them the bundle has no _internal/google/
+# directory at all. What ships google.auth and google.oauth2 is collect_all's
+# DATA half -- include_py_files defaults to True, so every .py is copied as a
+# file and imported from disk at run time.
 for _pkg in ('googleapiclient', 'google_auth_oauthlib', 'google.auth',
              'google.oauth2', 'google_auth_httplib2', 'phonenumbers'):
     _d, _b, _h = collect_all(_pkg)
     datas += _d
     binaries += _b
     hiddenimports += _h
+
+# collect_all also lists every google.auth / google.oauth2 submodule as a hidden
+# import, and Analysis cannot resolve one of them (the distro `google` shadows
+# the namespace, above), so each logged "ERROR: Hidden import ... not found" --
+# dozens of false errors that would hide a real one (CL-0061). Drop exactly
+# those names; the files still ship through `datas`.
+hiddenimports = [
+    _h for _h in hiddenimports
+    if not _h.startswith(('google.auth.', 'google.oauth2.'))
+    and _h not in ('google.auth', 'google.oauth2')
+]
 
 # Windows has no system tz database, so CPython's zoneinfo falls back to the
 # `tzdata` package. Without it `available_timezones()` returns an empty set on

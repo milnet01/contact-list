@@ -377,7 +377,7 @@ Each ships alongside whatever release comes next and holds none of them up. This
 is a positive category, not a failure to decide: the items below were judged,
 and the judgement is that no release waits on them.
 
-- 📋 [CL-0061] **The gi-capable build venv makes PyInstaller emit 60 spurious "Hidden import not found" errors.**
+- ✅ [CL-0061] **The gi-capable build venv makes PyInstaller emit 60 spurious "Hidden import not found" errors.**
   Introduced by CL-0057, verified on a real build 2026-08-06. Not breakage: the
   artefact is correct (dist/Contact-List/_internal/google/auth/__init__.py is
   present, and the built AppImage serves and registers its tray), so this is a
@@ -434,6 +434,13 @@ and the judgement is that no release waits on them.
   Untried ideas for whoever takes it: a PyInstaller hook that resolves
   the namespace portions explicitly, or filtering the unresolvable
   entries out of hiddenimports after collect_all returns.
+  Resolved (2026-09-28): the spec now drops google.auth / google.oauth2
+  names from hiddenimports after collect_all. Those modules ship as .py
+  DATA files (collect_all's include_py_files defaults to True; 60 + 18
+  files in the bundle, matching the errors one for one), so Analysis
+  never needed them. Measured on two real builds: "ERROR: Hidden import"
+  lines 78 -> 0, the other 7 WARNING lines unchanged, and the dist
+  tree's 19,813 files identical in name and size before and after.
 
 - 📋 [CL-0062] **Decide which of ruff 0.16's 35 newly-flagged findings to adopt.**
   Context: pyproject.toml had no [tool.ruff.lint] select, so ruff used its
@@ -486,7 +493,7 @@ and the judgement is that no release waits on them.
   Kind: security.
   Source: review-code 2026-09-07 (routes-io lane); queued by close-findings.
 
-- 📋 [CL-0074] **DESIGN §9's route table is missing a third of the shipped routes.**
+- ✅ [CL-0074] **DESIGN §9's route table is missing a third of the shipped routes.**
   Three lanes found this independently, each from a different side.
   Absent from §9: the birthdays page and the import page -- both
   TOP-LEVEL NAV ITEMS -- plus import apply, vCard export, bulk delete,
@@ -500,6 +507,9 @@ and the judgement is that no release waits on them.
 
   This is a contract document, so the edit runs rule 14's test before it
   lands.
+  Resolved (2026-09-28): §9 now carries every route in the app's
+  url_map (the missing eight added); §9.1's defaults name the Settings
+  values; ref is described with the routes that take it.
   **Layman:** The design document's list of web addresses the app answers is well out of date.
   Kind: doc-fix.
   Source: review-code 2026-09-07 (routes-contacts, routes-io and templates lanes).
