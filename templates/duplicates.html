@@ -24,6 +24,9 @@
     <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="ref" value="/contacts/duplicates">
 
+    {# Outside the bar, which is hidden until the first selection: a live
+       region must exist before it changes to be announced (CL-0084). #}
+    <span id="bulk-status" class="visually-hidden" role="status"></span>
     <div class="bulk-bar" id="bulk-bar" hidden>
         <span id="bulk-count">0</span> selected
         <button type="submit" class="btn btn-small" formaction="{{ url_for('contacts.merge_preview') }}">Merge selected</button>

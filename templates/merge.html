@@ -28,15 +28,17 @@
 
     {% for field in ['name', 'type', 'email', 'phone', 'notes'] %}
     <div class="card">
-        <h2>{{ field|capitalize }}</h2>
+        <h2 id="merge-{{ field }}">{{ field|capitalize }}</h2>
         {% set opts = core[field] %}
         {% if opts %}
+            <div role="radiogroup" aria-labelledby="merge-{{ field }}">
             {% for v in opts %}
             <label class="merge-option">
                 <input type="radio" name="field_{{ field }}" value="{{ v }}" {{ 'checked' if loop.first }}>
                 {{ v }}
             </label>
             {% endfor %}
+            </div>
         {% else %}
             <input type="hidden" name="field_{{ field }}" value="">
             <em class="toolbar-meta">(none)</em>
@@ -51,14 +53,16 @@
         {% for cf in customs %}
             {% set i = loop.index0 %}
             <input type="hidden" name="cf_name_{{ i }}" value="{{ cf.name }}">
-            <p><strong>{{ cf.name }}</strong>:
+            <p><strong id="merge-cf-{{ i }}">{{ cf.name }}</strong>:
             {% if cf['values']|length > 1 %}
+                <span role="radiogroup" aria-labelledby="merge-cf-{{ i }}">
                 {% for v in cf['values'] %}
                 <label class="merge-option">
                     <input type="radio" name="cf_value_{{ i }}" value="{{ v }}" {{ 'checked' if loop.first }}>
                     {{ v }}
                 </label>
                 {% endfor %}
+                </span>
             {% else %}
                 <input type="hidden" name="cf_value_{{ i }}" value="{{ cf['values'][0] }}">{{ cf['values'][0] }}
             {% endif %}
@@ -72,8 +76,8 @@
     {# CL-0037: pre-filled with the union of every merged contact's tags; the
        survivor keeps whatever is submitted, so pruning here drops a tag. #}
     <div class="card">
-        <h2>Tags</h2>
-        <input name="tags" type="text" maxlength="2600" value="{{ tags_str }}">
+        <h2><label for="merge-tags">Tags</label></h2>
+        <input id="merge-tags" name="tags" type="text" maxlength="2600" value="{{ tags_str }}">
         <small class="form-hint">Separate tags with commas.</small>
     </div>
 

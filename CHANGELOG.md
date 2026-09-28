@@ -46,6 +46,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Screen readers now hear the import and merge controls' names, the current sort order, and how many contacts are selected** (CL-0084)
+  Keyboard shortcuts also no longer fire when Ctrl, Alt or Cmd is held.
+
 - **A form that fails to save keeps what you typed: an invalid custom field stays on the page, and a ticked "Remove photo" stays ticked** (CL-0079)
 
 - **Merging contacts now checks the email and formats the phone number the same way the contact form does** (CL-0079)

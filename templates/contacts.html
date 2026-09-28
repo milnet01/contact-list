@@ -86,6 +86,9 @@
 <form method="post" action="{{ url_for('contacts.bulk_delete') }}" id="bulk-form">
     <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="ref" value="/contacts">
+    {# Outside the bar, which is hidden until the first selection: a live
+       region must exist before it changes to be announced (CL-0084). #}
+    <span id="bulk-status" class="visually-hidden" role="status"></span>
     <div class="bulk-bar" id="bulk-bar" hidden>
         <span id="bulk-count">0</span> selected
         <button type="submit" class="btn btn-small" formaction="{{ url_for('contacts.merge_preview') }}">Merge selected</button>
@@ -97,9 +100,9 @@
         <tr>
             <th class="th-check"><input type="checkbox" id="select-all" aria-label="Select all"></th>
             {% set next_dir = 'desc' if sort == 'name' and sort_dir == 'asc' else 'asc' %}
-            <th><a href="{{ url_for('contacts.contact_list', q=search, type=contact_type, letter=letter, tag=active_tags, sort='name', dir=next_dir) }}">Name {{ '▲' if sort == 'name' and sort_dir == 'asc' else ('▼' if sort == 'name' else '') }}</a></th>
+            <th{% if sort == 'name' %} aria-sort="{{ 'ascending' if sort_dir == 'asc' else 'descending' }}"{% endif %}><a href="{{ url_for('contacts.contact_list', q=search, type=contact_type, letter=letter, tag=active_tags, sort='name', dir=next_dir) }}">Name {{ '▲' if sort == 'name' and sort_dir == 'asc' else ('▼' if sort == 'name' else '') }}</a></th>
             {% set next_dir = 'desc' if sort == 'type' and sort_dir == 'asc' else 'asc' %}
-            <th><a href="{{ url_for('contacts.contact_list', q=search, type=contact_type, letter=letter, tag=active_tags, sort='type', dir=next_dir) }}">Type {{ '▲' if sort == 'type' and sort_dir == 'asc' else ('▼' if sort == 'type' else '') }}</a></th>
+            <th{% if sort == 'type' %} aria-sort="{{ 'ascending' if sort_dir == 'asc' else 'descending' }}"{% endif %}><a href="{{ url_for('contacts.contact_list', q=search, type=contact_type, letter=letter, tag=active_tags, sort='type', dir=next_dir) }}">Type {{ '▲' if sort == 'type' and sort_dir == 'asc' else ('▼' if sort == 'type' else '') }}</a></th>
             <th>Email</th>
             <th>Phone</th>
             <th class="th-icon"></th>

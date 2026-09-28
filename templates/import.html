@@ -18,7 +18,8 @@
     <p>Upload a <strong>CSV</strong> or <strong>vCard (.vcf)</strong> file.</p>
     <form method="post" action="{{ url_for('contacts.import_view') }}" enctype="multipart/form-data">
         <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
-        <input type="file" name="file" accept=".csv,.vcf,text/csv,text/vcard" required>
+        <label for="import-file">File to import</label>
+        <input id="import-file" type="file" name="file" accept=".csv,.vcf,text/csv,text/vcard" required>
         <button type="submit" class="btn mt-md">Upload</button>
     </form>
 </div>
@@ -43,7 +44,7 @@
                 <tr>
                     <td data-label="Column"><strong>{{ h }}</strong></td>
                     <td data-label="Maps to">
-                        <select name="map_{{ col }}">
+                        <select name="map_{{ col }}" aria-label="Field for column {{ h }}">
                             {% for t in targets %}
                             <option value="{{ t }}" {{ 'selected' if mapping[col] == t }}>{{ t|capitalize }}</option>
                             {% endfor %}
@@ -55,11 +56,13 @@
             </tbody>
         </table>
         <p>
-            Default type for rows without one:
-            <select name="default_type">
-                <option value="individual" {{ 'selected' if default_type == 'individual' }}>Individual</option>
-                <option value="company" {{ 'selected' if default_type == 'company' }}>Company</option>
-            </select>
+            <label>
+                Default type for rows without one:
+                <select name="default_type">
+                    <option value="individual" {{ 'selected' if default_type == 'individual' }}>Individual</option>
+                    <option value="company" {{ 'selected' if default_type == 'company' }}>Company</option>
+                </select>
+            </label>
         </p>
         <button type="submit" class="btn">Import</button>
         <a href="{{ url_for('contacts.import_view') }}" class="btn btn-secondary">Cancel</a>

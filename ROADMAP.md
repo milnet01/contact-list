@@ -305,7 +305,7 @@ it changes what the app promises a user.
   Kind: chore.
   Source: in-session-2026-09-07 (review-contract on DESIGN §3, second lane).
 
-- 📋 [CL-0084] **The rest of the accessibility findings CL-0073 carried but did not fix.**
+- ✅ [CL-0084] **The rest of the accessibility findings CL-0073 carried but did not fix.**
   CL-0073 bundled the confirm-dialog defect with six smaller ones. The
   dialog shipped on 2026-09-20; these did not, and they would have been
   invisible inside a bullet flipped to shipped.
@@ -326,6 +326,17 @@ it changes what the app promises a user.
   alone. Adding a runner is a new dependency under DESIGN.md §3 and is a
   decision, not an edit. Settle that before the next JS-heavy
   accessibility change, or this item ships untested the same way.
+  Resolved (2026-09-28): all six. Import file input and default-type
+  select are labelled, each mapping select is named for its column; the
+  merge tags field has a label and every merge radio group is a
+  role=radiogroup labelled by its heading (kept visually as-is rather
+  than converted to fieldset/legend); the sorted column carries
+  aria-sort; shortcuts ignore Ctrl/Alt/Meta; the selection count is
+  announced through an always-present role=status region, since the bulk
+  bar is hidden until the first selection. Template tests red on the old
+  markup. The two JS changes are verified by node --check and reading
+  only -- the JS test runner question this bullet raised is still open
+  and is put to the user.
   **Layman:** Several smaller screen-reader and keyboard problems are still there; the main one is fixed.
   Kind: accessibility.
   Source: in-session-2026-09-20 (split out of CL-0073 when its headline item shipped).

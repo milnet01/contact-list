@@ -123,6 +123,10 @@
             return;
         }
 
+        // Ctrl+N, Alt+S and the like belong to the browser and the OS, not to
+        // the single-character shortcuts below (CL-0084).
+        if (e.ctrlKey || e.metaKey || e.altKey) return;
+
         // Don't capture when typing in inputs
         var tag = (e.target.tagName || '').toLowerCase();
         if (tag === 'input' || tag === 'textarea' || tag === 'select') {
@@ -165,7 +169,9 @@
     var bulkBar = document.getElementById('bulk-bar');
     var bulkCount = document.getElementById('bulk-count');
     var bulkClear = document.getElementById('bulk-clear');
+    var bulkStatus = document.getElementById('bulk-status');
     var rowSelects = document.querySelectorAll('.row-select');
+    var lastCount = 0;
 
     function updateBulkBar() {
         if (!bulkBar) return;
@@ -176,6 +182,11 @@
         } else {
             bulkBar.hidden = true;
         }
+        // Announce only a change, so a page load says nothing (CL-0084).
+        if (bulkStatus && count !== lastCount) {
+            bulkStatus.textContent = count > 0 ? count + ' selected' : 'Selection cleared';
+        }
+        lastCount = count;
     }
 
     if (selectAll) {

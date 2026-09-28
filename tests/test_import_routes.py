@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import io
+import re
 
 import pytest
 
@@ -376,3 +377,57 @@ class TestExportStreaming:
         assert 'upper' not in by_name['sam']
         assert 'X-CL;X-LABEL=Nickname:upper' in by_name['Sam']
         assert 'X-CL' not in by_name['Bare']
+
+
+class TestAccessibleNames:
+    """CL-0084: controls a screen reader announced with no name, choices
+    announced without their question, and state changes it never heard."""
+
+    def test_import_file_input_is_labelled(self, client):
+        html = client.get('/contacts/import').get_data(as_text=True)
+        assert '<label for="import-file"' in html
+        assert 'id="import-file"' in html
+
+    def test_mapping_selects_name_their_column(self, client):
+        token = _csrf(client)
+        data = _upload(b'Full Name,E-mail\nAlice,a@x.com\n')
+        data['_csrf_token'] = token
+        html = client.post('/contacts/import', data=data,
+                           content_type='multipart/form-data').get_data(as_text=True)
+        assert 'aria-label="Field for column Full Name"' in html
+        assert 'aria-label="Field for column E-mail"' in html
+        assert re.search(r'<label>\s*Default type for rows without one:', html)
+
+    def test_merge_page_names_its_groups_and_tags(self, client, app):
+        with app.app_context():
+            db = get_db()
+            a = models.create_contact(db, 'individual', 'Ann', 'ann@x.com')
+            b = models.create_contact(db, 'company', 'Ann', 'ann@y.com')
+        token = _csrf(client)
+        html = client.post('/contacts/merge', data={
+            '_csrf_token': token, 'selected': [str(a), str(b)],
+        }).get_data(as_text=True)
+        assert '<label for="merge-tags"' in html and 'id="merge-tags"' in html
+        # Each radio group is labelled by its own heading.
+        for field in ('email', 'type'):
+            assert f'role="radiogroup" aria-labelledby="merge-{field}"' in html
+            assert f'id="merge-{field}"' in html
+
+    def test_sorted_column_carries_aria_sort(self, client, app):
+        with app.app_context():
+            models.create_contact(get_db(), 'individual', 'Ann')
+        html = client.get('/contacts?sort=name&dir=desc').get_data(as_text=True)
+        assert re.search(r'<th aria-sort="descending"><a [^>]*sort=name', html)
+        assert 'aria-sort="ascending"' not in html
+
+    @pytest.mark.parametrize('url', ['/contacts', '/contacts/duplicates'])
+    def test_selection_count_has_a_live_region(self, client, app, url):
+        with app.app_context():
+            db = get_db()
+            models.create_contact(db, 'individual', 'Ann', 'ann@x.com')
+            models.create_contact(db, 'individual', 'Ann', 'ann@x.com')
+        html = client.get(url).get_data(as_text=True)
+        # Outside the bulk bar, which is hidden until the first selection: a
+        # live region must exist before it changes to be announced.
+        assert re.search(r'<span id="bulk-status" class="visually-hidden" role="status"></span>', html)
+        assert html.index('id="bulk-status"') < html.index('id="bulk-bar"')
