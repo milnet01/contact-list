@@ -48,8 +48,10 @@ list `ci.yml` also runs. A matrix Python it cannot obtain is a **failure**, not
 a warning. The hook refuses a push while the working tree differs from the
 commit being pushed, since it would test the wrong code: commit or stash first.
 
-Documentation-only pushes (every changed file a `*.md` or under `docs/`) skip it
-automatically. `SKIP_LOCAL_CI=1 git push` is the emergency override.
+Every push is secret-scanned first. A documentation-only push (every changed
+file a `*.md` or under `docs/`) skips local CI only when the branch's last
+GitHub CI run passed; a tag push never skips. `SKIP_LOCAL_CI=1 git push` is the
+emergency override, and it skips the gate only, not the secret scan.
 
 ### Verifying a launch by hand
 

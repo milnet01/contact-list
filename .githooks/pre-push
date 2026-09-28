@@ -5,16 +5,39 @@
 # Enable once per clone (it is NOT automatic — git ignores .githooks by default):
 #     git config core.hooksPath .githooks
 #
-# Skipped for documentation-only pushes: if every changed file is a *.md or lives
-# under docs/, no code can have broken, so the ~2 minute matrix run is wasted time.
-# Anything else — including a workflow, a script, or pyproject.toml — runs it.
+# Every push is secret-scanned first, whatever else happens (local-gate.md § 2.1).
+#
+# A documentation-only push (every changed file a *.md or under docs/ -- no check
+# in scripts/gate.sh reads either) skips the gate only when the branch's last
+# GitHub CI run on a push succeeded (local-gate.md § 7). A tag push always runs
+# it: a release ships whatever the tree holds. Anything else runs it.
 #
 # Escape hatch for a genuine emergency:  SKIP_LOCAL_CI=1 git push
-# Use it knowing you are pushing untested code; the next CI email is on you.
+# It skips the gate only; the secret scan still runs. Use it knowing you are
+# pushing untested code; the next CI email is on you.
 set -uo pipefail
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 Z40="0000000000000000000000000000000000000000"
+
+# git gives the pushed refs on stdin once; both the scan and the gate need them.
+input=$(cat)
+
+# The machine-wide hook's scan where it exists, else gitleaks itself over each
+# pushed range. With neither, refuse: an unscanned push is the one thing this
+# hook may not wave through.
+if [ -x "$HOME/.claude/githooks/pre-push" ]; then
+    printf '%s\n' "$input" | "$HOME/.claude/githooks/pre-push" --secrets-only || exit 1
+elif command -v gitleaks >/dev/null 2>&1; then
+    while read -r _l local_sha _r remote_sha; do
+        { [ -z "${local_sha:-}" ] || [ "$local_sha" = "$Z40" ]; } && continue
+        if [ "$remote_sha" = "$Z40" ]; then range="$local_sha"; else range="$remote_sha..$local_sha"; fi
+        gitleaks git --no-banner --log-opts="$range" "$REPO_ROOT" || exit 1
+    done <<<"$input"
+else
+    echo "pre-push: no secret scanner found (install gitleaks) -- push refused." >&2
+    exit 1
+fi
 
 if [ "${SKIP_LOCAL_CI:-}" = "1" ]; then
     echo "pre-push: SKIP_LOCAL_CI=1 — skipping local CI. Pushing untested."
@@ -25,9 +48,15 @@ fi
 # "<local ref> <local sha> <remote ref> <remote sha>" lines on stdin.
 changed=""
 pushed=""
-while read -r _local_ref local_sha _remote_ref remote_sha; do
+branches=""
+while read -r local_ref local_sha remote_ref remote_sha; do
+    [ -z "${local_sha:-}" ] && continue
     [ "$local_sha" = "$Z40" ] && continue          # branch deletion — nothing to check
     pushed="$pushed $local_sha"
+    case "$local_ref" in
+        refs/tags/*) changed="RUN_ANYWAY"; break ;;   # a release is never docs-only
+    esac
+    branches="$branches ${remote_ref#refs/heads/}"
     if [ "$remote_sha" = "$Z40" ]; then
         # New branch: diff against origin/HEAD's tip if we know it, else the
         # commit's own parent. Falls back to running CI when neither resolves.
@@ -49,7 +78,7 @@ while read -r _local_ref local_sha _remote_ref remote_sha; do
         break
     fi
     changed="$changed$diff_out"$'\n'
-done
+done <<<"$input"
 
 # Nothing being pushed (e.g. already up to date) — let git get on with it.
 if [ -z "${changed//[[:space:]]/}" ]; then
@@ -61,11 +90,23 @@ if [ "$changed" != "RUN_ANYWAY" ]; then
     code_files=$(printf '%s' "$changed" | grep -v '^[[:space:]]*$' \
                  | grep -vE '(\.md$|^docs/)' || true)
     if [ -z "$code_files" ]; then
-        echo "pre-push: documentation-only push — skipping local CI."
-        exit 0
+        # § 7's other condition: the branch's last push CI run succeeded. Asked
+        # per pushed branch, by the ref being pushed, never the checked-out one.
+        # Any doubt -- no gh, no run, a failure -- runs the gate instead.
+        last_green=1
+        for b in $branches; do
+            c=$(gh run list --branch "$b" --event push --limit 1 --json conclusion --jq '.[0].conclusion' 2>/dev/null) || c=""
+            [ "$c" = "success" ] || { last_green=0; break; }
+        done
+        if [ "$last_green" -eq 1 ]; then
+            echo "pre-push: documentation-only push, and the last CI run on$branches passed — skipping local CI."
+            exit 0
+        fi
+        echo "pre-push: documentation-only push, but the last CI run on$branches did not pass (or could not be read) — running local CI."
+    else
+        echo "pre-push: code changed, running local CI:"
+        printf '%s\n' "$code_files" | sed 's/^/    /' | head -20
     fi
-    echo "pre-push: code changed, running local CI:"
-    printf '%s\n' "$code_files" | sed 's/^/    /' | head -20
 fi
 
 # local-ci.sh tests the WORKING TREE, but git pushes COMMITS. The two agree only
