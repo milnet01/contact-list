@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **google-auth-httplib2 is capped at its current minor (0.4.x), so an untested breaking release can no longer install silently** (CL-0082)
+
 - **Deleting many contacts at once is now one save instead of one per contact, and is capped at 10,000** (CL-0068)
 
 - **CSV and vCard exports now stream to the browser instead of building the whole file in memory** (CL-0067)

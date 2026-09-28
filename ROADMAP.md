@@ -276,7 +276,7 @@ it changes what the app promises a user.
   Kind: ux.
   Source: review-code 2026-09-07 (all lanes); the Low tail.
 
-- 📋 [CL-0082] **google-auth-httplib2's cap is looser than the 0.x rule DESIGN §3 now states.**
+- ✅ [CL-0082] **google-auth-httplib2's cap is looser than the 0.x rule DESIGN §3 now states.**
   §3 now says that on a `0.x` dependency the MINOR acts as the major,
   because 0.x makes no stability promise across minors. Under that rule
   `pystray>=0.19,<0.20` is a correct major cap and so is `ruff~=0.16.1`.
@@ -297,6 +297,10 @@ it changes what the app promises a user.
   Do this at the next sweep, when the whole manifest is in hand, rather
   than on its own. §3's new step 6 greps the manifests for exactly this
   shape, so it will surface again if forgotten."
+  Resolved (2026-09-28): requirements.txt now reads
+  google-auth-httplib2>=0.4,<0.5 -- the current minor as the cap, per
+  DESIGN §3's 0.x rule. Latest (0.4.2) is inside it; the dev venv was
+  upgraded to it. local-ci green on 3.12/3.13/3.14.
   **Layman:** One dependency is allowed to update more freely than our own rule intends, so a change that breaks something could arrive without review.
   Kind: chore.
   Source: in-session-2026-09-07 (review-contract on DESIGN §3, second lane).
