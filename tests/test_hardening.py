@@ -683,3 +683,14 @@ class TestReconsent:
         assert resp.status_code == 200
         assert b'Reconnect to Google' in resp.data
         assert b'new permission' in resp.data
+
+
+def test_stylesheet_scopes_nav_and_honours_hidden():
+    # CL-0089: a bare `nav` rule meant for the header bar also laid out the
+    # breadcrumb (spread across the page) and the list page's navs.
+    # CL-0090: .bulk-bar's display:flex beat the hidden attribute, so the
+    # "0 selected" bar showed with nothing selected.
+    import re
+    css = open(os.path.join(os.path.dirname(__file__), '..', 'static', 'style.css')).read()
+    assert not re.search(r'(?m)^\s*nav\s*\{', css)
+    assert '.bulk-bar[hidden] { display: none; }' in css

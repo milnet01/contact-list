@@ -472,16 +472,33 @@ to adopt, a verification note for sessions, and one layout defect.
   Kind: doc.
   Source: in-session-2026-09-07 (learned the expensive way during verify-delivery).
 
-- 📋 [CL-0089] **The breadcrumb is spread across the full page width.**
+- ✅ [CL-0089] **The breadcrumb is spread across the full page width.**
   Seen in headless Chrome at 1280x800 while taking project-site
   screenshots (docs/screenshots/contact-detail.png, birthdays.png,
   new-contact.png). "Contacts", "/" and the page name sit at the left
   edge, the centre and the right edge instead of together at the left.
   Not investigated; likely a flex or grid rule on the breadcrumb list.
   Confirm in a normal browser window before fixing.
+  Resolved (2026-09-28): cause was a bare `nav {}` rule (flex,
+  space-between, padding, max-width) meant for the header bar, which also
+  laid out the breadcrumb <nav> and the list page's navs. Scoped to
+  `header > nav`; .alpha-nav now states the space-between it had
+  inherited. Headless Chrome before/after at 1280 px: breadcrumb together,
+  A-Z bar spread as before, tag filter now aligned with the page,
+  pagination unchanged. A stylesheet test guards the scoping.
   **Layman:** The "Contacts / page name" trail at the top of each page is stretched across the whole width instead of sitting together.
   Kind: ux.
   Source: in-session-2026-09-25 (hub screenshots).
+
+- ✅ [CL-0090] **The bulk-selection bar shows "0 selected" with nothing selected.**
+  `.bulk-bar { display: flex }` out-specified the browser's own rule for the
+  `hidden` attribute, so app.js setting `bulkBar.hidden = true` hid nothing.
+  Fixed with `.bulk-bar[hidden] { display: none; }`, the pattern style.css
+  already uses for `.form-actions`. Seen in headless Chrome before and after;
+  a stylesheet test guards it.
+  **Layman:** The "0 selected / Merge / Delete" bar on the contact list was always showing, even when no contacts were ticked.
+  Kind: fix.
+  Source: in-session-2026-09-28 (seen in the CL-0089 before/after screenshots).
 
 ## No release depends on these
 

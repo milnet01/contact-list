@@ -197,7 +197,9 @@ header {
 [data-theme="dracula"] header,
 [data-theme="contrast"] header { background: var(--surface); }
 
-nav {
+/* The header bar only. A bare `nav` also caught the breadcrumb and the list
+   page's navs, spreading the breadcrumb across the page (CL-0089). */
+header > nav {
     max-width: 960px;
     margin: 0 auto;
     padding: 0.65rem 1rem;
@@ -786,6 +788,9 @@ input:focus, select:focus, textarea:focus {
    otherwise out-specifies the UA `[hidden]` rule) — used to hide the Save row on
    the Settings "Server" tab, which has its own buttons (CL-0047). */
 .form-actions[hidden] { display: none; }
+/* Same reason: .bulk-bar's display:flex beat the hidden attribute, so the
+   "0 selected" bar showed with nothing selected (CL-0090). */
+.bulk-bar[hidden] { display: none; }
 
 /* Read by screen readers, invisible on screen: the standard clip pattern
    (CL-0084 uses it for the selection-count live region). */
@@ -815,6 +820,7 @@ input:focus, select:focus, textarea:focus {
 .alpha-nav {
     display: flex;
     flex-wrap: wrap;
+    justify-content: space-between;  /* was inherited from a bare `nav` rule (CL-0089) */
     gap: 2px;
     margin-bottom: 1rem;
     background: var(--surface);
@@ -1014,7 +1020,7 @@ input:focus, select:focus, textarea:focus {
 
 /* === Responsive === */
 @media (max-width: 640px) {
-    nav { flex-wrap: wrap; }
+    header > nav { flex-wrap: wrap; }
     .nav-toggle { display: block; }
     .nav-links { display: none; width: 100%; flex-direction: column; gap: 0.15rem; }
     .nav-links.open { display: flex; }

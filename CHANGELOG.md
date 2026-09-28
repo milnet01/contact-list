@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **The breadcrumb at the top of a page sits together again instead of stretching across the page** (CL-0089)
+
+- **The "0 selected" bar on the contact list is hidden until you tick a contact** (CL-0090)
+
 ## [1.2.0] - 2026-09-28
 
 **Theme:** vCards other apps can read, and a sturdier app
