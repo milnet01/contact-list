@@ -518,6 +518,18 @@ to adopt, a verification note for sessions, and one layout defect.
   Kind: fix.
   Source: in-session-2026-09-28 (seen in the CL-0089 before/after screenshots).
 
+- 📋 [CL-0091] **versioning-overrides.md names the packaged database's location but not the from-source one.**
+  config._default_db_path() puts contacts.db in ~/.config/contact-list/
+  when frozen (listed) and next to config.py from source (not listed) --
+  where every ./run.sh user's contacts live. The CONTACT_LIST_DB override
+  governs both and is not tied to the location either. versioning.md § 3
+  now names "where that file lives on disk" as a candidate surface. The fix
+  adds the location to the database bullet; it changes what a conformer
+  calls MAJOR, so it runs the review gate first (one loop).
+  **Layman:** The list of things a release must not break forgets where the database lives when you run the app from source.
+  Kind: doc-fix.
+  Source: field pass for claude-config on versioning.md § 3, 2026-09-28.
+
 ## No release depends on these
 
 Internal hygiene — tooling coverage, CI paths, build noise, stale citations.
