@@ -176,6 +176,15 @@ class TestValidFieldName:
         assert not models.valid_field_name('field<script>')
         assert not models.valid_field_name('field;DROP')
 
+    def test_trailing_newline_rejected(self, db):
+        # `$` also matches before a final newline, so a `.match` with `^...$`
+        # accepted 'abc\n'. The vCard export writes the name raw into an
+        # X-LABEL parameter, where that newline ends the property early and
+        # can start a forged one (found while gating DESIGN §6.4).
+        assert not models.valid_field_name('abc\n')
+        with pytest.raises(ValueError):
+            models.create_contact(db, 'individual', 'Nl', custom_fields=[('abc\n', 'v')])
+
 
 class TestOrdering:
     def test_default_name_order(self, db):

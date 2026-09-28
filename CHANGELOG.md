@@ -190,6 +190,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **A custom-field name ending in a line break is now rejected, so it can no longer break a line in an exported vCard** (CL-0065)
+
 - **The folder holding your Google credentials is now always private to you, and a too-short SECRET_KEY is ignored** (CL-0069)
   A SECRET_KEY under 32 characters no longer signs your sessions; the
   app warns and uses its saved key instead.

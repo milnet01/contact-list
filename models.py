@@ -942,12 +942,12 @@ def delete_contacts(
     return found
 
 
-_FIELD_NAME_RE = re.compile(r'^[a-zA-Z0-9_ ]{1,64}$')
+_FIELD_NAME_RE = re.compile(r'[a-zA-Z0-9_ ]{1,64}')
 _FIELD_NAME_STRIP_RE = re.compile(r'[^a-zA-Z0-9_ ]+')
 
 
 def valid_field_name(name: str) -> bool:
-    return bool(_FIELD_NAME_RE.match(name))
+    return bool(_FIELD_NAME_RE.fullmatch(name))
 
 
 def sanitize_field_name(raw: str) -> str:

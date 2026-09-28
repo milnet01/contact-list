@@ -383,7 +383,7 @@ filter and both duplicate finders read this table instead.
 ```
 Contact_List/
 ├── DESIGN.md              # This document
-├── requirements.txt       # Pinned dependencies
+├── requirements.txt       # Dependencies, major-capped (§3)
 ├── app.py                 # Entry point — Flask app factory
 ├── config.py              # Configuration (env-based)
 ├── db.py                  # SQLite connection management
@@ -428,7 +428,7 @@ These are **mandatory** for all current and future code.
 | SQL injection prevention | **Parameterized queries only.** Never use f-strings or `.format()` in SQL. |
 | XSS prevention | Jinja2 autoescaping enabled globally (`autoescape=True`, Flask default). Manual `| e` filter on any `Markup()` usage. |
 | CSRF protection | Signed token in every state-changing form. Validate on POST/PUT/DELETE. |
-| Input validation | Whitelist validation: `type` must be `individual` or `company`. `field_name` must match `^[a-zA-Z0-9_ ]{1,64}$`. Phone/email validated with regex, not sanitized. |
+| Input validation | Whitelist validation: `type` must be `individual` or `company`. `field_name` must match `[a-zA-Z0-9_ ]{1,64}` as a whole string (`re.fullmatch`; a `$` anchor lets a trailing newline through). Phone/email validated with regex, not sanitized. |
 | File uploads | CSV/vCard import (v1.1) and contact photos (v1.2, CL-0026). Photos are validated by magic bytes (JPEG/PNG/GIF/WebP allow-list; SVG rejected) and a 4 MiB cap, stored on disk under `PHOTOS_DIR` (never blobs in the DB), and served same-origin with `nosniff` — see `photos.py`. CL-0035 additionally decodes/re-encodes each photo via Pillow to make a 256 px thumbnail, but only **behind** that magic-byte allow-list + size cap (the allow-list stays the gatekeeper; a decode failure is non-fatal and falls back to the original) — see `docs/specs/2026-07-04-photo-thumbnails-design.md` §6. |
 
 ### 6.2 Google OAuth
@@ -444,7 +444,7 @@ These are **mandatory** for all current and future code.
 
 - **No `eval()`, `exec()`, or `pickle` on user data.** Ever.
 - **No shell commands** from user input.
-- **Dependency pinning.** All versions pinned in `requirements.txt`. Audit with `pip-audit` before releases.
+- **Dependency versions** follow §3's versioning policy (a major cap, never an exact pin). Audit with `pip-audit` before releases.
 - **Error pages** must not leak stack traces, file paths, or SQL. Use Flask `errorhandler` decorators.
 - **HTTPS only** if ever deployed beyond localhost. v1 runs on `127.0.0.1` only.
 - **Content-Security-Policy** header: `default-src 'self'; style-src 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'`. Inline `style=` attributes were moved into the stylesheet so `style-src` no longer needs `'unsafe-inline'` (CL-0012).
@@ -459,7 +459,7 @@ is escaped for the format it is written into, at the point it is written.
 |--------|------|
 | HTML | Jinja2 autoescaping (§6.1's XSS row). |
 | CSV export | Every contact-data field passes `_csv_safe` (`routes/import_export.py`): a leading `=`, `@`, tab or CR gets a `'` prefix, and so does a leading `+` or `-` unless the rest is number- or phone-shaped. This stops a spreadsheet running the field as a formula. |
-| vCard export | Every property value passes `vcard._escape` (backslash, comma, semicolon and line breaks, CR included, so a value cannot start a new property or card). Parameter values come only from names that passed `valid_field_name`. |
+| vCard export | Every property value passes `vcard._escape` (backslash, comma, semicolon and line breaks, CR included, so a value cannot start a new property or card). Parameter values come only from names that passed `valid_field_name`, a whole-string match, so a name cannot carry a line break. |
 | A new export format | Its escaping ships in the same change as the format, with a test that writes a hostile value and reads it back as data. |
 | HTTP headers | No contact data in a header. Download filenames are fixed strings. |
 
@@ -490,7 +490,7 @@ onefile every-launch extraction, ~1–2 s — is exempt.
 - **Streaming responses** for CSV and vCard export (use generators, not full in-memory buffers; CL-0067).
 - **Google sync is batched.** Use `people.connections.list` with `pageSize=1000` and `syncToken` for incremental sync. Never fetch all contacts on every sync.
 - **No background threads or task queues** for application work in v1. Sync is user-triggered. *Exception (CL-0046):* a single short-lived daemon thread may defer a server restart/shutdown until the HTTP response has flushed — it does no application work and the process respawns a fresh child then exits milliseconds later. See `docs/specs/2026-07-05-server-restart-control.md`. This carve-out extends to the launcher's (CL-0049, §15) one-shot browser-open daemon thread — it opens the browser once after the socket is up, then does no further application work. *Exception (CL-0052):* the system-tray icon owns the main thread, so the HTTP server runs on **one dedicated long-lived background thread** for the whole app lifetime — a materially stronger carve-out than the one-shot threads above (serving HTTP *is* application work). No shared mutable app state crosses threads beyond the server socket; Quit calls `server.shutdown()` then `join()`s the thread. See `docs/specs/2026-07-12-system-tray-icon.md` §5.
-- **Indexes** on all columns used in WHERE/ORDER BY (see schema above).
+- **Indexes** on the columns queries filter, join or sort on, where an index can serve the query. §4.1 records the deliberate gaps. Sorting by `created` or `updated` is unindexed: at 10k contacts that sort measured about 1 ms a page.
 
 ### 7.3 What to Avoid
 

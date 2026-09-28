@@ -480,7 +480,7 @@ and the judgement is that no release waits on them.
   Kind: refactor.
   Source: in-session-2026-08-06 (dependency sweep; surfaced by the ruff 0.15 to 0.16 bump).
 
-- 📋 [CL-0065] **DESIGN §6 covers input handling only; nothing states an output-encoding rule.**
+- ✅ [CL-0065] **DESIGN §6 covers input handling only; nothing states an output-encoding rule.**
   The CSV formula-injection fix landed in code (`_csv_safe`), but §6.1
   is entirely about the inbound direction, so nothing tells the next
   person writing an export to neutralise anything. The same gap covers
@@ -489,6 +489,13 @@ and the judgement is that no release waits on them.
   QUEUED RATHER THAN FIXED: adding the rule changes what a conformer
   writes, which is rule 14's Yes branch, so it needs `review-contract`
   rather than an inline edit during a fix pass.
+  Resolved (2026-09-28): DESIGN §6.4 Output Handling states the escaping
+  for HTML, CSV and vCard, requires a new export format to ship its own
+  escaping with a hostile-value test, and keeps contact data out of
+  headers. Gated: review-contract loop 1, recorded in
+  docs/reviews/design-md-loop-log.md. The gate found models.
+  valid_field_name accepted a trailing newline (fixed: fullmatch, test
+  red first) and two older §3/§7.2 contradictions, all fixed.
   **Layman:** Our security standards say how to handle data coming in, but not how to make it safe on the way out.
   Kind: security.
   Source: review-code 2026-09-07 (routes-io lane); queued by close-findings.
@@ -568,6 +575,10 @@ and the judgement is that no release waits on them.
   Remedy is a decision about tooling, not an edit: adding a JS linter
   means adding a Node toolchain to a project that deliberately has no
   build step, which is a trade worth making deliberately.
+  Decided by the user (2026-09-28): add both, dev-only -- ESLint for
+  static/app.js (a Node toolchain for development and CI only) and djlint
+  for the templates, run by local-ci and CI. Nothing ships in the app. A
+  JS test runner (CL-0084's open question) can follow the same route.
   **Layman:** Our automated checks cover the Python and shell code but not the browser code, the page templates, or the packaging script.
   Kind: chore.
   Source: review-code 2026-09-07 (frontend-js, templates and shell-ci lanes); gap in check-code's tool set.
@@ -744,6 +755,10 @@ item sits here because placing it would be a guess, never because nobody looked.
   is a major, because those files stop round-tripping. The work cannot
   be scheduled until this is answered, and it is the only open item in
   that position.
+  Decided by the user (2026-09-28): import keeps reading the private X-CL
+  properties after export moves to BDAY/ADR/ORG, so every 1.x export still
+  loads and this ships as a minor. Also decided: widen the parser to
+  handle ENCODING=QUOTED-PRINTABLE (Android exports).
   **Layman:** Birthdays and addresses exported from here are not recognised by other contact apps, and theirs are ignored by ours.
   Kind: fix.
   Source: review-code 2026-09-07 (routes-io lane).
