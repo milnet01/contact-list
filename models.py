@@ -831,7 +831,8 @@ def create_contact(
             [contact_type, name, email, phone, notes],
         )
         contact_id = cursor.lastrowid
-        assert contact_id is not None  # lastrowid is always set after an INSERT
+        if contact_id is None:  # an INSERT always sets it; an assert vanishes under -O
+            raise RuntimeError('INSERT into contacts returned no row id')
         if custom_fields:
             db.executemany(
                 'INSERT INTO custom_fields (contact_id, field_name, field_value) VALUES (?, ?, ?)',
@@ -1004,7 +1005,8 @@ def import_contact(
                 [contact_type, name, email, phone, notes],
             )
             new_id = cursor.lastrowid
-            assert new_id is not None
+            if new_id is None:  # as in create_contact
+                raise RuntimeError('INSERT into contacts returned no row id')
             if custom_fields:
                 db.executemany(
                     'INSERT INTO custom_fields (contact_id, field_name, field_value) '

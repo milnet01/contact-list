@@ -86,14 +86,27 @@ def _validate_custom_fields(form) -> tuple[list[tuple[str, str]], list[str]]:
     return custom_fields, errors
 
 
-def _validate_form(form) -> tuple[dict, list[tuple[str, str]], list[str]]:
-    """Parse and validate the contact form. Returns (fields, custom_fields, errors)."""
-    contact_type = form.get('type', '').strip()
-    name = form.get('name', '').strip()
-    email = form.get('email', '').strip() or None
-    phone = form.get('phone', '').strip() or None
-    notes = form.get('notes', '').strip() or None
+def _submitted_custom_fields(form) -> list[dict[str, str]]:
+    """Every non-empty custom-field row as submitted, for an error re-render.
 
+    Not the validated list: that drops the rows that failed, so the error named
+    a field no longer on the page and the user's input was lost (CL-0079).
+    """
+    return [
+        {'field_name': cn.strip(), 'field_value': cv.strip()}
+        for cn, cv in zip(form.getlist('cf_name'), form.getlist('cf_value'), strict=False)
+        if cn.strip() and cv.strip()
+    ]
+
+
+def validate_core_fields(
+    contact_type: str, name: str, email: str | None, phone: str | None, notes: str | None,
+) -> tuple[dict, list[str]]:
+    """Check and normalise the five core contact fields. Returns (fields, errors).
+
+    The one copy of these checks: the contact form and the merge screen both
+    call it, so merge cannot write a value the form would reject (CL-0079).
+    """
     errors: list[str] = []
 
     if contact_type not in ('individual', 'company'):
@@ -117,9 +130,6 @@ def _validate_form(form) -> tuple[dict, list[tuple[str, str]], list[str]]:
     elif phone:
         phone = phoneutil.format_phone(phone, g.settings['phone_region'])
 
-    custom_fields, cf_errors = _validate_custom_fields(form)
-    errors.extend(cf_errors)
-
     fields = {
         'type': contact_type,
         'name': name,
@@ -127,6 +137,20 @@ def _validate_form(form) -> tuple[dict, list[tuple[str, str]], list[str]]:
         'phone': phone,
         'notes': notes,
     }
+    return fields, errors
+
+
+def _validate_form(form) -> tuple[dict, list[tuple[str, str]], list[str]]:
+    """Parse and validate the contact form. Returns (fields, custom_fields, errors)."""
+    fields, errors = validate_core_fields(
+        form.get('type', '').strip(),
+        form.get('name', '').strip(),
+        form.get('email', '').strip() or None,
+        form.get('phone', '').strip() or None,
+        form.get('notes', '').strip() or None,
+    )
+    custom_fields, cf_errors = _validate_custom_fields(form)
+    errors.extend(cf_errors)
     return fields, custom_fields, errors
 
 
@@ -333,9 +357,7 @@ def create():
         return render_template(
             'contact_form.html',
             contact=fields,
-            custom_fields=[
-                {'field_name': cn, 'field_value': cv} for cn, cv in custom_fields
-            ],
+            custom_fields=_submitted_custom_fields(request.form),
             editing=False,
             errors=errors,
             ref=ref,
@@ -413,13 +435,15 @@ def update(contact_id: int):
         return render_template(
             'contact_form.html',
             contact={**fields, 'id': contact_id},
-            custom_fields=[
-                {'field_name': cn, 'field_value': cv} for cn, cv in custom_fields
-            ],
+            custom_fields=_submitted_custom_fields(request.form),
             editing=True,
             errors=errors,
             ref=ref,
             tags_str=request.form.get('tags', ''),
+            # Without these the photo preview and the Remove checkbox vanish,
+            # and a ticked Remove is lost on resubmit (CL-0079).
+            photo_ext=get_contact_photo_ext(db, contact_id),
+            remove_photo=bool(request.form.get('remove_photo')),
         ), 400
 
     update_contact(

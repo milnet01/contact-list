@@ -304,6 +304,8 @@ renders `merge.html`:
 
 ### 4.3 Apply — `POST /contacts/merge/apply` (`merge_apply`)
 
+The route checks the chosen core fields with `validate_core_fields` from
+`routes/contacts.py`, the contact form's own checks (CL-0079).
 `merge_contacts(db, survivor_id, loser_ids, fields, custom_fields)` in
 `models.py`. To satisfy INV-3 (atomic) and INV-4 (validated) without duplicating
 the write path, `update_contact`'s body is refactored into a private

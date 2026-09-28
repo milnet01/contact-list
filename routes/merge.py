@@ -27,7 +27,7 @@ from models import (
     get_custom_fields,
     merge_contacts,
 )
-from routes.contacts import _safe_ref, bp
+from routes.contacts import _safe_ref, bp, validate_core_fields
 
 
 @bp.route('/contacts/merge', methods=['POST'])
@@ -95,15 +95,18 @@ def merge_apply():
         return redirect(url_for('contacts.duplicates'))
 
     ctype = request.form.get('field_type')
-    fields = {
-        'type': ctype if ctype in ('individual', 'company') else 'individual',
-        'name': (request.form.get('field_name') or '').strip(),
-        'email': (request.form.get('field_email') or '').strip() or None,
-        'phone': (request.form.get('field_phone') or '').strip() or None,
-        'notes': (request.form.get('field_notes') or '').strip() or None,
-    }
-    if not fields['name']:
-        flash('The merged contact needs a name.', 'error')
+    raw_email = (request.form.get('field_email') or '').strip() or None
+    raw_phone = (request.form.get('field_phone') or '').strip() or None
+    fields, errors = validate_core_fields(
+        ctype if ctype in ('individual', 'company') else 'individual',
+        (request.form.get('field_name') or '').strip(),
+        raw_email,
+        raw_phone,
+        (request.form.get('field_notes') or '').strip() or None,
+    )
+    if errors:
+        for error in errors:
+            flash(error, 'error')
         return redirect(url_for('contacts.duplicates'))
 
     try:
@@ -144,8 +147,10 @@ def merge_apply():
             used.add(label.lower())
             customs.append((label, value))
 
-    _preserve_extra('email', 'Email', fields['email'])
-    _preserve_extra('phone', 'Phone', fields['phone'])
+    # Compare against the values as submitted: the chosen phone is now in
+    # international form, and the other contacts still hold the raw one.
+    _preserve_extra('email', 'Email', raw_email)
+    _preserve_extra('phone', 'Phone', raw_phone)
 
     # Read loser photo exts before the merge deletes their rows, so we can
     # unlink the orphaned files afterwards (the survivor keeps its own photo).

@@ -253,6 +253,15 @@ it changes what the app promises a user.
       page header.
     - Timezone lookups walk the whole zone database on every settings
       render and again per submitted value, uncached.
+  Progress (2026-09-28): the four route items are done. Photo write
+  failure: fixed earlier in 7341f43, now tested (red with the fix
+  removed). A failed custom-field row stays on the re-rendered form. The
+  edit form's error re-render keeps the photo and a ticked Remove. Merge
+  calls validate_core_fields, the contact form's own checks, so it
+  formats phones and rejects bad emails. Also done: the two production
+  asserts in models.py the review's INDEX filed here. Still open: the
+  birthdays date filter, masonry on the duplicates page, the armed
+  confirm button, the repeated inline SVGs, and uncached timezone lookups.
   **Layman:** A list of small things that are wrong but not urgent.
   Kind: ux.
   Source: review-code 2026-09-07 (all lanes); the Low tail.

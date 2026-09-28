@@ -75,7 +75,7 @@
             <div class="photo-edit">
                 <img class="avatar avatar-lg" src="{{ url_for('contacts.photo', contact_id=contact.id) }}" alt="Current photo">
                 <label class="photo-remove">
-                    <input type="checkbox" name="remove_photo" value="1"> Remove photo
+                    <input type="checkbox" name="remove_photo" value="1"{% if remove_photo %} checked{% endif %}> Remove photo
                 </label>
             </div>
             {% endif %}

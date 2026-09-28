@@ -1,5 +1,6 @@
 import datetime
 import io
+import re
 
 import pytest
 
@@ -861,3 +862,44 @@ class TestConfirmDialogSemantics:
         assert 'aria-labelledby="confirm-message"' in body
         # The label must point at an element that exists, or it names nothing.
         assert 'id="confirm-message"' in body
+
+
+class TestFormErrorRerender:
+    """CL-0079: three ways a failed save lost what the user had entered."""
+
+    def test_photo_write_failure_still_saves_the_contact(self, client, monkeypatch):
+        import photos
+
+        def boom(*args, **kwargs):
+            raise OSError('disk full')
+
+        monkeypatch.setattr(photos, 'save_photo', boom)
+        token = _get_csrf(client)
+        resp = client.post('/contacts', data={
+            '_csrf_token': token, 'type': 'individual', 'name': 'Kept',
+            'photo': (io.BytesIO(_PNG), 'a.png'),
+        }, content_type='multipart/form-data', follow_redirects=True)
+        assert resp.status_code == 200
+        assert b'Contact saved, but the photo could not be stored' in resp.data
+        assert b'Kept' in resp.data
+
+    def test_invalid_custom_field_row_stays_on_the_form(self, client):
+        token = _get_csrf(client)
+        resp = client.post('/contacts', data={
+            '_csrf_token': token, 'type': 'individual', 'name': 'Row Keeper',
+            'cf_name': ['Good', 'bad!name'], 'cf_value': ['one', 'two'],
+        })
+        assert resp.status_code == 400
+        assert b'Invalid field name' in resp.data
+        assert b'value="bad!name"' in resp.data
+        assert b'value="two"' in resp.data
+
+    def test_ticked_remove_photo_survives_an_error(self, client):
+        token = _get_csrf(client)
+        cid = _create_contact(client, token, photo=_real_png(8, 8))
+        resp = client.post(f'/contacts/{cid}', data={
+            '_csrf_token': token, 'type': 'individual', 'name': 'Photo Person',
+            'email': 'not-an-email', 'remove_photo': '1',
+        }, content_type='multipart/form-data')
+        assert resp.status_code == 400
+        assert re.search(rb'name="remove_photo" value="1"\s+checked', resp.data)

@@ -244,6 +244,39 @@ class TestMerge:
             values = {c['field_value'] for c in models.get_custom_fields(db, a)}
             assert '111' in values   # the non-chosen phone is preserved, not lost
 
+    def test_apply_rejects_what_the_contact_form_rejects(self, client, app):
+        # CL-0079: merge had its own copy of the field checks and never got
+        # the email/phone validation the contact form has.
+        a, b = self._two_dupes(app)
+        token = _csrf(client)
+        resp = client.post('/contacts/merge/apply', data={
+            '_csrf_token': token, 'survivor_id': str(a), 'loser_id': [str(b)],
+            'field_type': 'individual', 'field_name': 'Ann',
+            'field_email': 'not-an-email', 'cf_count': '0',
+        }, follow_redirects=True)
+        assert b'Invalid email address' in resp.data
+        with app.app_context():
+            assert models.get_contact(get_db(), b) is not None   # nothing merged
+
+    def test_apply_formats_the_phone_like_the_contact_form(self, client, app):
+        with app.app_context():
+            db = get_db()
+            import settings
+            assert settings.update_settings(db, {'phone_region': 'AU'}) == []
+            a = models.create_contact(db, 'individual', 'Pat', None, '0412345678')
+            b = models.create_contact(db, 'individual', 'Pat', None, '0412345678')
+        token = _csrf(client)
+        client.post('/contacts/merge/apply', data={
+            '_csrf_token': token, 'survivor_id': str(a), 'loser_id': [str(b)],
+            'field_type': 'individual', 'field_name': 'Pat',
+            'field_phone': '0412345678', 'cf_count': '0',
+        }, follow_redirects=True)
+        with app.app_context():
+            db = get_db()
+            assert models.get_contact(db, a)['phone'] == '+61 412 345 678'
+            # The raw copy on the loser is the same number, not an extra one.
+            assert models.get_custom_fields(db, a) == []
+
     def test_apply_missing_csrf_rejected(self, client, app):
         a, b = self._two_dupes(app)
         resp = client.post('/contacts/merge/apply', data={
