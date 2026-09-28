@@ -354,7 +354,7 @@ it changes what the app promises a user.
 New capability. The tray icon exists but does not reach the launchers people
 actually start the app from.
 
-- 📋 [CL-0059] **A working tray icon with Open / Restart / Quit, on the paths users actually run.**
+- ✅ [CL-0059] **A working tray icon with Open / Restart / Quit, on the paths users actually run.**
   Requested 2026-08-06. NOTE for whoever picks this up: the menu itself is
   already written and shipped — tray.py:55-61 builds exactly "Open Contact
   List" (opens http://127.0.0.1:<port>), "Restart" (server_control.schedule)
@@ -366,6 +366,16 @@ actually start the app from.
   observing a real icon rather than by reading tray.py. Acceptance: an icon
   is visible near the clock after ./run.sh on a stock desktop, its three
   items do what they say, and Quit releases the port (INV-1).
+  Resolved (2026-09-28): verified on both paths, KDE Plasma (Wayland),
+  isolated HOME/database/port 5099. ./run.sh and the built AppImage each
+  registered an org.kde.StatusNotifierItem ('contact_list', owned by the
+  serving PID) with Open Contact List / Restart / Quit. Clicked through
+  dbusmenu Event: Open asked the browser (from source) and xdg-open
+  (AppImage) for http://127.0.0.1:5099; Restart moved the port to a new
+  PID in ~2 s, which re-registered exactly one icon, served 200 and
+  opened no browser; Quit released the port (INV-1), removed the icon
+  and left no process. No errors in either log. No code change was
+  needed: CL-0057 had fixed delivery; this item is its verification.
   **Layman:** The app should show an icon near the clock with options to open it in the browser, restart it, or shut it down — and that icon needs to actually turn up, not just exist in the code.
   Kind: fix.
   Source: user-request-2026-08-06.
