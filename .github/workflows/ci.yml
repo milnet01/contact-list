@@ -3,6 +3,11 @@ name: CI
 on:
   push:
     branches: [main]
+    # The same list .githooks/pre-push treats as documentation: nothing in
+    # scripts/gate.sh reads these. Push only -- a pull request runs everything.
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
   pull_request:
     branches: [main]
   # release.yml calls this whole workflow first, so a tag cannot publish
