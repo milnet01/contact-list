@@ -35,7 +35,7 @@ Sections: [1 Overview](#1-overview) · [2 Storage & data model](#2-storage--data
 [5 Upload & remove](#5-upload--remove-manual) · [6 Serve route](#6-serve-route) ·
 [7 Display](#7-display) · [8 Deletion & merge cleanup](#8-deletion--merge-cleanup) ·
 [9 Security](#9-security--robustness) · [10 Files & size budget](#10-new--changed-files--size-budget) ·
-[11 Testing](#11-testing) · [12 Invariants](#12-invariants) · [13 Out of scope](#13-out-of-scope-v12).
+[11 Testing](#11-testing) · [12 Invariants](#12-invariants) · [13 Out of scope](#13-out-of-scope-v12) · [14 Loop log](#14-cold-eyes-loop-log).
 
 ## 1. Overview
 
@@ -110,6 +110,20 @@ disk. Foreign-key cascade requires `PRAGMA foreign_keys = ON`, which `db.py`
 removes the file explicitly, so the cascade is defence-in-depth for the DB row,
 not the sole cleanup path.
 
+**`contact_photo_sources` (CL-0088).** The Google photo URL a stored photo came
+from, so a re-sync can skip an unchanged one (§4). Its own table for the same
+idempotency reason, in `migrations/010_photo_sources.sql`:
+
+```sql
+CREATE TABLE IF NOT EXISTS contact_photo_sources (
+    contact_id  INTEGER PRIMARY KEY REFERENCES contacts(id) ON DELETE CASCADE,
+    url         TEXT NOT NULL
+);
+```
+
+A row exists only while the contact's stored photo is the one fetched from that
+URL. A manual upload or removal (§5) deletes it.
+
 ### 2.3 Data-access helpers (`models.py`)
 
 - `set_contact_photo(db, contact_id, ext)` — upsert (`INSERT … ON CONFLICT
@@ -117,6 +131,10 @@ not the sole cleanup path.
 - `get_contact_photo_ext(db, contact_id) -> str | None` — the stored ext or None.
 - `clear_contact_photo(db, contact_id)` — delete the row (returns the old ext, if
   any, so the caller can unlink the file).
+- `get_photo_source(db, contact_id) -> str | None`, `set_photo_source(db,
+  contact_id, url)` (upsert) and `clear_photo_source(db, contact_id)` for
+  `contact_photo_sources` (CL-0088). None commits; the caller does, as with
+  `set_contact_photo`.
 
 `list_contacts` (via `_build_contact_query`) gains a `has_photo` flag per row so
 the list template can decide img-vs-initials without an N+1 query.
@@ -255,9 +273,13 @@ person's photos:
   committed before the download starts, and the photo step is wrapped in its own
   `try/except`, so it cannot abort the contact import.
 
-Re-sync is idempotent: `save_photo` overwrites and `set_contact_photo` upserts.
-(v1.2 always re-downloads a present non-default photo; it does not diff Google's
-photo etag — acceptable, photos are small and sync is user-initiated. Noted §13.)
+**An unchanged photo is not downloaded again (CL-0088).** Before fetching, the
+sync compares the chosen photo's `url` with `get_photo_source`. When they are
+equal and the contact still has a stored photo (`get_contact_photo_ext` is not
+None), it skips the download. Otherwise it downloads as above and, once
+`set_contact_photo` has recorded the new file, calls `set_photo_source` with that
+`url`. A failed download leaves the old source row as it was. Google gives a
+changed photo a new URL, so a changed photo is fetched.
 
 ## 5. Upload & remove (manual)
 
@@ -284,6 +306,8 @@ photo etag — acceptable, photos are small and sync is user-initiated. Noted §
   ticked, call `clear_contact_photo` and unlink the file. Spelling out this order
   avoids the trap where processing `remove_photo` after the upload would delete
   the file just written.
+- Either branch also calls `clear_photo_source` (CL-0088): the stored photo is no
+  longer the one Google's URL names, so the next sync must not skip it.
 - CSRF: the form already carries `_csrf_token`; unchanged. The existing validated
   token covers the multipart POST.
 
@@ -433,7 +457,10 @@ Test-first (TDD), following the existing `tests/` fixtures (`app`, `db`,
   download error leaves the contact imported and photo-less (monkeypatch the
   fetch — no real network in tests). The download runs with no transaction
   open; a redirect to a disallowed host is not followed (a loopback server stands
-  in for both ends); a download past its budget is abandoned.
+  in for both ends); a download past its budget is abandoned. **CL-0088:** a
+  second sync with the same photo URL fetches nothing; a new URL is fetched and
+  recorded; a failed fetch leaves the old source row; a manual upload or removal
+  clears the source, so the next sync fetches again.
 - **hardening/CSP** — both `test_csp_header` (`tests/test_routes.py:404`) and
   `test_style_src_has_no_unsafe_inline` (`tests/test_hardening.py:226`) unchanged
   and still pass (no CSP edit).
@@ -460,8 +487,6 @@ Test-first (TDD), following the existing `tests/` fixtures (`app`, `db`,
 
 - **Recently-viewed avatars** stay initials-only (that list is built client-side
   from localStorage names, not photo data).
-- **Photo etag diffing on re-sync** — v1 re-downloads a present non-default photo
-  each sync rather than comparing Google's photo metadata.
 - **Merge photo adoption** — a survivor with no photo does not inherit a
   merged-away contact's photo (no picker for it yet).
 - **Image cropping/resizing/thumbnails** — the browser scales via CSS
@@ -471,3 +496,12 @@ Test-first (TDD), following the existing `tests/` fixtures (`app`, `db`,
   `docs/specs/2026-07-04-photo-thumbnails-design.md`.)*
 - **Cache headers / ETag on the serve route** beyond the framework defaults from
   `send_from_directory` (§6).
+
+## 14. Cold-eyes loop log
+
+This spec's earlier review ran under the predecessor gate (`/cold-eyes`, the
+Status line counts its loops) before the project kept loop logs, and is not
+back-filled here. Columns are the four questions the current gate asks.
+
+| Loop | Date | Lanes | Q1 | Q2 | Q3 | Q4 | Verified | Fixed | Outcome |
+|------|------|-------|----|----|----|----|----------|-------|---------|
