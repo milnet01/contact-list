@@ -11,7 +11,8 @@ Sections: [1 Overview](#1-overview) · [2 CSV import](#2-csv-import-cl-0022) ·
 [3 vCard](#3-vcard-import--export-cl-0023) · [4 Merge](#4-merge-duplicates-cl-0024) ·
 [5 Data model](#5-data-model-changes) · [6 Security](#6-security--robustness) ·
 [7 Files & budget](#7-new--changed-files--size-budget) · [8 Testing](#8-testing-per-designmd-11) ·
-[9 Invariants](#9-invariants) · [10 Out of scope](#10-out-of-scope).
+[9 Invariants](#9-invariants) · [10 Out of scope](#10-out-of-scope) ·
+[11 Loop log](#11-cold-eyes-loop-log).
 
 ## 1. Overview
 
@@ -188,13 +189,22 @@ maintained.
 ### 3.1 Export — `GET /contacts/export/vcard`
 
 - Emits one `.vcf` for all contacts, `Content-Type: text/vcard`, filename
-  `contacts.vcf`. Like the existing CSV export (`routes/contacts.py:160`,
-  buffering via `io.StringIO`), the body is built in memory rather than streamed
-  — a documented deviation from DESIGN §7.2 (see §7).
-- **Export must load each contact's custom fields** (via `get_custom_fields`
-  per contact, or an equivalent join). The existing `export_contacts`
-  (`models.py:114`) selects core columns only and must **not** be reused as-is,
-  or the `X-CL` lines — and INV-2 — are silently lost.
+  `contacts.vcf`. **Both exports stream, per DESIGN §7.2 (CL-0067):** the view
+  returns a generator wrapped in `stream_with_context`, yielding one CSV row or
+  one vCard at a time, and the database rows are read from a live cursor rather
+  than `fetchall()`. Neither export holds the whole database, nor the whole
+  file, in memory. `stream_with_context` keeps the request's connection open
+  until the last chunk is sent; the teardown closes it after.
+- **Export must load each contact's custom fields in ONE query**, a `LEFT JOIN`
+  of `custom_fields` onto `contacts` ordered by name, then contact id, then
+  field name, grouped per contact as it streams. A `get_custom_fields` call per
+  contact is an N+1 and is not allowed. The CSV export's core-columns query
+  (`export_contacts` in `models.py`) must **not** be reused for vCard, or the
+  `X-CL` lines — and INV-2 — are silently lost.
+- **A failure mid-stream truncates the download.** The status line and headers
+  have already gone out, so the client sees a `200` with a short body. That is
+  the accepted cost of streaming at single-user scale; the server log carries
+  the traceback.
 - Per contact (vCard **3.0**): `BEGIN:VCARD` / `VERSION:3.0` / … / `END:VCARD`.
   - Individuals: `FN:<name>` + `N:<name>;;;;`. Companies: `FN:<name>` +
     `ORG:<name>`.
@@ -353,12 +363,9 @@ up in order and must be idempotent (`CREATE TABLE IF NOT EXISTS`) — it is.
     ~85 KB after these three features.)
   - §13 version plan — the v1.1 row now reads "CSV import, vCard import/export,
     merge duplicates".
-- **DESIGN §7.2 streaming deviation.** §7.2 asks CSV/vCard export to stream via
-  generators; both the existing CSV export and this vCard export buffer in
-  memory. Rationale (per DESIGN's "deviations require a documented rationale"):
-  single-user scale, a ≤10k-contact ceiling (§7.1) keeps the buffer small, the
-  5 MiB cap bounds it, and it matches the existing CSV export. Revisit if a
-  larger-scale mode is added.
+- **DESIGN §7.2 streaming — no longer a deviation (CL-0067).** Both exports
+  first shipped buffered, under a documented deviation. They now stream as §3.1
+  describes, so §7.2 holds as written.
 
 ## 8. Testing (per DESIGN.md §11)
 
@@ -381,6 +388,11 @@ up in order and must be idempotent (`CREATE TABLE IF NOT EXISTS`) — it is.
   `idx_cf_unique` violation), rejects `survivor ∈ losers` and <2 ids; a forced
   mid-merge failure leaves survivor + all losers unchanged (INV-3 rollback);
   `_write_contact` reuse keeps `update_contact` behaviour unchanged.
+- **Export tests (CL-0067):** both export responses are streamed
+  (`is_streamed`) and their bodies are unchanged; the vCard export issues the
+  same number of SQL statements for one contact as for many, so the N+1 cannot
+  return; contacts whose custom fields interleave in name order keep their own
+  fields.
 - **Route tests:** `/contacts/import` (CSV mapping + vcf immediate-import)
   end-to-end; `merge_preview` renders and rejects <2 selected; `merge_apply`
   merges; **a CSRF-missing POST to each of `import_view`, `import_apply`,
@@ -405,6 +417,13 @@ up in order and must be idempotent (`CREATE TABLE IF NOT EXISTS`) — it is.
 ## 10. Out of scope
 
 - Two-way / write-back sync (CL-0033), contact photos (CL-0026), groups/tags.
-- CSV/vCard *streaming* for huge files (§7 deviation) — single-user scale; the
-  size cap covers abuse.
 - Column-mapping for vCard (self-describing) and a JSON API.
+
+## 11. Cold-eyes loop log
+
+This spec's first review ran under the predecessor gate (`/cold-eyes`) before
+the project kept loop logs, and is not back-filled here. Columns are the four
+questions the current gate asks.
+
+| Loop | Date | Lanes | Q1 | Q2 | Q3 | Q4 | Verified | Fixed | Outcome |
+|------|------|-------|----|----|----|----|----------|-------|---------|
