@@ -148,3 +148,17 @@ if [ -n "$unobtainable" ]; then
     exit 1
 fi
 echo "CI PASSED: all checks green across the full Python matrix ($CI_PYTHONS)."
+
+# Record the exact tree that passed (local-gate.md § 7.1), so the pre-push hook
+# need not run this again for it. The tree is the working tree as `git add -A`
+# would commit it, hashed through a throwaway index; the real index is not
+# touched. Any change to any file, this script included, gives another hash.
+gitdir=$(git rev-parse --git-common-dir 2>/dev/null) || exit 0
+idx=$(mktemp "$gitdir/ants-gate-index.XXXXXX") || exit 0
+cp "$(git rev-parse --git-path index)" "$idx" 2>/dev/null
+if GIT_INDEX_FILE="$idx" git add -A . 2>/dev/null \
+   && tree=$(GIT_INDEX_FILE="$idx" git write-tree 2>/dev/null); then
+    mkdir -p "$gitdir/ants-gate-passed" && : > "$gitdir/ants-gate-passed/$tree"
+    echo "Recorded a full pass for tree $tree."
+fi
+rm -f "$idx"

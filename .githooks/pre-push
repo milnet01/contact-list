@@ -127,6 +127,15 @@ if [ -n "$(git status --porcelain)" ]; then
     exit 1
 fi
 
+# A tree that already passed a full local-ci.sh run needs no second run
+# (local-gate.md § 7.1). Keyed on the tree, so any change to any file misses.
+tree=$(git rev-parse "HEAD^{tree}")
+record="$(git rev-parse --git-common-dir)/ants-gate-passed/$tree"
+if [ -f "$record" ]; then
+    echo "pre-push: tree $tree already passed a full local CI run (record: $record) — skipping."
+    exit 0
+fi
+
 echo
 if "$REPO_ROOT/local-ci.sh"; then
     echo "pre-push: local CI green — pushing."
