@@ -270,16 +270,20 @@ POST like any other (§6).
   value is `YYYY-MM-DD`, `YYYYMMDD`, `--MM-DD` or `--MMDD` (a trailing time is
   dropped); any other value is kept as written. `ADR` → `address`: its
   non-empty components joined with `, `. `ORG` on a card that is not a company
-  (see Type) → `organization`. The first of each counts. An `X-LABEL` param,
-  when present, gives the field name instead.
+  (see Type) → `organization`. The first of each counts. An `X-LABEL` param
+  gives the field name instead, but only when it passes `valid_field_name`;
+  otherwise the default name stands (INV-4).
 - `X-CL` properties → custom fields, name from the `X-LABEL` param — still
-  read, so every file exported before CL-0075 still imports. Where a card
-  carries a standard property and an `X-CL` of the same name, the standard
-  property wins.
+  read, so every file exported before CL-0075 still imports. Where a standard
+  property produced a custom field under the rules above and an `X-CL` has the
+  same name, compared case-insensitively as `idx_cf_unique` does, the standard
+  property wins. A company's `ORG` produces no custom field, so its `X-CL`
+  `organization` is kept.
 - **Quoted-printable.** A value whose params include `ENCODING=QUOTED-PRINTABLE`
   or a bare `QUOTED-PRINTABLE` (vCard 2.1, still common in Android exports) is
   decoded, in its `CHARSET` (UTF-8 when absent), before anything else reads it.
-  A line ending in `=` continues on the next line.
+  Its soft line breaks are joined during unfolding: a quoted-printable line
+  ending in `=` continues on the next line, which has no leading space.
 - Unescapes `\\ \, \; \n` in values.
 - **Empty / zero-card file** → flash "No contacts found in the file."
 
@@ -466,3 +470,4 @@ questions the current gate asks.
 | Loop | Date | Lanes | Q1 | Q2 | Q3 | Q4 | Verified | Fixed | Outcome |
 |------|------|-------|----|----|----|----|----------|-------|---------|
 | 1 | 2026-09-28 | 2 | 3 | 0 | 2 | 1 | 6 | 6 | Gate armed by the CL-0067 amendment (§3.1 streaming and the single custom-field query, §7, §8, §10). **One loop only, at the user's standing instruction** — not run to convergence. Every lane held all four questions. Found while building the packet, by running it: the draft said `stream_with_context` keeps the view's connection open, but Flask 3.1 tears the view's context down first, so a cursor made in the view is closed before the first chunk — §3.1 now has the generator open its own connection. Both lanes found the join's sort order named no collation (a literal build reorders the export), that nothing said `export_contacts` stops returning a list, and that §8's `is_streamed` check passes a buffered body wrapped in a one-yield generator — §8 now asks for one chunk per contact. Both lanes also found §7 naming `routes/contacts.py` for routes that live in `routes/import_export.py` and `routes/merge.py`; outside the amendment, fixed because no loop remains. A lane's open question became the sixth fix: measured under the app's `make_server`, a mid-stream failure logs its traceback and the client sees an incomplete download, not a clean short file. Five of six findings anchor inside the amendment. Neither lane arrived with a git snapshot. |
+| 2 | 2026-09-28 | 2 | 0 | 1 | 2 | 0 | 3 | 3 | Gate armed by the CL-0075 amendment (§3.1 standard BDAY/ADR/ORG export, company `N`, folding; §3.2 their import, X-CL precedence, quoted-printable; INV-2; §8). **One loop only, at the user's standing instruction** — not run to convergence. Both lanes held all four questions. Both found the X-CL precedence sentence builds two ways: read broadly it drops every company's `X-CL organization` (INV-2), and a case-sensitive name match inserts two names `idx_cf_unique` treats as one; it is now scoped to a standard property that produced a custom field, compared case-insensitively. One lane found a foreign `X-LABEL` on BDAY/ADR/ORG used unchecked, against INV-4; it now falls back to the default name. A lane's open question became the third fix: quoted-printable soft breaks must be joined during unfolding, since §3.2 unfolds before it splits. All three anchor inside the amendment. **Unverified, declared:** whether other readers accept `BDAY:--MM-DD` in a 3.0 card needs a target app, which this machine cannot run. Open question resolved clean, not tallied: `ORG`'s whole unescaped value is the builder's call. Neither lane arrived with a git snapshot. |
