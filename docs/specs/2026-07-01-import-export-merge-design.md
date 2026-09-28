@@ -213,11 +213,23 @@ maintained.
   single-user scale; the server log carries the traceback.
 - Per contact (vCard **3.0**): `BEGIN:VCARD` / `VERSION:3.0` / … / `END:VCARD`.
   - Individuals: `FN:<name>` + `N:<name>;;;;`. Companies: `FN:<name>` +
-    `ORG:<name>`.
+    `N:;;;;` (RFC 2426 makes `N` required in 3.0) + `ORG:<name>`.
   - `EMAIL:<email>`, `TEL:<phone>`, `NOTE:<notes>` when present.
-  - **Every** custom field — including numbered `Email 2` / `Phone 2` extras
-    (§2.3) — is emitted as `X-CL;X-LABEL=<name>:<value>`, never as an extra
-    `EMAIL`/`TEL`. (This is what makes INV-2 hold: a numbered extra round-trips
+  - **Three custom fields map to standard properties (CL-0075)**, matched by
+    name case-insensitively — the same three Google sync maps (DESIGN §8.2):
+    - `birthday` → `BDAY:YYYY-MM-DD`, or `BDAY:--MM-DD` with no year — only when
+      the value matches the app's birthday format (`models._BIRTHDAY_RE`);
+      any other value stays `X-CL`.
+    - `address` → `ADR:;;<value>;;;;` — the whole text in the street part.
+    - `organization` → `ORG:<value>`, on an individual's card only. A company
+      card's `ORG` is its name, so there it stays `X-CL`.
+
+    Each carries `X-LABEL=<name>` as a parameter, so the field name's exact
+    spelling survives a round trip; other readers ignore an unknown `X-`
+    parameter.
+  - **Every other** custom field — including numbered `Email 2` / `Phone 2`
+    extras (§2.3) — is emitted as `X-CL;X-LABEL=<name>:<value>`, never as an
+    extra `EMAIL`/`TEL`. (This is what makes INV-2 hold: a numbered extra round-trips
     back to the same custom field, not a second primary value.) The property
     name is the fixed token `X-CL`; the original field name rides in the mandatory
     `X-LABEL` param (de-sanitising on import would be lossy, so the param is
@@ -225,10 +237,8 @@ maintained.
     `[a-zA-Z0-9_ ]`, so the `X-LABEL` value is all vCard param SAFE-CHARs (no
     `; : ,`) and needs no quoting or caret-escaping.
 - Property **values** are escaped per RFC 6350/2426: `\`→`\\`, `,`→`\,`, `;`→
-  `\;`, newline→`\n`. Lines are emitted unfolded — this round-trips through our
-  own importer (INV-2) but is not guaranteed to interoperate with third-party
-  readers that require ≤75-octet folding. Acceptable: export targets our own
-  re-import.
+  `\;`, newline→`\n`. A line longer than 75 octets is folded (CRLF plus one
+  space, RFC 6350 §3.2), never inside a multi-byte UTF-8 character.
 
 ### 3.2 Import — `POST /contacts/import` accepts `.vcf` too
 
@@ -240,7 +250,7 @@ previews first): vCard needs no field mapping, and additive import (§2.5) is
 non-destructive, so there is nothing to preview-gate. CSRF is validated on this
 POST like any other (§6).
 
-- Parses vCard **3.0 and 4.0**. Unfolds continuation lines (leading space/tab
+- Parses vCard **3.0 and 4.0**, plus 2.1's quoted-printable values (below). Unfolds continuation lines (leading space/tab
   continues the previous) first, then splits each `PROP;PARAMS:VALUE`.
 - **Name.** `FN` → name; if no `FN`, assemble from `N`'s structured parts. A card
   with neither a usable `FN` nor `N` is **skipped and counted** in the summary
@@ -256,7 +266,20 @@ POST like any other (§6).
   Additional `EMAIL`/`TEL` → custom fields labelled `Email 2`, `Phone 2`, …
   (numbered + sanitised per §2.3 — never the raw `TYPE=` param, which may hold
   characters `valid_field_name` rejects).
-- `X-CL` properties → custom fields, name from the `X-LABEL` param.
+- `BDAY` → custom field `birthday`, stored as `YYYY-MM-DD` or `MM-DD` when the
+  value is `YYYY-MM-DD`, `YYYYMMDD`, `--MM-DD` or `--MMDD` (a trailing time is
+  dropped); any other value is kept as written. `ADR` → `address`: its
+  non-empty components joined with `, `. `ORG` on a card that is not a company
+  (see Type) → `organization`. The first of each counts. An `X-LABEL` param,
+  when present, gives the field name instead.
+- `X-CL` properties → custom fields, name from the `X-LABEL` param — still
+  read, so every file exported before CL-0075 still imports. Where a card
+  carries a standard property and an `X-CL` of the same name, the standard
+  property wins.
+- **Quoted-printable.** A value whose params include `ENCODING=QUOTED-PRINTABLE`
+  or a bare `QUOTED-PRINTABLE` (vCard 2.1, still common in Android exports) is
+  decoded, in its `CHARSET` (UTF-8 when absent), before anything else reads it.
+  A line ending in `=` continues on the next line.
 - Unescapes `\\ \, \; \n` in values.
 - **Empty / zero-card file** → flash "No contacts found in the file."
 
@@ -395,6 +418,12 @@ up in order and must be idempotent (`CREATE TABLE IF NOT EXISTS`) — it is.
   `idx_cf_unique` violation), rejects `survivor ∈ losers` and <2 ids; a forced
   mid-merge failure leaves survivor + all losers unchanged (INV-3 rollback);
   `_write_contact` reuse keeps `update_contact` behaviour unchanged.
+- **Standard-property tests (CL-0075):** each of the three maps both ways,
+  including a yearless birthday and a non-date birthday (stays `X-CL`); a card
+  from another app with `BDAY`/`ADR`/`ORG` and no `X-LABEL` imports them; an
+  `X-CL`-only file from before CL-0075 still imports; a company card carries
+  `N`; a line over 75 octets folds and a multi-byte character is never split;
+  a quoted-printable note with a soft line break decodes.
 - **Export tests (CL-0067):** each export's body arrives in at least one chunk
   per contact, so a buffered body wrapped in a one-yield generator fails;
   `export_contacts` returns a cursor, not a list; the vCard export issues the
@@ -414,7 +443,8 @@ up in order and must be idempotent (`CREATE TABLE IF NOT EXISTS`) — it is.
 - **INV-2.** A vCard produced by export, re-imported into an empty DB, reproduces
   the same contacts and custom fields. (Lossless because custom-field names are
   constrained to `valid_field_name`, and every custom field — including numbered
-  extras — round-trips via `X-CL`/`X-LABEL`, never as a second `EMAIL`/`TEL`.)
+  extras — round-trips via `X-CL`, or via `BDAY`/`ADR`/`ORG` carrying its name
+  in `X-LABEL`, never as a second `EMAIL`/`TEL`.)
 - **INV-3.** Merge is atomic: on any failure survivor and all losers are left
   exactly as before (single `with db:` block).
 - **INV-4.** No import/merge value bypasses `_validate_contact_type` /
