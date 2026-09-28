@@ -566,10 +566,17 @@ All routes are server-rendered HTML. No REST/JSON API in v1 (add in v2 if needed
 | GET | `/contacts/<id>/edit` | Edit contact form |
 | POST | `/contacts/<id>` | Update contact |
 | POST | `/contacts/<id>/delete` | Delete contact |
+| POST | `/contacts/bulk-delete` | Delete the selected contacts (CL-0068) |
 | POST | `/contacts/<id>/favourite` | Toggle favourite / pinned status (CL-0039) |
 | GET | `/contacts/<id>/photo` | Stream the contact's stored photo (CL-0026) |
 | GET | `/contacts/export` | CSV export of all contacts |
+| GET | `/contacts/export/vcard` | vCard export of all contacts (CL-0023) |
+| GET, POST | `/contacts/import` | Import page; POST uploads a CSV (to the column-mapping step) or a vCard (imported at once) (CL-0022, CL-0023) |
+| POST | `/contacts/import/apply` | Import a CSV with the chosen column mapping |
 | GET | `/contacts/duplicates` | Scan and display duplicate contacts |
+| POST | `/contacts/merge` | Merge preview for the selected contacts (CL-0024) |
+| POST | `/contacts/merge/apply` | Perform the merge |
+| GET | `/contacts/birthdays` | Upcoming birthdays (CL-0038) |
 | GET | `/sync` | Google sync status page |
 | POST | `/sync/start` | Trigger Google sync (import and export) |
 | POST | `/sync/authorize` | Start OAuth flow (Desktop client) |
@@ -587,9 +594,14 @@ All routes are server-rendered HTML. No REST/JSON API in v1 (add in v2 if needed
 | `letter` | Filter by first letter (A-Z or `#` for non-alpha) |
 | `tag` | Filter by tag (repeatable; matches contacts carrying **all** given tags) |
 | `page` | Page number (clamped to valid range) |
-| `per_page` | Items per page (1-200, default 50) |
-| `sort` | Sort column: `name`, `type`, `created`, `updated` |
-| `dir` | Sort direction: `asc` or `desc` |
+| `per_page` | Items per page (1-200; default: the Settings page size) |
+| `sort` | Sort column: `name`, `type`, `created`, `updated` (default: the Settings sort) |
+| `dir` | Sort direction: `asc` or `desc` (default: the Settings direction) |
+
+The contact routes that lead back to a list — new, create, detail, edit,
+update, delete, favourite and bulk delete — also take `ref`: the list URL to
+return to, carried through the navigation chain. Only a local path is
+accepted (`_safe_ref` in `routes/contacts.py`); anything else is dropped.
 
 ---
 
