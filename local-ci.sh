@@ -1,17 +1,10 @@
 #!/usr/bin/env bash
-# Local mirror of .github/workflows/ci.yml — run this before pushing to catch
-# exactly what GitHub's CI would catch.
+# Run GitHub's CI locally, before pushing. The checks are scripts/gate.sh and the
+# dev-tool pins are requirements-dev.txt; ci.yml uses the same two files, so
+# there is one list of steps (local-gate.md § 3). This script adds the matrix
+# loop, and fails if its Python list differs from ci.yml's.
 #
-# Kept in lockstep with ci.yml:
-#   - the Python matrix (CI_PYTHONS below == matrix.python-version)
-#   - the dev-tool pins (DEV_TOOLS below == the `pip install` in ci.yml)
-#   - the three checks, in order: ruff check . , mypy , pytest
-# If ci.yml changes any of these, change them here too.
-#
-# Differences from CI, by design:
-#   - CI stops at the first failing step; this runs every check and reports all
-#     failures in one pass (more useful locally). The pass/fail verdict is
-#     identical — it exits non-zero iff any check under any version fails.
+# By design:
 #   - Each matrix Python runs in its own cached venv under .ci-venvs/ (a fresh,
 #     isolated env like CI), separate from the project's ./venv used to run the app.
 #
@@ -30,16 +23,22 @@ set -uo pipefail
 APP_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$APP_DIR" || exit 1
 
-# Keep in lockstep with ci.yml's matrix.python-version.
+# The checks themselves are scripts/gate.sh, which ci.yml runs too; the dev-tool
+# pins are requirements-dev.txt, which both install. What this script owns is
+# the matrix loop, so it checks its list against ci.yml's below.
 CI_PYTHONS="3.12 3.13 3.14"
-# Keep in lockstep with ci.yml's dev-tool pins (ruff, mypy, djlint; not app runtime deps).
-# These cap the MAJOR/MINOR only so a breaking release can't land unreviewed; raise
-# them promptly once a new one is vetted (DESIGN.md §3 — dependencies track latest).
-DEV_TOOLS=("ruff~=0.16.1" "mypy~=2.1" "djlint~=1.46")
 
 VENV_ROOT="$APP_DIR/.ci-venvs"
 failures=0
 unobtainable=""
+
+# The legs must be ci.yml's legs (local-gate.md § 3): a Python added there and
+# not here would never run locally, and nothing else would say so.
+wf_pythons=$(grep -oE 'python-version: \[[^]]*\]' .github/workflows/ci.yml | grep -oE '[0-9]+\.[0-9]+' | tr '\n' ' ')
+if [ "${wf_pythons% }" != "$CI_PYTHONS" ]; then
+    echo "!!! ERROR: CI_PYTHONS ($CI_PYTHONS) != ci.yml's matrix (${wf_pythons% }). Make them agree."
+    exit 1
+fi
 
 # uv installs to ~/.local/bin, which isn't always on a non-login shell's PATH.
 export PATH="$HOME/.local/bin:$PATH"
@@ -92,7 +91,7 @@ for ver in $CI_PYTHONS; do
     # changes, which keeps the common case fast without the stale-env class of
     # false pass.
     stamp="$venv/.ci-stamp"
-    want="$("$py" -c 'import sys;print(sys.version)' 2>&1)|${DEV_TOOLS[*]}|$(sha256sum requirements.txt | cut -d' ' -f1)"
+    want="$("$py" -c 'import sys;print(sys.version)' 2>&1)|$(sha256sum requirements.txt requirements-dev.txt | cut -d' ' -f1 | tr '\n' ' ')"
     if [ -d "$venv" ] && [ "$(cat "$stamp" 2>/dev/null)" != "$want" ]; then
         echo "    inputs changed since this venv was built — rebuilding it"
         rm -rf "$venv"
@@ -111,7 +110,7 @@ for ver in $CI_PYTHONS; do
     # requires be surfaced.
     if ! "$venv/bin/python" -m pip install --quiet --upgrade pip \
        || ! "$venv/bin/pip" install --quiet --upgrade -r requirements.txt \
-       || ! "$venv/bin/pip" install --quiet --upgrade "${DEV_TOOLS[@]}"; then
+       || ! "$venv/bin/pip" install --quiet --upgrade -r requirements-dev.txt; then
         # Setup ran outside run_step and so incremented nothing: an index outage
         # left the cached tools in place, every check ran against a stale
         # environment, and the run still printed "CI PASSED".
@@ -122,17 +121,14 @@ for ver in $CI_PYTHONS; do
     fi
     printf '%s' "$want" > "$stamp"
 
-    run_step "[$ver] Lint (ruff)"       "$venv/bin/ruff" check .
-    run_step "[$ver] Type-check (mypy)" "$venv/bin/mypy"
-    run_step "[$ver] Lint templates (djlint)" "$venv/bin/djlint" templates --lint
-    run_step "[$ver] Test (pytest)"     "$venv/bin/pytest"
+    run_step "[$ver] Checks (scripts/gate.sh python)" env PATH="$venv/bin:$PATH" scripts/gate.sh python
 done
 
 # Mirrors ci.yml's js-lint job (CL-0077). A missing Node is a failure, not a
 # skip, for the same reason a missing matrix Python is.
 if command -v npm >/dev/null 2>&1; then
     if npm ci --silent --no-audit --no-fund; then
-        run_step "Lint JavaScript (eslint)" npx --no-install eslint static/
+        run_step "Checks (scripts/gate.sh js)" scripts/gate.sh js
     else
         echo "!!! ERROR: npm ci failed -- the JavaScript lint did NOT run."
         failures=$((failures + 1))

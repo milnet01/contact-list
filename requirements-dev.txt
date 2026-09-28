@@ -1,0 +1,7 @@
+# Development and CI tools -- not app runtime dependencies (DESIGN.md §3 keeps
+# them out of the runtime budget). ci.yml and local-ci.sh both install this
+# file, so the two cannot pin different versions. Caps are major/minor only;
+# the newest in-range release is always installed.
+ruff~=0.16.1
+mypy~=2.1
+djlint~=1.46

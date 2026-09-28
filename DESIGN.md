@@ -123,7 +123,7 @@ five scopes below, because four of them are invisible to `pip`:
 #    instead of our 8, which is how a real result gets missed.
 ./venv/bin/pip list --outdated --local
 
-# 2. Dev/CI tools — pinned in ci.yml and mirrored in local-ci.sh's DEV_TOOLS,
+# 2. Dev/CI tools — pinned in requirements-dev.txt, which ci.yml and local-ci.sh both install,
 #    NOT in requirements.txt, so step 1 never sees them.
 curl -fsS https://pypi.org/pypi/ruff/json | python3 -c 'import json,sys;print(json.load(sys.stdin)["info"]["version"])'
 curl -fsS https://pypi.org/pypi/mypy/json | python3 -c 'import json,sys;print(json.load(sys.stdin)["info"]["version"])'
@@ -159,7 +159,7 @@ gh api repos/milnet01/contact-list/dependabot/alerts --jq '.[].security_advisory
 #    behind with no register row until someone spotted it by eye. This looks at
 #    the manifests instead of the installed set. Every hit must be a major cap
 #    (see the 0.x rule above) or have a register row.
-grep -nE '[<~]=?[0-9]' requirements.txt pyproject.toml
+grep -nE '[<~]=?[0-9]' requirements.txt requirements-dev.txt pyproject.toml
 grep -nE '"[~^<>=]' package.json
 grep -rnE 'uses:.*@|python-version|~=' .github/workflows/ local-ci.sh
 ```
