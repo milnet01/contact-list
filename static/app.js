@@ -264,7 +264,7 @@
         // on every page, until the user clears storage.
         var parsed;
         try { parsed = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]'); }
-        catch (e) { return []; }
+        catch { return []; }
         if (!Array.isArray(parsed)) return [];
         return parsed.filter(function (r) {
             return r && typeof r.id === 'string'
@@ -275,7 +275,7 @@
 
     function saveRecent(list) {
         try { localStorage.setItem(RECENT_KEY, JSON.stringify(list)); }
-        catch (e) { /* quota exceeded */ }
+        catch { /* quota exceeded */ }
     }
 
     // Track current contact detail page
@@ -295,8 +295,8 @@
 
     // Show recently viewed on list page
     if (recentContainer && window.location.pathname === '/contacts') {
-        var recent = getRecent();
-        if (recent.length > 0) {
+        var shown = getRecent();
+        if (shown.length > 0) {
             // Build with createElement/textContent (not innerHTML) so a contact
             // name containing HTML can never be re-parsed as markup.
             var titleEl = document.createElement('div');
@@ -306,7 +306,7 @@
             var listEl = document.createElement('div');
             listEl.className = 'recently-viewed-list';
 
-            recent.forEach(function (r) {
+            shown.forEach(function (r) {
                 var initial = r.name.charAt(0).toUpperCase();
                 var cls = /[A-Z]/.test(initial) ? 'avatar-' + initial : 'avatar-other';
                 var link = document.createElement('a');
@@ -616,6 +616,7 @@
 // would never run on the Settings page.
 // =====================================================================
 (function () {
+    'use strict';
     document.querySelectorAll('.tabs').forEach(function (tabs) {
         var tabList = tabs.querySelectorAll('.tab');
         if (!tabList.length) return;

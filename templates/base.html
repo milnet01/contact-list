@@ -15,7 +15,7 @@
                 Contacts
             </a>
             <div class="nav-actions">
-                <button class="nav-toggle" aria-label="Toggle menu" aria-expanded="false">
+                <button type="button" class="nav-toggle" aria-label="Toggle menu" aria-expanded="false">
                     <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M3 5a1 1 0 011-1h12a1 1 0 010 2H4a1 1 0 01-1-1zm0 5a1 1 0 011-1h12a1 1 0 010 2H4a1 1 0 01-1-1zm0 5a1 1 0 011-1h12a1 1 0 010 2H4a1 1 0 01-1-1z" clip-rule="evenodd"/></svg>
                 </button>
             </div>
@@ -37,7 +37,7 @@
                 {% for category, message in messages %}
                     <div class="flash flash-{{ category }}">
                         {{ message }}
-                        <button class="flash-dismiss" aria-label="Dismiss">&times;</button>
+                        <button type="button" class="flash-dismiss" aria-label="Dismiss">&times;</button>
                     </div>
                 {% endfor %}
             {% endif %}
@@ -51,7 +51,7 @@
         <span>&middot;</span>
         <span>Last synced: {{ last_synced|friendly_date if last_synced else 'Never' }}</span>
     </footer>
-    <button id="back-to-top" class="back-to-top" aria-label="Back to top" title="Back to top" hidden>
+    <button type="button" id="back-to-top" class="back-to-top" aria-label="Back to top" title="Back to top" hidden>
         <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M10 17a1 1 0 01-1-1V6.414L5.707 9.707a1 1 0 01-1.414-1.414l5-5a1 1 0 011.414 0l5 5a1 1 0 01-1.414 1.414L11 6.414V16a1 1 0 01-1 1z" clip-rule="evenodd"/></svg>
     </button>
 
@@ -60,8 +60,8 @@
         <div class="modal" role="alertdialog" aria-modal="true" aria-labelledby="confirm-message">
             <p class="modal-message" id="confirm-message"></p>
             <div class="modal-actions">
-                <button class="btn btn-danger" id="confirm-yes">Confirm</button>
-                <button class="btn btn-secondary" id="confirm-no">Cancel</button>
+                <button type="button" class="btn btn-danger" id="confirm-yes">Confirm</button>
+                <button type="button" class="btn btn-secondary" id="confirm-no">Cancel</button>
             </div>
         </div>
     </div>

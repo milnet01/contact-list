@@ -46,7 +46,7 @@ flask>=3.1.1,<4.0
 google-api-python-client>=2.0,<3.0
 google-auth>=2.0,<3.0
 google-auth-oauthlib>=1.0,<2.0
-google-auth-httplib2>=0.2,<1.0
+google-auth-httplib2>=0.4,<0.5
 phonenumbers>=9.0,<10.0
 pillow>=12.0,<13.0
 pystray>=0.19,<0.20
@@ -67,12 +67,17 @@ CPython's `zoneinfo` falls back to that package, and without it the frozen
 as a raw ISO string. Linux and macOS take their zone data from the OS and never
 install it.
 
+ESLint (with `@eslint/js` and `globals`, declared in `package.json`) and djlint
+are development-only lint tools (CL-0077). They run in `local-ci.sh` and CI and
+ship nothing, so the 8-runtime budget is unaffected.
+
 ### Dependency Versioning Policy
 
 **Default: latest.** Every dependency tracks its latest stable release — for
 features **and** security. Scope: runtime pip packages (`requirements.txt`), dev
-/ CI tools (`ruff`, `mypy`, `pytest`), GitHub Actions (`actions/checkout`,
-`actions/setup-python`) and the CI runner image, and the Python runtime itself.
+/ CI tools (`ruff`, `mypy`, `pytest`, `djlint`, and the npm packages in
+`package.json`), GitHub Actions (`actions/checkout`, `actions/setup-python`,
+`actions/setup-node`) and the CI runner image, and the Python and Node runtimes.
 The `requirements.txt` constraints cap the **major** version, so an unreviewed
 breaking major cannot land silently; within that cap the newest release is
 always installed, and the cap is raised promptly once a new major is vetted.
@@ -122,10 +127,12 @@ five scopes below, because four of them are invisible to `pip`:
 #    NOT in requirements.txt, so step 1 never sees them.
 curl -fsS https://pypi.org/pypi/ruff/json | python3 -c 'import json,sys;print(json.load(sys.stdin)["info"]["version"])'
 curl -fsS https://pypi.org/pypi/mypy/json | python3 -c 'import json,sys;print(json.load(sys.stdin)["info"]["version"])'
+curl -fsS https://pypi.org/pypi/djlint/json | python3 -c 'import json,sys;print(json.load(sys.stdin)["info"]["version"])'
+npm outdated   # the npm dev tools in package.json; silent when all are latest
 
 # 3. Every GitHub Action and runner image used by any workflow.
 grep -rh "uses:\|runs-on:" .github/workflows/ | sort -u
-for r in actions/checkout actions/setup-python actions/upload-artifact \
+for r in actions/checkout actions/setup-python actions/setup-node actions/upload-artifact \
          actions/download-artifact softprops/action-gh-release; do
   echo "$r $(gh api "repos/$r/releases/latest" -q .tag_name)"
 done
@@ -153,6 +160,7 @@ gh api repos/milnet01/contact-list/dependabot/alerts --jq '.[].security_advisory
 #    the manifests instead of the installed set. Every hit must be a major cap
 #    (see the 0.x rule above) or have a register row.
 grep -nE '[<~]=?[0-9]' requirements.txt pyproject.toml
+grep -nE '"[~^<>=]' package.json
 grep -rnE 'uses:.*@|python-version|~=' .github/workflows/ local-ci.sh
 ```
 

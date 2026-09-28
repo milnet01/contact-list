@@ -563,7 +563,7 @@ and the judgement is that no release waits on them.
   Kind: chore.
   Source: review-code 2026-09-07 (five lanes).
 
-- 📋 [CL-0077] **JavaScript, templates and the PyInstaller spec are analysed by no tool at all.**
+- ✅ [CL-0077] **JavaScript, templates and the PyInstaller spec are analysed by no tool at all.**
   Reported as a gap in the static-analysis tool set rather than as a
   review win, because a tool should have decided each of these:
 
@@ -586,6 +586,16 @@ and the judgement is that no release waits on them.
   static/app.js (a Node toolchain for development and CI only) and djlint
   for the templates, run by local-ci and CI. Nothing ships in the app. A
   JS test runner (CL-0084's open question) can follow the same route.
+  Resolved (2026-09-28): ESLint 10 (recommended + strict:function) on
+  static/, djlint --lint on templates, and ruff now reading
+  packaging/*.spec with PyInstaller's five injected names as builtins.
+  Wired into ci.yml (djlint in the Python matrix, a js-lint job on Node
+  LTS) and mirrored in local-ci.sh, which fails if npm is missing. First
+  run's findings fixed: a redeclared var, two unused catch bindings, an
+  IIFE without 'use strict', five buttons with no type, an extra blank
+  line. H023 (entity refs) ignored as style; the restart page's
+  deliberate meta refresh is disabled inline. Each new check proven red
+  on a planted defect.
   **Layman:** Our automated checks cover the Python and shell code but not the browser code, the page templates, or the packaging script.
   Kind: chore.
   Source: review-code 2026-09-07 (frontend-js, templates and shell-ci lanes); gap in check-code's tool set.

@@ -7,7 +7,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     {% if action == 'restart' %}
+    {# The timed refresh is the point: it brings the user back once the server is up again. #}
+    {# djlint:off H052 #}
     <meta http-equiv="refresh" content="3; url={{ url_for('contacts.contact_list') }}">
+    {# djlint:on #}
     <title>Restarting…</title>
     {% else %}
     <title>Server stopped</title>

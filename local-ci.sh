@@ -32,10 +32,10 @@ cd "$APP_DIR" || exit 1
 
 # Keep in lockstep with ci.yml's matrix.python-version.
 CI_PYTHONS="3.12 3.13 3.14"
-# Keep in lockstep with ci.yml's dev-tool pins (ruff + mypy; not app runtime deps).
+# Keep in lockstep with ci.yml's dev-tool pins (ruff, mypy, djlint; not app runtime deps).
 # These cap the MAJOR/MINOR only so a breaking release can't land unreviewed; raise
 # them promptly once a new one is vetted (DESIGN.md §3 — dependencies track latest).
-DEV_TOOLS=("ruff~=0.16.1" "mypy~=2.1")
+DEV_TOOLS=("ruff~=0.16.1" "mypy~=2.1" "djlint~=1.46")
 
 VENV_ROOT="$APP_DIR/.ci-venvs"
 failures=0
@@ -124,8 +124,23 @@ for ver in $CI_PYTHONS; do
 
     run_step "[$ver] Lint (ruff)"       "$venv/bin/ruff" check .
     run_step "[$ver] Type-check (mypy)" "$venv/bin/mypy"
+    run_step "[$ver] Lint templates (djlint)" "$venv/bin/djlint" templates --lint
     run_step "[$ver] Test (pytest)"     "$venv/bin/pytest"
 done
+
+# Mirrors ci.yml's js-lint job (CL-0077). A missing Node is a failure, not a
+# skip, for the same reason a missing matrix Python is.
+if command -v npm >/dev/null 2>&1; then
+    if npm ci --silent --no-audit --no-fund; then
+        run_step "Lint JavaScript (eslint)" npx --no-install eslint static/
+    else
+        echo "!!! ERROR: npm ci failed -- the JavaScript lint did NOT run."
+        failures=$((failures + 1))
+    fi
+else
+    echo "!!! ERROR: npm not found -- CI's js-lint job is NOT mirrored. Install Node.js."
+    failures=$((failures + 1))
+fi
 
 if [ "$failures" -ne 0 ]; then
     echo "CI FAILED: $failures step(s) failed — fix before pushing."

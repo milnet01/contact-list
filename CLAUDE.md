@@ -38,7 +38,7 @@ JS. No ORM. Google import is in `google_sync.py` / `google_auth.py`.
 ```bash
 ./run.sh                         # create venv, install, launch on :5002
 python -m pytest tests/ -v       # run the test suite
-./local-ci.sh                    # ruff + mypy + pytest across the FULL Python matrix
+./local-ci.sh                    # ruff, mypy, djlint, pytest on the FULL Python matrix, plus ESLint (needs Node)
 git config core.hooksPath .githooks   # once per clone: run local CI before every push
 ```
 

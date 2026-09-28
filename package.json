@@ -1,0 +1,10 @@
+{
+  "name": "contact-list-dev-tools",
+  "private": true,
+  "description": "Development-only tooling (CL-0077). Nothing here ships in the app.",
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.11.0",
+    "globals": "^17.12.0"
+  }
+}

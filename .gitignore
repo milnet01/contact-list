@@ -29,3 +29,6 @@ packaging/icon.icns
 packaging/contact-list.png
 Contact-List-x86_64.AppImage
 Contact-List.dmg
+
+# npm dev tools (CL-0077)
+node_modules/

@@ -163,8 +163,9 @@ will ask you to reconnect.
 python -m pytest tests/ -v
 ```
 
-`./local-ci.sh` runs the exact checks GitHub CI does (ruff, mypy, and the test suite across
-Python 3.12 and 3.13) — handy before pushing.
+`./local-ci.sh` runs the exact checks GitHub CI does — ruff, mypy, djlint and the test
+suite on every Python in the CI matrix, plus ESLint on the browser script — handy before
+pushing. ESLint needs Node.js; `npm ci` installs it and its config into `node_modules/`.
 
 ## Project layout
 

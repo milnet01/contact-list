@@ -8,6 +8,10 @@
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+# The PyInstaller spec is Python under another extension, so ruff would skip it
+# (CL-0077). PyInstaller runs it with these names already defined.
+extend-include = ["packaging/*.spec"]
+builtins = ["Analysis", "PYZ", "EXE", "COLLECT", "BUNDLE"]
 
 [tool.ruff.lint]
 # Ruff's historical default set, stated explicitly rather than inherited (CL-0062).
@@ -17,6 +21,13 @@ target-version = "py312"
 # version decision instead of a code-review decision. Widening it is deliberate
 # work, tracked as CL-0062 — not something a dependency bump should do by itself.
 select = ["E4", "E7", "E9", "F"]
+
+[tool.djlint]
+# Template lint (CL-0077), run with --lint only; djlint never reformats here.
+profile = "jinja"
+# H023 asks for literal characters instead of entity references (&times;,
+# &middot;). Named entities are valid HTML and read clearly in source.
+ignore = "H023"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
