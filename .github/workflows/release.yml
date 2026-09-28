@@ -125,6 +125,24 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false   # this job holds contents: write
+      # The release notes are the CHANGELOG section verbatim, and the title is
+      # "<version> — <theme>" from its **Theme:** line (releases.md § 5). Without
+      # this the action published v1.1.0 with an empty body and a bare tag title.
+      - name: Release notes from CHANGELOG.md
+        id: notes
+        run: |
+          ver="${GITHUB_REF_NAME#v}"
+          awk -v v="$ver" 'index($0, "## [" v "]")==1 {f=1; next} /^## \[/ {f=0} f' \
+            CHANGELOG.md > "$RUNNER_TEMP/notes.md"
+          if ! grep -q '[^[:space:]]' "$RUNNER_TEMP/notes.md"; then
+            echo "no CHANGELOG.md section for $ver" >&2
+            exit 1
+          fi
+          theme=$(sed -n 's/^\*\*Theme:\*\* *//p' "$RUNNER_TEMP/notes.md" | head -1)
+          echo "title=$ver${theme:+ — $theme}" >> "$GITHUB_OUTPUT"
       - uses: actions/download-artifact@v8
       # SHA-pinned, unlike the actions/* above. This is the one third-party
       # action in the tree: a mutable tag here can be moved by someone outside
@@ -136,6 +154,8 @@ jobs:
       # then dereference the tag object it returns.
       - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64  # v3.0.3
         with:
+          name: ${{ steps.notes.outputs.title }}
+          body_path: ${{ runner.temp }}/notes.md
           files: |
             linux/Contact-List-x86_64.AppImage
             windows/Contact-List.exe
