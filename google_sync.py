@@ -724,6 +724,12 @@ def _store_person_photo(config: Mapping[str, Any], db: sqlite3.Connection, conta
         url = entry.get('url')
         if not url or not _is_allowed_photo_url(url):
             continue
+        # Skip an unchanged photo that is still stored (CL-0088). The file check
+        # keeps the old self-healing: a photo whose file went missing is fetched.
+        stored_ext = models.get_contact_photo_ext(db, contact_id)
+        if (stored_ext and models.get_photo_source(db, contact_id) == url
+                and photos.photo_file_exists(config, contact_id, stored_ext)):
+            return
         try:
             data = _fetch_photo_bytes(url)
             old_ext = models.get_contact_photo_ext(db, contact_id)
@@ -732,6 +738,7 @@ def _store_person_photo(config: Mapping[str, Any], db: sqlite3.Connection, conta
             log.warning('Skipping photo for contact %s (download/validation failed)', contact_id)
             return
         models.set_contact_photo(db, contact_id, ext)
+        models.set_photo_source(db, contact_id, url)
         return  # first usable photo only
 
 

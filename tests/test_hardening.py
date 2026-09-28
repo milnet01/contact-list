@@ -333,6 +333,100 @@ class TestSyncPhotos:
         google_sync._store_person_photo(app.config, db, cid, person)  # must not raise
         assert models.get_contact_photo_ext(db, cid) is None
 
+    # --- CL-0088: an unchanged photo is not downloaded again ----------------
+
+    def _counting_fetch(self, monkeypatch):
+        import google_sync
+        calls: list[str] = []
+
+        def fetch(url):
+            calls.append(url)
+            return self._PNG
+
+        monkeypatch.setattr(google_sync, '_fetch_photo_bytes', fetch)
+        return calls
+
+    def test_same_url_is_not_fetched_again(self, app, db, monkeypatch):
+        import google_sync
+        calls = self._counting_fetch(monkeypatch)
+        person = self._person('https://lh3.googleusercontent.com/abc')
+        cid = google_sync._upsert_person(db, person, 'US')
+        google_sync._store_person_photo(app.config, db, cid, person)
+        google_sync._store_person_photo(app.config, db, cid, person)
+        assert len(calls) == 1
+
+    def test_new_url_is_fetched_and_recorded(self, app, db, monkeypatch):
+        import google_sync
+        import models
+        calls = self._counting_fetch(monkeypatch)
+        cid = google_sync._upsert_person(db, self._person('https://lh3.googleusercontent.com/a'), 'US')
+        google_sync._store_person_photo(app.config, db, cid, self._person('https://lh3.googleusercontent.com/a'))
+        google_sync._store_person_photo(app.config, db, cid, self._person('https://lh3.googleusercontent.com/b'))
+        assert calls == ['https://lh3.googleusercontent.com/a', 'https://lh3.googleusercontent.com/b']
+        assert models.get_photo_source(db, cid) == 'https://lh3.googleusercontent.com/b'
+
+    def test_failed_fetch_keeps_the_old_source(self, app, db, monkeypatch):
+        import google_sync
+        import models
+        self._counting_fetch(monkeypatch)
+        cid = google_sync._upsert_person(db, self._person('https://lh3.googleusercontent.com/a'), 'US')
+        google_sync._store_person_photo(app.config, db, cid, self._person('https://lh3.googleusercontent.com/a'))
+
+        def boom(url):
+            raise OSError('network down')
+
+        monkeypatch.setattr(google_sync, '_fetch_photo_bytes', boom)
+        google_sync._store_person_photo(app.config, db, cid, self._person('https://lh3.googleusercontent.com/b'))
+        assert models.get_photo_source(db, cid) == 'https://lh3.googleusercontent.com/a'
+
+    def test_missing_file_is_fetched_again(self, app, db, monkeypatch):
+        import google_sync
+        calls = self._counting_fetch(monkeypatch)
+        person = self._person('https://lh3.googleusercontent.com/abc')
+        cid = google_sync._upsert_person(db, person, 'US')
+        google_sync._store_person_photo(app.config, db, cid, person)
+        os.remove(os.path.join(app.config['PHOTOS_DIR'], f'{cid}.png'))
+        google_sync._store_person_photo(app.config, db, cid, person)
+        assert len(calls) == 2
+
+    def test_manual_change_clears_the_source(self, app, db, monkeypatch):
+        import google_sync
+        import models
+        self._counting_fetch(monkeypatch)
+        person = self._person('https://lh3.googleusercontent.com/abc')
+        cid = google_sync._upsert_person(db, person, 'US')
+        google_sync._store_person_photo(app.config, db, cid, person)
+        db.commit()
+        client = app.test_client()
+        client.get('/contacts/new')
+        with client.session_transaction() as sess:
+            token = sess['_csrf_token']
+        client.post(f'/contacts/{cid}', data={
+            '_csrf_token': token, 'type': 'individual', 'name': 'Photo Person',
+            'remove_photo': '1',
+        }, content_type='multipart/form-data')
+        assert models.get_photo_source(db, cid) is None
+
+    def test_manual_upload_clears_the_source(self, app, db, monkeypatch):
+        import io
+
+        import google_sync
+        import models
+        self._counting_fetch(monkeypatch)
+        person = self._person('https://lh3.googleusercontent.com/abc')
+        cid = google_sync._upsert_person(db, person, 'US')
+        google_sync._store_person_photo(app.config, db, cid, person)
+        db.commit()
+        client = app.test_client()
+        client.get('/contacts/new')
+        with client.session_transaction() as sess:
+            token = sess['_csrf_token']
+        client.post(f'/contacts/{cid}', data={
+            '_csrf_token': token, 'type': 'individual', 'name': 'Photo Person',
+            'photo': (io.BytesIO(self._PNG), 'mine.png'),
+        }, content_type='multipart/form-data')
+        assert models.get_photo_source(db, cid) is None
+
     def test_sync_stores_the_photo_with_no_transaction_open(
             self, app, db, monkeypatch):
         """Through the real sync loop. CL-0045: a photo'd contact must not blow up

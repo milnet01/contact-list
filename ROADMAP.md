@@ -727,7 +727,7 @@ and the judgement is that no release waits on them.
   Kind: doc-fix.
   Source: check-doc-run-2026-09-21.
 
-- 📋 [CL-0088] **Google sync re-downloads every contact's photo on every sync.**
+- ✅ [CL-0088] **Google sync re-downloads every contact's photo on every sync.**
   Split out of CL-0070 at the user's instruction (2026-09-25).
   Nothing stores the photo's URL or etag, so an unchanged photo cannot
   be told apart from a new one and each pulled contact's photo is
@@ -735,6 +735,14 @@ and the judgement is that no release waits on them.
   new column, so a migration) and skips the fetch when it is unchanged.
   The photo spec's out-of-scope list already names this as "photo etag
   diffing on re-sync".
+  Resolved (2026-09-28): built to the gated photo spec (loop 1 in its
+  log). migrations/010_photo_sources.sql adds contact_photo_sources; the
+  sync skips a photo whose URL matches the stored source while the DB
+  row and the file both exist, and records the URL after a successful
+  store; a manual upload or removal clears it. Tests red on the old code,
+  each part proven by breaking it. Unverified: whether Google keeps an
+  unchanged photo's URL stable between syncs (no credentials here); if
+  not, sync fetches as before.
   **Layman:** Every sync downloads all your contacts' photos again, even ones that haven't changed.
   Kind: perf.
   Source: review-code 2026-09-07 (google-sync lane), split from CL-0070.

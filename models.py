@@ -653,6 +653,30 @@ def clear_contact_photo(db: sqlite3.Connection, contact_id: int) -> str | None:
     return old_ext
 
 
+
+def get_photo_source(db: sqlite3.Connection, contact_id: int) -> str | None:
+    """The Google photo URL the stored photo came from, or None (CL-0088)."""
+    row = db.execute(
+        'SELECT url FROM contact_photo_sources WHERE contact_id = ?', [contact_id]
+    ).fetchone()
+    return row['url'] if row else None
+
+
+def set_photo_source(db: sqlite3.Connection, contact_id: int, url: str) -> None:
+    """Record the Google URL the stored photo was just fetched from. Caller
+    commits, as with set_contact_photo."""
+    db.execute(
+        'INSERT INTO contact_photo_sources (contact_id, url) VALUES (?, ?) '
+        'ON CONFLICT(contact_id) DO UPDATE SET url = excluded.url',
+        [contact_id, url],
+    )
+
+
+def clear_photo_source(db: sqlite3.Connection, contact_id: int) -> None:
+    """Forget where the photo came from, after a manual upload or removal, so
+    the next sync does not skip Google's photo as unchanged. Caller commits."""
+    db.execute('DELETE FROM contact_photo_sources WHERE contact_id = ?', [contact_id])
+
 def set_favourite(db: sqlite3.Connection, contact_id: int, favourite: bool) -> None:
     """Star (favourite=True) or un-star (False) a contact (CL-0039). Idempotent.
 

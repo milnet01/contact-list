@@ -113,6 +113,12 @@ def _photo_path(config: Mapping[str, Any], contact_id: int, ext: str) -> str:
     return os.path.join(config['PHOTOS_DIR'], f'{int(contact_id)}.{ext}')
 
 
+def photo_file_exists(config: Mapping[str, Any], contact_id: int, ext: str) -> bool:
+    """Whether the stored original is on disk (CL-0088's skip needs the file,
+    not just the DB row)."""
+    return os.path.isfile(_photo_path(config, contact_id, ext))
+
+
 def _thumb_path(config: Mapping[str, Any], contact_id: int, ext: str) -> str:
     # Same traversal guarantee as _photo_path: int id + allow-listed ext + a
     # fixed literal suffix.

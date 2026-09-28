@@ -33,6 +33,7 @@ from models import (
     MAX_UPCOMING_BIRTHDAYS,
     _normalize_tags,
     clear_contact_photo,
+    clear_photo_source,
     create_contact,
     delete_contact,
     delete_contacts,
@@ -319,8 +320,11 @@ def _apply_photo(db: sqlite3.Connection, contact_id: int) -> None:
             flash('Contact saved, but the photo could not be stored.', 'error')
         else:
             set_contact_photo(db, contact_id, ext)
+            # No longer Google's photo, so the next sync must not skip it (CL-0088).
+            clear_photo_source(db, contact_id)
     elif request.form.get('remove_photo'):
         old_ext = clear_contact_photo(db, contact_id)
+        clear_photo_source(db, contact_id)
         photos.delete_photo(current_app.config, contact_id, old_ext)
     # set_contact_photo / clear_contact_photo no longer commit themselves (they
     # run inside the Google-sync savepoint too — CL-0045); the manual route owns

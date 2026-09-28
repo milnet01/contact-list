@@ -24,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Google sync no longer downloads a contact's photo again when it hasn't changed** (CL-0088)
+
 - **vCard export writes birthdays, addresses and organizations as the standard fields other contact apps read** (CL-0075)
   Files exported by earlier versions still import.
 
