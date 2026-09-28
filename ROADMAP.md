@@ -380,6 +380,109 @@ actually start the app from.
   Kind: fix.
   Source: user-request-2026-08-06.
 
+## 1.2.1 — Tidy-ups after 1.2.0
+
+Small fixes and housekeeping found while shipping 1.2.0: the lint rules
+
+to adopt, a verification note for sessions, and one layout defect.
+
+- 📋 [CL-0062] **Decide which of ruff 0.16's 35 newly-flagged findings to adopt.**
+  Context: pyproject.toml had no [tool.ruff.lint] select, so ruff used its
+  implicit default. Ruff 0.16 widened that default, so the routine bump from
+  0.15.21 to 0.16.1 turned a clean run into findings across sixteen rules that
+  nobody had opted into. Resolved on 2026-08-06 by stating the historical set
+  (E4, E7, E9, F) explicitly, so the tool tracks latest while the lint contract
+  is a deliberate choice. Verified the explicit set still catches real defects
+  (F401 unused import, F821 undefined name).
+
+  This item is the follow-up question that split off: WHICH of the wider rules
+  do we actually want? Measured with `ruff check . --output-format=concise` at
+  0.16.1 with select unset:
+
+  ```
+  7 I001      import block un-sorted
+  5 RUF059    unused unpacked variable
+  5 BLE001    blind `except Exception`
+  4 DTZ011    `date.today()` without a timezone
+  2 UP037     redundant quotes in a type annotation
+  2 UP017     `datetime.UTC` alias available
+  2 LOG015    logging call on the root logger
+  1 each      UP012, S310, RUF100, RUF012, PLW1510,
+              LOG014, FURB162, EXE001, B017
+  ```
+
+  BLE001 is the one to be careful with: launcher.py's tray fallback is
+  deliberately blind and should stay that way.
+
+  Some look genuinely valuable (S310 flags a URL open, DTZ011 naive datetimes).
+  Others would fight deliberate design. Treat this as a review of each rule
+  family, adopting per-rule with a `# noqa` plus reason where the current code
+  is right, NOT as a bulk autofix: thirteen are auto-fixable and seven more
+  need --unsafe-fixes, which is exactly the shape that quietly changes
+  behaviour.
+  **Layman:** A newer version of our code checker suggests improvements it never used to mention. Worth reading through and picking the ones we want, rather than accepting or ignoring them wholesale.
+  Kind: refactor.
+  Source: in-session-2026-08-06 (dependency sweep; surfaced by the ruff 0.15 to 0.16 bump).
+
+- 📋 [CL-0081] **Hand-verifying a launch needs the CONFIG dir isolated, not just the database.**
+  CLAUDE.md's "Verifying a launch by hand" carries three traps -- poll
+  for the port, background the server, intercept the browser-open. There
+  is a fourth and it bites harder, because its damage lands outside the
+  repository.
+
+  CONTACT_LIST_DB isolates the database and NOTHING ELSE. PHOTOS_DIR,
+  GOOGLE_CREDENTIALS_FILE, GOOGLE_TOKEN_FILE and the log all derive from
+  config._CONFIG_DIR, which has no environment override. So a run that
+  looks isolated because the database is:
+
+    - writes uploaded photos into the user's real photos directory, and
+    - on any page calling is_authenticated -- /sync is one -- REFRESHES
+      AND REWRITES the user's real Google token, because _load_credentials
+      calls creds.refresh() and _save_credentials writes it back.
+
+  Both happened in this session. The photo files were orphans and were
+  removed; the token rewrite is not reversible and was reported to the
+  user. It is not damaging -- a refresh rotation is normal and the
+  credentials still work -- but it is a live-credential side effect
+  nobody asked for, and the standing rule is that a check needing a
+  credential is an ask.
+
+  The remedy is to set XDG_CONFIG_HOME to a scratch directory for any
+  hand-verification run, which moves _CONFIG_DIR wholesale, rather than
+  overriding CONTACT_LIST_DB alone. A frozen build needs this even more
+  than a source run, because frozen also puts its database there.
+
+  This belongs in CLAUDE.md's "Verifying a launch by hand" list, next to
+  the other three. Filed here rather than edited straight in because
+  adding it changes what a conformer does -- they would isolate a
+  directory they do not isolate today -- which is rule 14's Yes branch
+  and owes the review gate. Small edit, one gate; worth doing.
+  Correction (2026-09-25): the remedy above is WRONG. config.py builds
+  _CONFIG_DIR as os.path.expanduser('~/.config/contact-list') and never
+  reads XDG_CONFIG_HOME, so setting it isolates nothing. What works is
+  HOME=<scratch dir> AND CONTACT_LIST_DB=<scratch>/x.db, both set. Also:
+  from source the default database is NOT under the config dir. It is
+  contacts.db next to the code (config._default_db_path), which holds the
+  user's real contacts. A seeding script that set HOME alone opened that
+  file, and create_app ran migration 009 on it before an assertion stopped
+  the run. No contact rows changed; the same migration runs on the next
+  normal launch anyway. The CLAUDE.md edit this item proposes must name
+  both variables, and should assert Config.DATABASE before create_app().
+  **Layman:** A note for future sessions: testing the app by running it can touch your real Google login and photo folder unless the whole settings folder is pointed somewhere else.
+  Kind: doc.
+  Source: in-session-2026-09-07 (learned the expensive way during verify-delivery).
+
+- 📋 [CL-0089] **The breadcrumb is spread across the full page width.**
+  Seen in headless Chrome at 1280x800 while taking project-site
+  screenshots (docs/screenshots/contact-detail.png, birthdays.png,
+  new-contact.png). "Contacts", "/" and the page name sit at the left
+  edge, the centre and the right edge instead of together at the left.
+  Not investigated; likely a flex or grid rule on the breadcrumb list.
+  Confirm in a normal browser window before fixing.
+  **Layman:** The "Contacts / page name" trail at the top of each page is stretched across the whole width instead of sitting together.
+  Kind: ux.
+  Source: in-session-2026-09-25 (hub screenshots).
+
 ## No release depends on these
 
 Internal hygiene — tooling coverage, CI paths, build noise, stale citations.
@@ -451,44 +554,6 @@ and the judgement is that no release waits on them.
   never needed them. Measured on two real builds: "ERROR: Hidden import"
   lines 78 -> 0, the other 7 WARNING lines unchanged, and the dist
   tree's 19,813 files identical in name and size before and after.
-
-- 📋 [CL-0062] **Decide which of ruff 0.16's 35 newly-flagged findings to adopt.**
-  Context: pyproject.toml had no [tool.ruff.lint] select, so ruff used its
-  implicit default. Ruff 0.16 widened that default, so the routine bump from
-  0.15.21 to 0.16.1 turned a clean run into findings across sixteen rules that
-  nobody had opted into. Resolved on 2026-08-06 by stating the historical set
-  (E4, E7, E9, F) explicitly, so the tool tracks latest while the lint contract
-  is a deliberate choice. Verified the explicit set still catches real defects
-  (F401 unused import, F821 undefined name).
-
-  This item is the follow-up question that split off: WHICH of the wider rules
-  do we actually want? Measured with `ruff check . --output-format=concise` at
-  0.16.1 with select unset:
-
-  ```
-  7 I001      import block un-sorted
-  5 RUF059    unused unpacked variable
-  5 BLE001    blind `except Exception`
-  4 DTZ011    `date.today()` without a timezone
-  2 UP037     redundant quotes in a type annotation
-  2 UP017     `datetime.UTC` alias available
-  2 LOG015    logging call on the root logger
-  1 each      UP012, S310, RUF100, RUF012, PLW1510,
-              LOG014, FURB162, EXE001, B017
-  ```
-
-  BLE001 is the one to be careful with: launcher.py's tray fallback is
-  deliberately blind and should stay that way.
-
-  Some look genuinely valuable (S310 flags a URL open, DTZ011 naive datetimes).
-  Others would fight deliberate design. Treat this as a review of each rule
-  family, adopting per-rule with a `# noqa` plus reason where the current code
-  is right, NOT as a bulk autofix: thirteen are auto-fixable and seven more
-  need --unsafe-fixes, which is exactly the shape that quietly changes
-  behaviour.
-  **Layman:** A newer version of our code checker suggests improvements it never used to mention. Worth reading through and picking the ones we want, rather than accepting or ignoring them wholesale.
-  Kind: refactor.
-  Source: in-session-2026-08-06 (dependency sweep; surfaced by the ruff 0.15 to 0.16 bump).
 
 - ✅ [CL-0065] **DESIGN §6 covers input handling only; nothing states an output-encoding rule.**
   The CSV formula-injection fix landed in code (`_csv_safe`), but §6.1
@@ -651,54 +716,6 @@ and the judgement is that no release waits on them.
   Kind: fix.
   Source: review-code 2026-09-07 (shell-ci lane).
 
-- 📋 [CL-0081] **Hand-verifying a launch needs the CONFIG dir isolated, not just the database.**
-  CLAUDE.md's "Verifying a launch by hand" carries three traps -- poll
-  for the port, background the server, intercept the browser-open. There
-  is a fourth and it bites harder, because its damage lands outside the
-  repository.
-
-  CONTACT_LIST_DB isolates the database and NOTHING ELSE. PHOTOS_DIR,
-  GOOGLE_CREDENTIALS_FILE, GOOGLE_TOKEN_FILE and the log all derive from
-  config._CONFIG_DIR, which has no environment override. So a run that
-  looks isolated because the database is:
-
-    - writes uploaded photos into the user's real photos directory, and
-    - on any page calling is_authenticated -- /sync is one -- REFRESHES
-      AND REWRITES the user's real Google token, because _load_credentials
-      calls creds.refresh() and _save_credentials writes it back.
-
-  Both happened in this session. The photo files were orphans and were
-  removed; the token rewrite is not reversible and was reported to the
-  user. It is not damaging -- a refresh rotation is normal and the
-  credentials still work -- but it is a live-credential side effect
-  nobody asked for, and the standing rule is that a check needing a
-  credential is an ask.
-
-  The remedy is to set XDG_CONFIG_HOME to a scratch directory for any
-  hand-verification run, which moves _CONFIG_DIR wholesale, rather than
-  overriding CONTACT_LIST_DB alone. A frozen build needs this even more
-  than a source run, because frozen also puts its database there.
-
-  This belongs in CLAUDE.md's "Verifying a launch by hand" list, next to
-  the other three. Filed here rather than edited straight in because
-  adding it changes what a conformer does -- they would isolate a
-  directory they do not isolate today -- which is rule 14's Yes branch
-  and owes the review gate. Small edit, one gate; worth doing.
-  Correction (2026-09-25): the remedy above is WRONG. config.py builds
-  _CONFIG_DIR as os.path.expanduser('~/.config/contact-list') and never
-  reads XDG_CONFIG_HOME, so setting it isolates nothing. What works is
-  HOME=<scratch dir> AND CONTACT_LIST_DB=<scratch>/x.db, both set. Also:
-  from source the default database is NOT under the config dir. It is
-  contacts.db next to the code (config._default_db_path), which holds the
-  user's real contacts. A seeding script that set HOME alone opened that
-  file, and create_app ran migration 009 on it before an assertion stopped
-  the run. No contact rows changed; the same migration runs on the next
-  normal launch anyway. The CLAUDE.md edit this item proposes must name
-  both variables, and should assert Config.DATABASE before create_app().
-  **Layman:** A note for future sessions: testing the app by running it can touch your real Google login and photo folder unless the whole settings folder is pointed somewhere else.
-  Kind: doc.
-  Source: in-session-2026-09-07 (learned the expensive way during verify-delivery).
-
 - ✅ [CL-0083] **A spec cites a models.py line number that was already wrong.**
   docs/specs/2026-07-01-import-export-merge-design.md cites the
   non-empty email guard as `models.py:196`. At the commit before
@@ -764,17 +781,6 @@ and the judgement is that no release waits on them.
   **Layman:** Every sync downloads all your contacts' photos again, even ones that haven't changed.
   Kind: perf.
   Source: review-code 2026-09-07 (google-sync lane), split from CL-0070.
-
-- 📋 [CL-0089] **The breadcrumb is spread across the full page width.**
-  Seen in headless Chrome at 1280x800 while taking project-site
-  screenshots (docs/screenshots/contact-detail.png, birthdays.png,
-  new-contact.png). "Contacts", "/" and the page name sit at the left
-  edge, the centre and the right edge instead of together at the left.
-  Not investigated; likely a flex or grid rule on the breadcrumb list.
-  Confirm in a normal browser window before fixing.
-  **Layman:** The "Contacts / page name" trail at the top of each page is stretched across the whole width instead of sitting together.
-  Kind: ux.
-  Source: in-session-2026-09-25 (hub screenshots).
 
 ## Unplaced
 
