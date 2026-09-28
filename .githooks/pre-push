@@ -114,7 +114,9 @@ fi
 # run says nothing about what is being pushed (CL-0078).
 head_sha=$(git rev-parse HEAD)
 for sha in $pushed; do
-    if [ "$sha" != "$head_sha" ]; then
+    # An annotated tag arrives as the TAG object's id; compare the commit it names.
+    commit=$(git rev-parse --verify --quiet "$sha^{commit}") || commit="$sha"
+    if [ "$commit" != "$head_sha" ]; then
         echo "pre-push: pushing a commit that is not checked out (HEAD) -- local CI would test the wrong code." >&2
         echo "          Check it out and push from there, or: SKIP_LOCAL_CI=1 git push" >&2
         exit 1
