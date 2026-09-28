@@ -190,13 +190,13 @@ threat model of "a disguised or malformed file gets stored and served back":
    `MAX_PHOTO_BYTES = 4 * 1024 * 1024` (4 MiB, ≈4 MB). The comparison is strictly
    greater-than, so a file of *exactly* 4 MiB is accepted; one byte more is
    rejected. The cap sits **deliberately below the existing app-wide request
-   ceiling** `MAX_CONTENT_LENGTH = 5 * 1024 * 1024` (5 MiB, already set at
-   `config.py:86`): Flask returns a bare `413` for any request body over that
+   ceiling** `MAX_CONTENT_LENGTH = 5 * 1024 * 1024` (5 MiB, already set in
+   `Config`): Flask returns a bare `413` for any request body over that
    ceiling *before* the view runs, so keeping the photo cap under it — with
    headroom for multipart form overhead — means an oversize upload reaches our
    friendly in-handler `ValueError` flash (§5) instead of a raw 413. The separate,
-   tighter 1 MiB inner cap on decoded import bodies (`MAX_IMPORT_BYTES`,
-   `config.py:87`) is unrelated and untouched. Enforced by a byte-length check in
+   tighter 1 MiB inner cap on decoded import bodies (`MAX_IMPORT_BYTES`
+   in `Config`) is unrelated and untouched. Enforced by a byte-length check in
    `photos.py`. The user-facing flash (§5) says "under 4 MB" — a deliberate
    friendly rounding of the exact 4 MiB (`4,194,304`-byte) constant.
 3. **Served safely** — the serve route (§6) sets an explicit image `Content-Type`
@@ -244,7 +244,7 @@ dir. The signature changes from `_upsert_person(db, person, region)` to
 **`_upsert_person(db, person, region, config)`**, threaded from `sync_contacts`
 (signature `sync_contacts(config, db, region)`, which already holds `config`).
 The existing test call-sites `google_sync._upsert_person(db, person, 'US')`
-(`tests/test_hardening.py:77` and `:89`) must be updated to pass `config` — a
+(two calls in `tests/test_hardening.py`) must be updated to pass `config` — a
 required change in the same commit, or those tests break. (CL-0070 later removed
 `config` again: `_upsert_person` no longer fetches photos.) `sync_contacts`
 fetches each imported contact's photo through `_store_person_photo` **after that
@@ -392,7 +392,7 @@ unlink implementation, so the `old_ext` (keyword-only on `save_photo`) and `ext`
 | SSRF on sync download | Only fetch `https` URLs whose host ends `googleusercontent.com`, re-checked on every redirect hop; short timeout and whole-download budget; capped read (§4). |
 | Decompression bomb | 4 MiB byte cap before store; the browser (not the app) decodes; single-user localhost bounds blast radius. Noted as accepted residual risk. |
 | Secret leakage | Photos are not secrets, but live under `~/.config/contact-list/` `0700` beside tokens; never in the repo or DB (only the ext string is in the DB). `.gitignore` already covers the config dir; no repo change needed. |
-| CSP regression | None — same-origin serving adds/removes no CSP directive, so the CSP string is unchanged; both CSP tests (`tests/test_routes.py:404` `test_csp_header` and `tests/test_hardening.py:226` `test_style_src_has_no_unsafe_inline`) still hold. |
+| CSP regression | None — same-origin serving adds/removes no CSP directive, so the CSP string is unchanged; both CSP tests (`test_csp_header` in `tests/test_routes.py` and `test_style_src_has_no_unsafe_inline` in `tests/test_hardening.py`) still hold. |
 | CSRF | Upload rides the existing validated `_csrf_token` on the contact form POST. |
 
 ## 10. New / changed files & size budget
@@ -462,8 +462,8 @@ Test-first (TDD), following the existing `tests/` fixtures (`app`, `db`,
   second sync with the same photo URL fetches nothing; a new URL is fetched and
   recorded; a failed fetch leaves the old source row; a manual upload or removal
   clears the source, so the next sync fetches again.
-- **hardening/CSP** — both `test_csp_header` (`tests/test_routes.py:404`) and
-  `test_style_src_has_no_unsafe_inline` (`tests/test_hardening.py:226`) unchanged
+- **hardening/CSP** — both `test_csp_header` (`tests/test_routes.py`) and
+  `test_style_src_has_no_unsafe_inline` (`tests/test_hardening.py`) unchanged
   and still pass (no CSP edit).
 
 ## 12. Invariants

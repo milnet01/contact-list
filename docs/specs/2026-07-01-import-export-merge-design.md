@@ -104,8 +104,8 @@ select before importing.
   column mapped to `Custom field`) or generated for an extra value is passed
   through a sanitiser: chars outside `[a-zA-Z0-9_ ]` → space, runs of spaces
   collapsed, trimmed, truncated to 64. Empty result → `Field <n>`. The sanitised
-  label MUST pass `valid_field_name` (`models.py:338`; regex `_FIELD_NAME_RE =
-  ^[a-zA-Z0-9_ ]{1,64}$` at `models.py:335`) before use — nothing that fails it
+  label MUST pass `models.valid_field_name` (a whole-string match of
+  `[a-zA-Z0-9_ ]{1,64}`) before use — nothing that fails it
   reaches `_validate_custom_field_names` (INV-4).
 
 ### 2.4 Learning — `import_profiles`
@@ -135,12 +135,12 @@ For each parsed row, resolve a **match** against existing contacts:
    `SELECT id FROM contacts WHERE email IS NOT NULL AND email != '' AND
    LOWER(email) = LOWER(?) ORDER BY id LIMIT 1`
    — reuses the `email IS NOT NULL AND email != ''` non-empty guard from
-   `find_all_duplicates` (`models.py:196`) with a case-insensitive
+   `models.find_all_duplicates` with a case-insensitive
    `LOWER(email) = LOWER(?)` compare; `ORDER BY id LIMIT 1` makes the winner
    deterministic since `contacts.email` is not unique.
 2. Else (no mapped email, or it was blank), on the mapped name:
    `SELECT id FROM contacts WHERE name = ? COLLATE NOCASE ORDER BY id LIMIT 1`
-   — the `COLLATE NOCASE` idiom from `find_duplicates` (`models.py:135`).
+   — the `COLLATE NOCASE` idiom from `models.find_duplicates`.
 
 - **No match** → create a new contact.
 - **Match** → **additive update only**: set a core field (email, phone, notes,
@@ -259,7 +259,7 @@ POST like any other (§6).
   while the `N` given-name and family-name parts are both empty — where an
   **absent `N` line counts as both-parts-empty** (so an `FN`+`ORG`-only card is a
   company). Else `individual`. This is analogous to the Google-import heuristic
-  (`google_sync.py:229-231`, CL-0010, which keys on People-API
+  (`google_sync._upsert_person`, CL-0010, which keys on People-API
   `givenName`/`familyName` — "an org with no personal name"); vCard has no such
   fields, so the predicate is defined here on `N`/`KIND`.
 - **Values.** First `EMAIL` → email; first `TEL` → phone; `NOTE` → notes.
@@ -291,8 +291,8 @@ POST like any other (§6).
 
 ### 4.1 Entry point
 
-`duplicates.html`'s existing bulk-select `<form>` (POST → `bulk_delete`,
-`templates/duplicates.html:22`) gains a **"Merge selected"** button beside
+`templates/duplicates.html`'s existing bulk-select `<form>` (POST →
+`bulk_delete`) gains a **"Merge selected"** button beside
 "Delete selected". It is a plain submit button that overrides only the form's
 `action` (keeping the form's default **POST** method):
 

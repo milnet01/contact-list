@@ -689,7 +689,7 @@ and the judgement is that no release waits on them.
   Kind: doc.
   Source: in-session-2026-09-07 (learned the expensive way during verify-delivery).
 
-- 📋 [CL-0083] **A spec cites a models.py line number that was already wrong.**
+- ✅ [CL-0083] **A spec cites a models.py line number that was already wrong.**
   docs/specs/2026-07-01-import-export-merge-design.md cites the
   non-empty email guard as `models.py:196`. At the commit before
   CL-0066 that guard was on a different line entirely, so the citation
@@ -706,11 +706,15 @@ and the judgement is that no release waits on them.
   covers -- a spec citing a source line number. Left as its own item
   pending a decision to merge. Whichever survives, the remedy is the
   same: name the symbol.
+  Resolved (2026-09-28) with CL-0087: the import/export spec names
+  models.find_all_duplicates (the guard is still there, checked) instead
+  of a line number. The same passage's quoted field-name regex was also
+  stale and now names valid_field_name's whole-string match.
   **Layman:** A design document points at a line number in the code that has not been that line for a long time.
   Kind: doc-fix.
   Source: in-session-2026-09-20 (found while working CL-0066).
 
-- 📋 [CL-0087] **Specs cite source line numbers throughout, which the drive-level rule forbids.**
+- ✅ [CL-0087] **Specs cite source line numbers throughout, which the drive-level rule forbids.**
   The drive-level CLAUDE.md forbids line numbers in documents: name the
   symbol, the heading or the file instead. Specs across docs/specs/ still
   cite them — `models.py`, `config.py`, `routes/contacts.py`, several
@@ -723,6 +727,10 @@ and the judgement is that no release waits on them.
 
   Out of scope: docs/reviews/ lane reports. A dated review record says what
   a reviewer saw on that date and is not edited afterwards.
+  Resolved (2026-09-28): every file:line and DESIGN.md:NN citation in
+  docs/specs/ now names a symbol, selector, test or section instead --
+  across seven specs, zero left by the same search. Where a named symbol
+  replaced a line, the claim beside it was re-checked against the code.
   **Layman:** Many design documents point at numbered lines in code files. Those numbers drift every time the code is edited, so they quietly stop meaning anything.
   Kind: doc-fix.
   Source: check-doc-run-2026-09-21.

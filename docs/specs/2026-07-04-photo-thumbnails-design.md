@@ -131,7 +131,7 @@ Design notes:
 - **Sizing:** one 256 px longest-edge bound. A non-square photo yields a
   non-square thumbnail (aspect ratio preserved — **no server-side crop**). The
   display is unchanged from today: `img.avatar` uses `object-fit: cover`
-  (`static/style.css:420`), which center-crops the image into the circular box —
+  (`static/style.css`), which center-crops the image into the circular box —
   the thumbnail feeds that exactly as the full-size image does now, so the visible
   result is identical, just far fewer bytes.
 - **Resample = LANCZOS:** best-quality downscale; the current Pillow idiom is
@@ -232,7 +232,7 @@ New `photos.avatar_filename(config, contact_id, ext) -> str` returns the
 verbatim. The `max_age=86400` browser cache and the `nosniff` header (set app-wide)
 are unchanged — the response is byte-for-byte cacheable just as the full-size one
 was. The route's existing traversal-safety and cache-rationale comment
-(`routes/contacts.py:262-266`) is **retained**, not deleted — the code block above
+(in the `photo` view, `routes/contacts.py`) is **retained**, not deleted — the code block above
 elides it only for brevity.
 
 One transient consequence of keeping `max_age=86400`: on the first view of a
@@ -295,7 +295,7 @@ Applied in the same change-set as the implementation:
 - **DESIGN.md §3 (Dependency Budget):** change "No C-extension dependencies
   beyond what ships with Python" to permit Pillow (the one authorised exception,
   for CL-0035 thumbnailing); add `pillow>=12.0,<13.0` to **DESIGN.md §3's fenced
-  runtime list** (the illustrative block, DESIGN.md:44-50 — mirrors, but is not,
+  runtime list** (the illustrative block — mirrors, but is not,
   `requirements.txt`); update "Six runtime packages" → "Seven runtime packages
   (under the 8-direct budget)";
   and update the `Audited:` version-snapshot note inside the Breakage Register's
@@ -310,7 +310,7 @@ Applied in the same change-set as the implementation:
   at its "Why no image library" / "no server-side resizing" points that CL-0035
   supersedes that decision (security addressed in this spec §6). The historical
   spec's Status stays Implemented; the note is a forward pointer, not a rewrite.
-- **DESIGN.md §6 (Security — File uploads row, DESIGN.md:253):** the row currently
+- **DESIGN.md §6 (Security — File uploads row):** the row currently
   reads "validated by magic bytes … and a 4 MiB cap … served same-origin with
   `nosniff`" — written for a no-decode module. Append a short clause that CL-0035
   thumbnailing now decodes/re-encodes via Pillow **behind** that allow-list + cap

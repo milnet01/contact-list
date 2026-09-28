@@ -63,7 +63,7 @@ Restart spawns a **fresh, detached** child of the current entrypoint
 
 - **`os.execv` in place does NOT work** — verified empirically. Werkzeug
   **deliberately** marks its listening socket inheritable
-  (`werkzeug/serving.py:1105` — `srv.socket.set_inheritable(True)`, to hand the fd
+  (`werkzeug.serving.run_simple` — `srv.socket.set_inheritable(True)`, to hand the fd
   to a reloader child), overriding the PEP 446 CLOEXEC default. So the socket
   *survives* `execve`; the replacement image then fails to bind with "Address
   already in use". A smoke test on port 5099 reproduced this exactly (2× "App
@@ -265,7 +265,7 @@ is `default-src 'self'; style-src 'self'; …` with **no `script-src` directive 
 all** (scripts fall back to `default-src 'self'`, and inline handlers are never
 `'self'`), so inline event-handler attributes are blocked by the browser and would
 silently never fire. The existing `static/app.js` `[data-confirm]` handler (used by
-`sync.html:70` / `contact_detail.html:95`) intercepts the button **click**,
+`sync.html`'s Disconnect button and `contact_detail.html`'s Delete button) intercepts the button **click**,
 `preventDefault()`s it, shows the modal (markup already in `base.html`:
 `#confirm-modal`), and on confirm calls `form.submit()`. Because programmatic
 `form.submit()` does **not** include the clicked button's `name`/`value`, the
@@ -405,8 +405,8 @@ application work, exists only to let the current HTTP response flush, and the
 process is gone (respawn + `os._exit`) milliseconds later. This spec's implementation
 adds a one-line carve-out to §7.2 recording the exception (CL-0046), mirroring how
 the Pillow C-extension exception is recorded in §3's Dependency Budget prose
-(`DESIGN.md:41`). One sibling touch is needed: the two-way-sync spec's line 781
-reference to §7.2 stays fine, but line 115 reads *"no background threads
+(DESIGN.md §3). One sibling touch is needed: the two-way-sync spec's later
+reference to §7.2 stays fine, but its §1 reads *"no background threads
 (DESIGN.md §7.2 **unchanged**)"* — the word "unchanged" goes literally false once
 the carve-out lands. The implementation reworks that parenthetical to
 "(DESIGN.md §7.2 — sync adds no threads)" (substance is identical: sync adds no

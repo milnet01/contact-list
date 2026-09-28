@@ -85,7 +85,7 @@ under the app's autoescaping):
   baseline; gap:1rem; flex-wrap:wrap; margin-bottom:1rem;`. To avoid a doubled gap,
   the nested `<h1>` **loses** its own bottom margin: add `.page-header h1
   { margin-bottom:0; }` (mirroring the existing `.detail-header h1{margin-bottom:0}`
-  at `style.css:548`). Net vertical rhythm below the title is unchanged (1rem).
+  in `style.css`). Net vertical rhythm below the title is unchanged (1rem).
 
 ### 3.1 `contact_detail` — the media-header variant
 
@@ -95,8 +95,8 @@ because:
 
 - the macro has only a title slot — folding it in would drop the avatar and
   badges; and
-- `static/app.js:230` (`document.querySelector('.detail-header h1')`, the
-  recently-viewed feature) and `static/style.css:542,548,549,941` couple to
+- `static/app.js` (`document.querySelector('.detail-header h1')`, the
+  recently-viewed feature) and `static/style.css`'s `.detail-header` rules couple to
   `.detail-header` / `.detail-header h1`. Renaming it silently breaks that JS
   (which no server-side test would catch).
 
@@ -119,7 +119,7 @@ The flat-vs-card difference is caused solely by a missing shadow + an on-border
 legend (survey). Promote the Settings treatment to the **base** rules so *every*
 form fieldset becomes a card with **no per-form class**:
 
-- **`fieldset`** (base rule, `style.css:620`): add `box-shadow: var(--shadow);`,
+- **`fieldset`** (base rule in `style.css`): add `box-shadow: var(--shadow);`,
   set `padding: 1.5rem;` + `margin-bottom: 1rem;` to match `.card` **exactly**
   (drop the Settings-specific `1.4rem 1.5rem 1.6rem` / `1.5rem` values), and add
   **`min-inline-size: 0;`** — a `<fieldset>` carries a UA `min-inline-size:
@@ -127,14 +127,14 @@ form fieldset becomes a card with **no per-form class**:
   differ at narrow widths (INV-3). Blast radius is safe — `<fieldset>`
   appears **only** in `settings.html` and `contact_form.html` (verified); the
   Settings-tab fieldsets sit inside the Save form, and the Server fieldset *wraps*
-  its own two POST forms (`settings.html:93`) — either way, no other template uses
+  its own two POST forms — either way, no other template uses
   a `<fieldset>`.
-- **Print parity:** the `@media print` block (`style.css:1014`) resets `.card` to
-  `box-shadow:none; border:1px solid #ddd` (line 1018). Give `fieldset` the **same
+- **Print parity:** the `@media print` block resets `.card` to
+  `box-shadow:none; border:1px solid #ddd`. Give `fieldset` the **same
   two** overrides — `@media print { fieldset { box-shadow:none; border:1px solid
   #ddd; } }` — so the two stay identical in print, not just on screen.
-- **`legend`** (base rule, `style.css:627`): adopt the full `.settings-form legend`
-  declaration set (`style.css:1105-1114`) verbatim — `float:left; width:100%;
+- **`legend`** (base rule in `style.css`): adopt the full `.settings-form legend`
+  declaration set verbatim — `float:left; width:100%;
   margin:0 0 1.25rem; padding:0 0 .65rem; border-bottom:1px solid var(--border-light);
   font-size:1rem; font-weight:700; letter-spacing:-0.01em; color:var(--text)` — a
   full-width underlined section header instead of sitting on the border line.
@@ -142,8 +142,8 @@ form fieldset becomes a card with **no per-form class**:
   trick to make a `<legend>` behave as a full-width block). Whatever element
   follows the legend must clear it, or it rides up beside the float — and that
   first element is **not always** a `.form-group` (Custom Fields opens with
-  `<div id="custom-fields">`, `contact_form.html:103`; the Server fieldset opens
-  with `<small class="form-hint">`, `settings.html:95`). So clear the **immediate
+  `<div id="custom-fields">`; the Server fieldset opens
+  with `<small class="form-hint">`). So clear the **immediate
   next element** generically, not just `.form-group`:
   **`fieldset > legend + * { clear: both; }`** (the `+` combinator targets the
   first element sibling after the legend; once it clears, the rest stack below it
@@ -168,10 +168,10 @@ form fieldset becomes a card with **no per-form class**:
   `.settings-form fieldset label:last-child`, `.settings-form select /
   input[number]` — once their declarations move to the base rules. Do **not**
   delete by line range: the `.settings-form` block is interleaved with unrelated
-  rules (e.g. `.merge-option` around `style.css:1127`) that must survive.
+  rules (e.g. `.merge-option`) that must survive.
 - `.settings-form` and `.contact-form` classes become unnecessary and are removed
   from the templates. Note `.settings-form` appears **twice** in `settings.html`
-  (the Save `<form>` at line 13 **and** the Server `<fieldset>` at line 93) — remove
+  (the Save `<form>` **and** the Server `<fieldset>`) — remove
   both. `.contact-form` (on `contact_form.html`'s `<form>`) already has **no** CSS
   rule (inert) — remove it too.
 
@@ -185,7 +185,7 @@ One convention across `contact_form`, `settings`, and any future form.
   `<small class="form-hint">` below.
 - **Label style is unified to the Settings look** (mixed-case, medium weight,
   muted, block). **Note the change:** the current global `.form-group label`
-  (`style.css:637`) is **UPPERCASE / 600 / 0.8rem / `letter-spacing:0.03em`**; this
+  is **UPPERCASE / 600 / 0.8rem / `letter-spacing:0.03em`**; this
   standard changes it to `text-transform:none; font-weight:500; font-size:0.9rem;
   letter-spacing:normal` — so `contact_form`'s labels shift from uppercase to
   mixed-case to match Settings. `.form-group` is used **only** in `contact_form.html`
@@ -195,21 +195,21 @@ One convention across `contact_form`, `settings`, and any future form.
   **text-like** controls only —
   `.form-group select, .form-group textarea, .form-group input:not([type=checkbox]):not([type=radio]):not([type=file])` —
   NOT a bare `.form-group input`. Two reasons: (1) the base `select`/`input` are
-  already `width:100%` globally at `style.css:647`, and the new `max-width:26rem` +
+  already `width:100%` globally in `style.css`, and the new `max-width:26rem` +
   top margin must not leak onto the list-chrome filter toolbar select on
   `contacts.html` (`<select name="type">`, §5.3(d), unchanged); (2) `contact_form`'s
-  Photo `.form-group` contains a `remove_photo` **checkbox** (`contact_form.html:78`)
+  Photo `.form-group` contains a `remove_photo` **checkbox**
   and a `photo` **file** input (`:82`) — the base rule deliberately excludes those
   types, and a bare `.form-group input` would stretch them to a full-width 26rem
   block (a detached, oversized checkbox). Move the declarations from the
-  `.settings-form select/input[number]` rule (`style.css:1134`) to this scoped rule.
+  `.settings-form select/input[number]` rule to this scoped rule.
   **Note:** the `max-width:26rem` narrows `contact_form`'s currently full-width text
   inputs to a 26rem column — intended, matching Settings.
 
 ### 5.2 Settings field restructure
 
 `settings.html` currently uses **nested** `<label>Theme <select…></label>` with no
-`id`/`for` (`settings.html:18`). Convert each of the **10** settings controls
+`id`/`for`. Convert each of the **10** settings controls
 (3 Appearance + 2 Dates & Time + 5 Contacts & Phone) to the `.form-group` shape:
 `<div class="form-group"><label for="theme">Theme</label>
 <select id="theme" name="theme">…</select></div>`. Keep every `name` attribute
@@ -315,8 +315,8 @@ full attribute set in §7.1):
 ### 7.3 Behavior — handler in `static/app.js`
 
 A **dedicated IIFE** (its own `(function(){…})()`). This is **required**, not
-stylistic: `app.js` is currently a single IIFE (lines 2–534) whose custom-fields
-guard `return;`s at `app.js:347` when `#custom-fields` is absent — which exits the
+stylistic: `app.js` is currently a single IIFE whose custom-fields
+guard `return;`s when `#custom-fields` is absent — which exits the
 **entire** IIFE, so on Settings a tab handler appended to it would never run. (That
 early return also strands the existing back-to-top / `--header-h` code on every
 page without the contact form — a pre-existing bug tracked separately as CL-0048;
@@ -386,7 +386,7 @@ test asserts the old strings (verified), so the suite stays green.
 | **`_macros.html`** | **New file** — the `page_header` macro (§3). |
 | `settings.html` | `page_header('Settings')`; keep the `errors` block; convert the 4 sections into **tabs** (§7) with the two-form layout (§7.2); convert each field to `.form-group` + `id`/`for` (§5.2); move the loose Save button into `.form-actions`; drop the `settings-form` class. |
 | `contact_form.html` | import + `page_header(...)` (replaces the bare `<h1>`); keep the `errors` block; fieldsets now render as cards automatically (§4); labels shift to mixed-case (§5.1); `.form-actions` already used — keep; drop the `contact-form` class; `.custom-field-row` exempt (§5.3). Breadcrumb unchanged. |
-| `contact_detail.html` | **Keep `.detail-header`** (the media-header variant, §3.1) — do **not** macro-ize (preserves avatar/badges and the `app.js:230` coupling). `.card` body + bottom `.actions` unchanged. |
+| `contact_detail.html` | **Keep `.detail-header`** (the media-header variant, §3.1) — do **not** macro-ize (preserves avatar/badges and the `app.js` recently-viewed coupling). `.card` body + bottom `.actions` unchanged. |
 | `contacts.html` | Add `{% call page_header('Contacts') %}<a class="btn" href="{{ url_for('contacts.new_contact') }}">+ New</a>{% endcall %}` (today it has **no** `<h1>`); `.list-controls` / `.toolbar` / `.bulk-bar` unchanged (list chrome). |
 | `sync.html` | `page_header('Google Sync')`; already `.card` — no structural change. |
 | `import.html` | `page_header('Import')`; already `.card` stages — no structural change. |
@@ -402,12 +402,12 @@ test asserts the old strings (verified), so the suite stays green.
   `>Clear</a>`) — restructuring markup around them must keep those substrings. Run
   the full suite after each template change.
 - **Client-JS couplings to preserve (not caught by server-side tests):**
-  `.detail-header h1` (`app.js:230`, recently-viewed) — keep the class (§3.1);
+  `.detail-header h1` (`app.js`'s recently-viewed code) — keep the class (§3.1);
   the `#custom-fields`/`#add-field` block — the tab handler must be a separate IIFE
   (§7.3).
 - **Settings tabs test:** GET `/settings` still contains every section's controls
   (theme select, timezone, `per_page`, and the restart/shutdown hidden-input
-  values — asserted by `tests/test_server_control.py:123` as `value="restart"` /
+  values — asserted by `tests/test_server_control.py` as `value="restart"` /
   `value="shutdown"`, which survive the Server-panel move). All panels are present
   in the served HTML (tabs only hide via JS; the test sees the no-JS DOM). **Add a
   new assertion** that the tab scaffold is server-rendered: the four

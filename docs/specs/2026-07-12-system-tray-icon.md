@@ -175,10 +175,10 @@ AppKit), so:
 - **`run.sh`** is changed from `exec … python app.py` to `exec … python
   launcher.py` so the from-source path gets the same tray + startup logic. Because
   `launcher.py` now owns browser-open (`_open_when_ready`), the standalone
-  `xdg-open` line currently in `run.sh` (`run.sh:15`) is **removed** in the same
+  `xdg-open` line currently in `run.sh` is **removed** in the same
   change — otherwise `./run.sh` would open the browser twice. **Stale-venv fix:**
   `run.sh` today pip-installs `requirements.txt` **only when the venv is first
-  created** (`run.sh:9-12`); an existing from-source user who pulls this update
+  created** (the venv-creation block in `run.sh`); an existing from-source user who pulls this update
   would launch a venv with no `pystray` and silently get headless (§7). So the
   run.sh change also moves the `pip install -r requirements.txt` to run on **every**
   launch (idempotent — a small fixed startup cost of ~1–3 s while pip re-resolves,
@@ -242,7 +242,7 @@ PyInstaller **6.3.0+ ships built-in hooks** for `gi.repository.AppIndicator3` an
 (updated through 6.13.0 for PyGObject 3.52) and GLib/Gio/DBus hooks [PyInstaller
 CHANGES]. These collect the GObject-Introspection `.typelib` files that a frozen
 app would otherwise fail to find ("Namespace AppIndicator3 not available").
-PyInstaller is unpinned in CI (`release.yml:25` installs latest), so a current
+PyInstaller is unpinned in CI (`release.yml`'s dependency-install step installs latest), so a current
 release with these hooks ships automatically. **No hand-written GI hooks needed.**
 
 What we still must arrange, in two places:
@@ -264,18 +264,18 @@ libgtk-3-0                         # appindicator backend links GTK3 at runtime
 
 **Gotcha (the one the spike must nail):** `python3-gi` installs into the system
 Python (`/usr/bin/python3`), but the release workflow's `actions/setup-python`
-step (`release.yml:19-21`, pinned to 3.12) builds under a *different*, isolated
+step (`release.yml`'s Python setup, pinned to 3.12) builds under a *different*, isolated
 interpreter that can't see it — and PyGObject has **no pip wheel** (a `pip install
 PyGObject` needs `libcairo2-dev`, `libgirepository1.0-dev`, `pkg-config` and a
 compiler). So this is **not** solved by an `apt-get install` alone; the *build
 interpreter* has to be one that can import `gi`. `build-linux.sh` already exposes
 the hook: it runs `"$PY" -m PyInstaller` where `$PY` is `${PYTHON:-}` falling back
-to `./venv/bin/python → python3 → python` (`build-linux.sh:5-10`) — it creates **no
+to `./venv/bin/python → python3 → python` (the interpreter search in `build-linux.sh`) — it creates **no
 venv of its own**. The clean route is therefore to point the build at the system
 python3 that has `gi`, rather than the isolated setup-python. Concretely:
 `apt-get install python3-gi …`; install our deps + PyInstaller into that same
 system python3; then run the build with `PYTHON=/usr/bin/python3`. **These two
-steps are hard-coupled:** `release.yml:25` currently `pip install`s the deps +
+steps are hard-coupled:** `release.yml`'s install step currently `pip install`s the deps +
 PyInstaller into the *setup-python* interpreter, so pointing `$PYTHON` at system
 python3 **without** also relocating that `pip install` to system python3 yields an
 interpreter that has `gi` but not Flask/PyInstaller — the build breaks. So the
@@ -294,7 +294,7 @@ whole change.
 - **Tray image = the committed master `packaging/icon.png`, not the generated
   `contact-list.png`.** This is the one subtlety: `packaging/contact-list.png` is a
   **build artifact** — git-ignored (`.gitignore`) and produced by
-  `make-icons.sh:19` from the committed source `packaging/icon.png`. `run.sh` never
+  `make-icons.sh` from the committed source `packaging/icon.png`. `run.sh` never
   runs `make-icons.sh`, so on a fresh from-source clone `contact-list.png` does not
   exist and a tray that loaded it would fail → headless, silently breaking the
   §2.3 from-source promise. So the tray loads **`packaging/icon.png`** (the
@@ -302,7 +302,7 @@ whole change.
   Pillow downscale it in memory to the tray size.
 - `datas`: add the master **ROOT-anchored**, matching the spec file's own rule
   (every source path is `os.path.join(ROOT, …)`; bare relative paths resolve
-  against the invoking CWD, `contact-list.spec:9-13`):
+  against the invoking CWD, the `ROOT` setup at the top of `contact-list.spec`):
   `(os.path.join(ROOT, 'packaging', 'icon.png'), 'packaging')`, so it lands at
   `<bundle>/packaging/icon.png` and resolves at runtime via
   `resources.resource_path('packaging', 'icon.png')` (matching the
@@ -357,16 +357,16 @@ regardless.
   per the deps-latest policy — for a 0.x package the minor is the breaking
   boundary, unlike Pillow's true-major `<13.0`; 0.19.5 is current).
 - **DESIGN.md §3 — bump the budget to 8 in all three places it is stated**, or
-  they will drift out of sync: the cap prose (`DESIGN.md:41` "must stay under **8
+  they will drift out of sync: the cap prose ("must stay under **8
   packages**" → "must stay at or under **8 packages**"), the running count
-  (`DESIGN.md:56` "**Seven** runtime packages (under the 8-direct budget)" →
+  ("**Seven** runtime packages (under the 8-direct budget)" →
   "**Eight** runtime packages (at the 8-direct budget)"), and the build-tools note
-  (`DESIGN.md:62` "the **< 8** runtime budget is unaffected" → "the 8-runtime
+  ("the **< 8** runtime budget is unaffected" → "the 8-runtime
   budget is unaffected"). Add `pystray` to the runtime block, with the
   justification (tray icon = core desktop UX), mirroring the Pillow exception
   wording.
 - **DESIGN.md §3 C-extension clause — a clarifying note, not a rewrite.** The
-  clause (`DESIGN.md:41`) reads "No C-extension dependencies … with one authorised
+  clause reads "No C-extension dependencies … with one authorised
   exception: Pillow." `pystray` itself is **pure Python**, so it does not add a
   C-extension *pip* dependency and the clause stands as written. Add one sentence
   noting that the Linux `appindicator` backend relies on the GI/GTK3 stack, which
@@ -378,7 +378,7 @@ regardless.
   `python-xlib` ships transitively but the `xorg` backend is **never** selected
   (§4.2).
 - **DESIGN.md §7.2 — add a carve-out for a *new* thread class, not a mirror of the
-  CL-0046 one.** The existing §7.2 exceptions (`DESIGN.md:310`) are all
+  CL-0046 one.** The existing §7.2 exceptions are all
   **short-lived / one-shot** ("respawns a fresh child then exits milliseconds
   later"; browser-open "then does no further application work"). The tray model is
   materially stronger: a **long-lived** thread runs `server.serve_forever()` for
@@ -387,11 +387,11 @@ regardless.
   owns the main thread ⇒ the HTTP server runs on one dedicated long-lived
   background thread; no shared mutable app state crosses threads beyond the server
   socket"), not as "analogous to CL-0046".
-- **`server_control.py` module docstring** (`server_control.py:3`) currently
+- **`server_control.py` module docstring** currently
   narrates the launch path as "``run.sh`` → ``exec python app.py``". Repointing
   `run.sh` to `launcher.py` (§5) makes that stale — update the docstring's launch-
   path line in the same change so the respawn narration stays accurate.
-- **`launcher.py` module docstring** (`launcher.py:1-10`) opens with "Frozen
+- **`launcher.py` module docstring** opens with "Frozen
   (PyInstaller) entrypoint" and lists responsibility 4 as "run the server".
   Post-change it is also the **from-source** entrypoint (`run.sh` uses it) and it
   runs the **tray on the main thread + server on a background thread** — update the
@@ -426,7 +426,7 @@ regardless.
   building the app; confirm it still passes after the launcher restructure, so no
   second tray icon is ever created. No new test needed unless the restructure moves
   the guard.
-- **Rework `test_launcher_binds_loopback`** (`tests/test_packaging.py:62-70`): it
+- **Rework `test_launcher_binds_loopback`** (`tests/test_packaging.py`): it
   currently fakes `create_app()` with a `SimpleNamespace(run=…)` and asserts the
   launcher calls `app.run(host='127.0.0.1', …)`. The restructure replaces
   `app.run()` with `make_server('127.0.0.1', port, app, threaded=True)` +

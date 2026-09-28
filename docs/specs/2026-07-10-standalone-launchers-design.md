@@ -67,7 +67,7 @@ activates inside a bundle.
 
 ### 2.1 Where mutable state lives (config.py)
 
-`config.py:74` currently defaults the database to
+`config.py` (`Config.DATABASE`) currently defaults the database to
 `os.path.join(os.path.dirname(os.path.abspath(__file__)), 'contacts.db')` — next
 to the code. Frozen, `__file__` resolves inside `_MEIPASS`: a per-launch temp dir
 in onefile mode (contacts wiped on every quit) or a read-only/replaceable bundle
@@ -97,12 +97,12 @@ class Config:
 ```
 
 `_CONFIG_DIR` (`~/.config/contact-list`) is the dir `ensure_private_dir` creates
-0700, holding `token.json`, `credentials.json`, `secret_key` (path built at
-config.py:40), and `photos/` (`GOOGLE_*` / `PHOTOS_DIR` at config.py:76–81) — but
+0700, holding `token.json`, `credentials.json`, `secret_key` (path built in
+`_load_or_create_secret_key`), and `photos/` (`GOOGLE_*` / `PHOTOS_DIR` in `Config`) — but
 all of those are created **lazily on first use**, so on a fresh frozen install the
 dir may not exist yet when the DB is first opened there. `_load_or_create_secret_key`
-creates it only as a side effect of *persisting* a key (config.py:51), and that
-path is skipped when a `SECRET_KEY` env var is set (config.py:37); `init_db`
+creates it only as a side effect of *persisting* a key, and that
+path is skipped when a `SECRET_KEY` env var is set; `init_db`
 (`create_app`'s `init_db()` call) opens `contacts.db` **before** `create_app`'s
 `ensure_private_dir(PHOTOS_DIR)`. Therefore the frozen launcher **must
 `ensure_private_dir(_CONFIG_DIR)` before the DB is opened** — `_install_file_logging`
@@ -121,7 +121,7 @@ would need a new dependency (`platformdirs`) or hand-rolled per-OS logic for zer
 functional gain on a single-user local app, and it keeps the token/DB/photos
 co-located exactly as the existing security model (DESIGN.md §6) already assumes.
 
-**Permissions caveat.** The 0700 lock (`ensure_private_dir`, config.py:9-23) is
+**Permissions caveat.** The 0700 lock (`config.ensure_private_dir`) is
 POSIX-only. macOS honours it; on **Windows** `os.chmod` toggles only the read-only
 bit, so 0700 is effectively a no-op there and per-user isolation instead rests on
 the Windows user-profile ACLs (each user's home is already private to them). The
@@ -175,7 +175,7 @@ is the only other `__file__`-relative read and it goes through `resource_path`.
 
 ### 2.3 Google OAuth under a frozen binary (routes/sync.py)
 
-`routes/sync.py:51-56` performs Google authorization by spawning a **child Python
+`routes/sync.py`'s `authorize()` performs Google authorization by spawning a **child Python
 process**:
 
 ```python
@@ -210,7 +210,7 @@ if getattr(sys, 'frozen', False) and '--google-auth' in sys.argv:
 ```python
 # routes/sync.py — argv choice factored into a plain helper so INV-3 is unit-
 # testable WITHOUT a Flask request context (authorize() itself checks
-# has_credentials/current_app before it ever reaches subprocess.run, sync.py:44-48).
+# has_credentials/current_app before it ever reaches subprocess.run).
 def _auth_command(frozen: bool) -> list[str]:
     if frozen:
         return [sys.executable, '--google-auth']   # re-invoke this binary
@@ -221,7 +221,7 @@ cmd = _auth_command(getattr(sys, 'frozen', False))
 result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
 ```
 
-`auth_script` (currently a function-local in `authorize()`, sync.py:51) is hoisted
+`auth_script` (currently a function-local in `authorize()`) is hoisted
 to a module-level constant so both `authorize()` and `_auth_command` reference it.
 
 `google_auth.py` itself is **unchanged** (its `main()` is imported by the frozen
@@ -619,8 +619,8 @@ the frozen branch selection without actually freezing):
   `[sys.executable, '--google-auth']`, `_auth_command(False)` →
   `[sys.executable, <google_auth.py>]`. Testing the helper (not `authorize()`)
   keeps the test out of Flask's request context and away from the
-  `has_credentials`/`current_app` preconditions `authorize()` checks first
-  (sync.py:44-48); no real OAuth flow runs.
+  `has_credentials`/`current_app` preconditions `authorize()` checks first;
+  no real OAuth flow runs.
 - `launcher.main` single-instance branch (INV-4): monkeypatch `_port_is_serving`
   → `True`, `webbrowser.open` → recorder, and `app.create_app` → a sentinel that
   fails the test if called; assert `main()` opens the browser to
