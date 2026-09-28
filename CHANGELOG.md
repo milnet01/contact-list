@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-09-28
+
+**Theme:** vCards other apps can read, and a sturdier app
+
 ### Added
 
 - **vCard import reads birthdays, addresses and organizations from other apps' files, and decodes the quoted-printable text many phone exports use** (CL-0075)
