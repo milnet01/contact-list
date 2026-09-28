@@ -27,7 +27,7 @@ it changes what the app promises a user.
   Kind: fix.
   Source: in-session-2026-07-12 CL-0052 final-review.
 
-- 📋 [CL-0063] **Restart respawns the AppImage from a mount that is being unmounted.**
+- ✅ [CL-0063] **Restart respawns the AppImage from a mount that is being unmounted.**
   Frozen, both `sys.executable` and `sys.argv[0]` are the AppImage
   type-2 runtime's ephemeral mount. server_control spawns the child from
   that path and then `os._exit(0)`s the payload, at which point the
@@ -60,6 +60,14 @@ it changes what the app promises a user.
   Progress (2026-09-28): the user approved the AppImage build and a
   real restart test (about 17 GB free). Queued after the review-derived
   items and CL-0061's build; builds run one at a time.
+  Resolved (2026-09-28): live-verified on a built AppImage. Launched
+  with HOME, CONTACT_LIST_DB, port 5099, LWSM_MANAGED=1 and a recording
+  xdg-open, all isolated. POST /settings/server action=restart twice:
+  each time the listener moved to a new PID running from a NEW
+  /tmp/.mount_* of the AppImage file, the old process was gone, and GET
+  /contacts answered 200. Shutdown then left no listener and no process.
+  No browser-open was recorded, and neither log carries an error. The
+  real ~/.config/contact-list was untouched.
   **Layman:** Restarting the app from the tray or the Settings page probably kills it instead, on the Linux download most people use.
   Kind: fix.
   Source: review-code 2026-09-07 (process-lifecycle lane); queued by close-findings.
