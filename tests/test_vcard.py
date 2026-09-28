@@ -28,8 +28,9 @@ class TestEmit:
                            'email': None, 'phone': None, 'notes': None,
                            'custom_fields': []}])
         assert 'ORG:Acme Inc' in out
-        # No structured N property for a company (guard against VERSION's 'N:').
-        assert not any(ln.startswith('N:') for ln in out.splitlines())
+        # RFC 2426 requires N in 3.0; a company's is all-empty so it re-imports
+        # as a company, not a person (CL-0075).
+        assert [ln for ln in out.splitlines() if ln.startswith('N:')] == ['N:;;;;']
 
     def test_custom_field_as_x_cl(self):
         out = vcard.emit([{'type': 'individual', 'name': 'Bob', 'email': None,
@@ -157,3 +158,118 @@ class TestGroupPrefix:
         card = _one(text)
         assert card['email'] == 'ann@work.com'
         assert card['phone'] == '+15551234'
+
+
+# --- CL-0075: standard properties, folding, quoted-printable ---------------
+
+def _card(**kw):
+    base = {'type': 'individual', 'name': 'Pat Lee', 'email': None, 'phone': None,
+            'notes': None, 'custom_fields': []}
+    base.update(kw)
+    return base
+
+
+def _lines(out: str) -> list[str]:
+    return out.split('\r\n')
+
+
+class TestStandardPropertyExport:
+    def test_birthday_with_year(self):
+        out = vcard.emit([_card(custom_fields=[('birthday', '1990-05-01')])])
+        assert 'BDAY;X-LABEL=birthday:1990-05-01' in _lines(out)
+        assert 'X-CL' not in out
+
+    def test_yearless_birthday(self):
+        out = vcard.emit([_card(custom_fields=[('Birthday', '05-01')])])
+        assert 'BDAY;X-LABEL=Birthday:--05-01' in _lines(out)
+
+    def test_non_date_birthday_stays_private(self):
+        out = vcard.emit([_card(custom_fields=[('birthday', 'sometime in May')])])
+        assert 'BDAY' not in out
+        assert 'X-CL;X-LABEL=birthday:sometime in May' in _lines(out)
+
+    def test_address(self):
+        out = vcard.emit([_card(custom_fields=[('address', '1 Main St, Town')])])
+        assert 'ADR;X-LABEL=address:;;1 Main St\\, Town;;;;' in _lines(out)
+
+    def test_organization_on_an_individual(self):
+        out = vcard.emit([_card(custom_fields=[('organization', 'Acme')])])
+        assert 'ORG;X-LABEL=organization:Acme' in _lines(out)
+
+    def test_company_keeps_organization_private_and_carries_n(self):
+        out = vcard.emit([_card(type='company', name='Acme',
+                                custom_fields=[('organization', 'Acme Holdings')])])
+        lines = _lines(out)
+        assert 'N:;;;;' in lines
+        assert 'ORG:Acme' in lines
+        assert 'X-CL;X-LABEL=organization:Acme Holdings' in lines
+
+    def test_round_trip_keeps_names_and_values(self):
+        # INV-2: every field comes back under its exact name.
+        fields = [('Birthday', '1990-05-01'), ('address', '1 Main St; Flat 2, Town'),
+                  ('Organization', 'Acme'), ('Nickname', 'P')]
+        card = _one(vcard.emit([_card(custom_fields=fields)]))
+        assert card['type'] == 'individual'
+        assert sorted(card['custom_fields']) == sorted(fields)
+
+    def test_company_round_trip(self):
+        original = _card(type='company', name='Acme',
+                         custom_fields=[('organization', 'Acme Holdings')])
+        card = _one(vcard.emit([original]))
+        assert card['type'] == 'company'
+        assert card['custom_fields'] == [('organization', 'Acme Holdings')]
+
+
+class TestStandardPropertyImport:
+    def test_another_apps_card(self):
+        card = _one(
+            'BEGIN:VCARD\nVERSION:3.0\nFN:Sam Ray\nN:Ray;Sam;;;\nBDAY:19900501\n'
+            'ADR;TYPE=HOME:;;1 Main;Town;;1234;ZA\nORG:Acme;Sales\nEND:VCARD\n')
+        assert dict(card['custom_fields']) == {
+            'birthday': '1990-05-01', 'address': '1 Main, Town, 1234, ZA',
+            'organization': 'Acme;Sales',
+        }
+
+    def test_birthday_forms(self):
+        for raw, want in [('--0501', '05-01'), ('--05-01', '05-01'),
+                          ('1990-05-01T00:00:00Z', '1990-05-01'), ('May 1st', 'May 1st')]:
+            card = _one(f'BEGIN:VCARD\nFN:A\nBDAY:{raw}\nEND:VCARD\n')
+            assert card['custom_fields'] == [('birthday', want)], raw
+
+    def test_old_private_export_still_imports(self):
+        card = _one('BEGIN:VCARD\nVERSION:3.0\nFN:Old\nN:Old;;;;\n'
+                    'X-CL;X-LABEL=birthday:1990-05-01\nEND:VCARD\n')
+        assert card['custom_fields'] == [('birthday', '1990-05-01')]
+
+    def test_standard_property_wins_case_insensitively(self):
+        card = _one('BEGIN:VCARD\nFN:A\nN:A;;;;\nBDAY:1990-05-01\n'
+                    'X-CL;X-LABEL=Birthday:1980-01-01\nEND:VCARD\n')
+        assert card['custom_fields'] == [('birthday', '1990-05-01')]
+
+    def test_foreign_label_that_fails_validation_falls_back(self):
+        card = _one('BEGIN:VCARD\nFN:A\nBDAY;X-LABEL=bad/label:1990-05-01\nEND:VCARD\n')
+        assert card['custom_fields'] == [('birthday', '1990-05-01')]
+
+
+class TestFolding:
+    def test_long_lines_fold_and_round_trip(self):
+        note = 'café ' * 60   # multi-byte characters across every fold point
+        out = vcard.emit([_card(notes=note.strip())])
+        for line in _lines(out):
+            assert len(line.encode('utf-8')) <= 75, line
+        assert any(line.startswith(' ') for line in _lines(out))
+        assert _one(out)['notes'] == note.strip()
+
+
+class TestQuotedPrintable:
+    def test_soft_break_decodes(self):
+        card = _one('BEGIN:VCARD\r\nVERSION:3.0\r\nFN:A\r\n'
+                    'NOTE;CHARSET=UTF-8;ENCODING=QUOTED-PRINTABLE:Caf=C3=A9 =\r\nnoir\r\n'
+                    'END:VCARD\r\n')
+        assert card['notes'] == 'Café noir'
+
+    def test_vcard_21_bare_parameter(self):
+        card = _one('BEGIN:VCARD\nVERSION:2.1\nN;CHARSET=UTF-8;QUOTED-PRINTABLE:Garc=C3=ADa;Jos=C3=A9;;;\n'
+                    'FN;CHARSET=UTF-8;QUOTED-PRINTABLE:Jos=C3=A9 Garc=C3=ADa\nEND:VCARD\n')
+        assert card['name'] == 'José García'
+        assert card['type'] == 'individual'

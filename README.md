@@ -36,7 +36,7 @@ except the Google sync you choose to run.
 **Import / export**
 - **CSV** — import with a column-matching screen that remembers your choices, and export
   everything.
-- **vCard (.vcf)** — import and export standard vCard files (custom fields round-trip).
+- **vCard (.vcf)** — import and export standard vCard files. Birthdays, addresses and organizations use the standard fields other contact apps read, and custom fields round-trip. Phone exports in the older quoted-printable encoding import too.
 
 **Google Contacts sync (optional)**
 - **Two-way** — pull your Google contacts in, and push local edits and new contacts back;

@@ -459,7 +459,7 @@ is escaped for the format it is written into, at the point it is written.
 |--------|------|
 | HTML | Jinja2 autoescaping (§6.1's XSS row). |
 | CSV export | Every contact-data field passes `_csv_safe` (`routes/import_export.py`): a leading `=`, `@`, tab or CR gets a `'` prefix, and so does a leading `+` or `-` unless the rest is number- or phone-shaped. This stops a spreadsheet running the field as a formula. |
-| vCard export | Every property value passes `vcard._escape` (backslash, comma, semicolon and line breaks, CR included, so a value cannot start a new property or card). Parameter values come only from names that passed `valid_field_name`, a whole-string match, so a name cannot carry a line break. |
+| vCard export | Every text property value passes `vcard._escape` (backslash, comma, semicolon and line breaks, CR included, so a value cannot start a new property or card). A `BDAY` value is written only when it matches the app's birthday format, which is digits and hyphens. Parameter values come only from names that passed `valid_field_name`, a whole-string match, so a name cannot carry a line break. |
 | A new export format | Its escaping ships in the same change as the format, with a test that writes a hostile value and reads it back as data. |
 | HTTP headers | No contact data in a header. Download filenames are fixed strings. |
 

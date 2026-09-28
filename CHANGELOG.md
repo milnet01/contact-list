@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **vCard import reads birthdays, addresses and organizations from other apps' files, and decodes the quoted-printable text many phone exports use** (CL-0075)
+
 - **`LWSM_MANAGED=1` runs without the system-tray icon** (CL-0056)
   Headless, logging to stdout as normal. A presentation hint only — it
   affects nothing but whether the icon appears.
@@ -21,6 +23,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that binds now prints `Listening on http://127.0.0.1:<port>` to stdout.
 
 ### Changed
+
+- **vCard export writes birthdays, addresses and organizations as the standard fields other contact apps read** (CL-0075)
+  Files exported by earlier versions still import.
 
 - **google-auth-httplib2 is capped at its current minor (0.4.x), so an untested breaking release can no longer install silently** (CL-0082)
 
@@ -45,6 +50,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   existing instance. Without `PORT` the hand-off is unchanged.
 
 ### Fixed
+
+- **Exported vCards now fold long lines and give company cards the name field strict readers require** (CL-0075)
 
 - **Screen readers now hear the import and merge controls' names, the current sort order, and how many contacts are selected** (CL-0084)
   Keyboard shortcuts also no longer fire when Ctrl, Alt or Cmd is held.

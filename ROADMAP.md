@@ -734,7 +734,7 @@ and the judgement is that no release waits on them.
 Items that cannot be given a version yet, each with the reason on the bullet. An
 item sits here because placing it would be a guess, never because nobody looked.
 
-- 📋 [CL-0075] **vCard export loses standard fields to a private property, and drops them on import.**
+- ✅ [CL-0075] **vCard export loses standard fields to a private property, and drops them on import.**
   Four findings, one subject -- all about fidelity to other software
   rather than to ourselves:
 
@@ -766,6 +766,15 @@ item sits here because placing it would be a guess, never because nobody looked.
   properties after export moves to BDAY/ADR/ORG, so every 1.x export still
   loads and this ships as a minor. Also decided: widen the parser to
   handle ENCODING=QUOTED-PRINTABLE (Android exports).
+  Resolved (2026-09-28): built to the gated spec (loop 2 in its log).
+  Export: birthday/address/organization as BDAY/ADR/ORG with an X-LABEL
+  param (non-date birthdays and a company's organization stay X-CL);
+  company cards carry N:;;;;; lines fold at 75 octets without splitting a
+  character. Import: BDAY/ADR/ORG read (BDAY normalised to the stored
+  forms), X-CL still read, standard property wins case-insensitively,
+  foreign X-LABELs validated, quoted-printable decoded including soft
+  breaks. Each part proven by breaking it. Still unverified: whether other
+  readers accept BDAY:--MM-DD in a 3.0 card; needs a target app.
   **Layman:** Birthdays and addresses exported from here are not recognised by other contact apps, and theirs are ignored by ours.
   Kind: fix.
   Source: review-code 2026-09-07 (routes-io lane).
