@@ -191,20 +191,26 @@ maintained.
 - Emits one `.vcf` for all contacts, `Content-Type: text/vcard`, filename
   `contacts.vcf`. **Both exports stream, per DESIGN §7.2 (CL-0067):** the view
   returns a generator wrapped in `stream_with_context`, yielding one CSV row or
-  one vCard at a time, and the database rows are read from a live cursor rather
-  than `fetchall()`. Neither export holds the whole database, nor the whole
-  file, in memory. `stream_with_context` keeps the request's connection open
-  until the last chunk is sent; the teardown closes it after.
+  one vCard at a time. Rows are read from a live cursor rather than
+  `fetchall()`, so `export_contacts` returns its cursor, not a list. Neither
+  export holds the whole database, nor the whole file, in memory.
+- **The generator opens its own connection** (`get_db()` inside the generator
+  body) and runs the query there. Flask tears down the view's app context —
+  closing any connection the view opened — before the first chunk is sent, and
+  runs the generator in a fresh context, so a cursor created in the view is
+  already closed by then. That context's teardown closes the generator's
+  connection after the last chunk.
 - **Export must load each contact's custom fields in ONE query**, a `LEFT JOIN`
-  of `custom_fields` onto `contacts` ordered by name, then contact id, then
-  field name, grouped per contact as it streams. A `get_custom_fields` call per
-  contact is an N+1 and is not allowed. The CSV export's core-columns query
-  (`export_contacts` in `models.py`) must **not** be reused for vCard, or the
-  `X-CL` lines — and INV-2 — are silently lost.
+  of `custom_fields` onto `contacts` ordered by `name COLLATE NOCASE`, then
+  contact id, then `field_name COLLATE NOCASE` (the existing export order),
+  grouped per contact as it streams. A `get_custom_fields` call per contact is
+  an N+1 and is not allowed. The CSV export's core-columns query
+  (`export_contacts`) must **not** be reused for vCard, or the `X-CL` lines —
+  and INV-2 — are silently lost.
 - **A failure mid-stream truncates the download.** The status line and headers
-  have already gone out, so the client sees a `200` with a short body. That is
-  the accepted cost of streaming at single-user scale; the server log carries
-  the traceback.
+  have already gone out, so the client sees a `200` whose body stops early and
+  reports the download as incomplete. That is the accepted cost of streaming at
+  single-user scale; the server log carries the traceback.
 - Per contact (vCard **3.0**): `BEGIN:VCARD` / `VERSION:3.0` / … / `END:VCARD`.
   - Individuals: `FN:<name>` + `N:<name>;;;;`. Companies: `FN:<name>` +
     `ORG:<name>`.
@@ -350,9 +356,11 @@ up in order and must be idempotent (`CREATE TABLE IF NOT EXISTS`) — it is.
 
 - **New:** `vcard.py`, `templates/import.html`, `templates/merge.html`,
   `migrations/004_import_profiles.sql`.
-- **Changed:** `routes/contacts.py` (the five routes in §1.1 + CSV mapping),
-  `models.py` (`import_contact`, `merge_contacts`, `_write_contact` extraction,
-  profile get/save, a vCard-export query that includes custom fields — §3.1),
+- **Changed:** `routes/import_export.py` (import, CSV mapping and both
+  exports), `routes/merge.py` (merge), `models.py` (`import_contact`,
+  `merge_contacts`, `_write_contact` extraction, profile get/save,
+  `export_contacts` returning a cursor, a vCard-export query that includes
+  custom fields — §3.1),
   `config.py` (`MAX_CONTENT_LENGTH`),
   `templates/duplicates.html` (merge button), `templates/base.html` (Import nav
   link), the import page (vCard export link).
@@ -363,9 +371,6 @@ up in order and must be idempotent (`CREATE TABLE IF NOT EXISTS`) — it is.
     ~85 KB after these three features.)
   - §13 version plan — the v1.1 row now reads "CSV import, vCard import/export,
     merge duplicates".
-- **DESIGN §7.2 streaming — no longer a deviation (CL-0067).** Both exports
-  first shipped buffered, under a documented deviation. They now stream as §3.1
-  describes, so §7.2 holds as written.
 
 ## 8. Testing (per DESIGN.md §11)
 
@@ -388,8 +393,9 @@ up in order and must be idempotent (`CREATE TABLE IF NOT EXISTS`) — it is.
   `idx_cf_unique` violation), rejects `survivor ∈ losers` and <2 ids; a forced
   mid-merge failure leaves survivor + all losers unchanged (INV-3 rollback);
   `_write_contact` reuse keeps `update_contact` behaviour unchanged.
-- **Export tests (CL-0067):** both export responses are streamed
-  (`is_streamed`) and their bodies are unchanged; the vCard export issues the
+- **Export tests (CL-0067):** each export's body arrives in at least one chunk
+  per contact, so a buffered body wrapped in a one-yield generator fails;
+  `export_contacts` returns a cursor, not a list; the vCard export issues the
   same number of SQL statements for one contact as for many, so the N+1 cannot
   return; contacts whose custom fields interleave in name order keep their own
   fields.
@@ -427,3 +433,4 @@ questions the current gate asks.
 
 | Loop | Date | Lanes | Q1 | Q2 | Q3 | Q4 | Verified | Fixed | Outcome |
 |------|------|-------|----|----|----|----|----------|-------|---------|
+| 1 | 2026-09-28 | 2 | 3 | 0 | 2 | 1 | 6 | 6 | Gate armed by the CL-0067 amendment (§3.1 streaming and the single custom-field query, §7, §8, §10). **One loop only, at the user's standing instruction** — not run to convergence. Every lane held all four questions. Found while building the packet, by running it: the draft said `stream_with_context` keeps the view's connection open, but Flask 3.1 tears the view's context down first, so a cursor made in the view is closed before the first chunk — §3.1 now has the generator open its own connection. Both lanes found the join's sort order named no collation (a literal build reorders the export), that nothing said `export_contacts` stops returning a list, and that §8's `is_streamed` check passes a buffered body wrapped in a one-yield generator — §8 now asks for one chunk per contact. Both lanes also found §7 naming `routes/contacts.py` for routes that live in `routes/import_export.py` and `routes/merge.py`; outside the amendment, fixed because no loop remains. A lane's open question became the sixth fix: measured under the app's `make_server`, a mid-stream failure logs its traceback and the client sees an incomplete download, not a clean short file. Five of six findings anchor inside the amendment. Neither lane arrived with a git snapshot. |
