@@ -2,12 +2,8 @@
 # Build the Linux AppImage. Local pre-flight AND the exact steps CI runs.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-PY="${PYTHON:-}"
-if [ -z "$PY" ]; then
-  for c in ./venv/bin/python python3 python; do
-    command -v "$c" >/dev/null 2>&1 && { PY="$c"; break; }
-  done
-fi
+# shellcheck source=packaging/find-python.sh
+. packaging/find-python.sh
 
 # PyInstaller can only bundle what the BUILD interpreter can import. Without this
 # check the build "succeeds" while logging "Hidden import 'gi.repository.DBus' not
@@ -18,10 +14,6 @@ fi
 # 3c817fc already had to fix), then AppIndicator3 with AyatanaAppIndicator3 as the
 # fallback, in that order. Checking only Ayatana would reject a host carrying the
 # older typelib, on which the tray works fine.
-if [ -z "$PY" ]; then
-  echo "error: no Python interpreter found (tried \$PYTHON, ./venv/bin/python, python3, python)." >&2
-  exit 1
-fi
 # Capture stderr rather than discarding it: the interpreter's last line is what
 # NAMES the missing namespace ("ValueError: Namespace DBus not available").
 if ! gi_err=$("$PY" -c "import gi

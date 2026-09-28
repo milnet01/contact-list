@@ -6,12 +6,17 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-code_ver="$(grep -oE "APP_VERSION = '([0-9]+\.[0-9]+\.[0-9]+)'" config.py | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')"
+# `|| true`: under set -e a grep that matches nothing would end the script here,
+# before the diagnostics below that name the problem (CL-0078).
+code_ver="$(grep -oE "APP_VERSION = '([0-9]+\.[0-9]+\.[0-9]+)'" config.py | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || true)"
 # First "## [X.Y.Z]" heading in the CHANGELOG (skips "## [Unreleased]").
-log_ver="$(grep -oE '^## \[[0-9]+\.[0-9]+\.[0-9]+\]' CHANGELOG.md | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')"
+log_ver="$(grep -oE '^## \[[0-9]+\.[0-9]+\.[0-9]+\]' CHANGELOG.md | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || true)"
 
 if [ -z "$code_ver" ]; then
   echo "drift: could not extract APP_VERSION from config.py" >&2; exit 1
+fi
+if [ -z "$log_ver" ]; then
+  echo "drift: no '## [X.Y.Z]' release heading found in CHANGELOG.md" >&2; exit 1
 fi
 if [ "$code_ver" != "$log_ver" ]; then
   echo "drift: config.py APP_VERSION ($code_ver) != top CHANGELOG version ($log_ver)" >&2

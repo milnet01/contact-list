@@ -2,13 +2,8 @@
 # Derive per-OS icon formats from packaging/icon.png. Run from anywhere.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-# Resolve an interpreter across Linux (venv), CI (python3), Windows Git-Bash (python).
-PY="${PYTHON:-}"
-if [ -z "$PY" ]; then
-  for c in ./venv/bin/python python3 python; do
-    command -v "$c" >/dev/null 2>&1 && { PY="$c"; break; }
-  done
-fi
+# shellcheck source=packaging/find-python.sh
+. packaging/find-python.sh
 
 "$PY" - <<'PY'
 from PIL import Image

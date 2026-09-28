@@ -16,10 +16,16 @@ mkdir -p "$TOOLS"
 
 command -v wine >/dev/null 2>&1 || { echo "wine is not installed" >&2; exit 1; }
 
+# The installer is run, so pin it: python.org lists only an MD5 for this file,
+# and a copy matching that MD5 gave this SHA-256 (CL-0078). Verified on EVERY run,
+# so a cached copy is checked too -- build-linux.sh's pattern.
+INST_SHA256="1206721601a62c925d4e4a0dcfc371e88f2ddbe8c0c07962ebb2be9b5bde4570"
+
 # --retry/-m give the one-time ~25 MB download resilience + a hard timeout (no
 # silent -s, so progress is visible for a slow fetch).
 [ -f "$TOOLS/$INST" ] || \
   curl -fL --retry 3 -m 300 "https://www.python.org/ftp/python/${PYVER}/${INST}" -o "$TOOLS/$INST"
+echo "${INST_SHA256}  $TOOLS/$INST" | sha256sum -c -
 
 # Silent, PER-USER install (InstallAllUsers=0): inside a Wine prefix a per-user
 # install needs no elevated "admin", lands in the prefix's user AppData, and puts

@@ -44,7 +44,9 @@ git config core.hooksPath .githooks   # once per clone: run local CI before ever
 
 **`./local-ci.sh` must be green before any push**, and `.githooks/pre-push`
 enforces it once `core.hooksPath` is set. It mirrors `ci.yml`. A matrix Python
-it cannot obtain is a **failure**, not a warning.
+it cannot obtain is a **failure**, not a warning. The hook refuses a push while
+the working tree differs from the commit being pushed, since it would test the
+wrong code: commit or stash first.
 
 Documentation-only pushes (every changed file a `*.md` or under `docs/`) skip it
 automatically. `SKIP_LOCAL_CI=1 git push` is the emergency override.

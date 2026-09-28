@@ -600,7 +600,7 @@ and the judgement is that no release waits on them.
   Kind: chore.
   Source: review-code 2026-09-07 (frontend-js, templates and shell-ci lanes); gap in check-code's tool set.
 
-- 📋 [CL-0078] **Shell and CI: several failure paths report success.**
+- ✅ [CL-0078] **Shell and CI: several failure paths report success.**
   The two worst findings in this lane -- the push gate silently skipping
   CI, and the cached test environment never updating -- were fixed on
   2026-09-07. What remains, same subject:
@@ -626,6 +626,17 @@ and the judgement is that no release waits on them.
     - Nothing makes the release path depend on CI, which triggers on
       branch pushes only -- so a tag push publishes binaries without
       ever running the checks.
+  Resolved (2026-09-28): all seven. run.sh installs with
+  --ignore-installed only the requirements with no venv-local copy (a
+  system-only PyYAML was detected) and warns instead of stopping when the
+  sync fails offline (reached launch with PIP_NO_INDEX=1).
+  check-version-drift.sh's diagnostics are reachable (old script: rc 1,
+  no message). packaging/find-python.sh is the one interpreter search,
+  with the empty guard, sourced by all three build scripts. wine-setup.sh
+  pins the installer's SHA-256 (a copy matching python.org's MD5) and
+  re-verifies every run. pre-push refuses a dirty tree or a non-HEAD
+  push. release.yml calls ci.yml (now workflow_call) and every build
+  waits on it.
   **Layman:** A few of our build and launch scripts carry on as if nothing went wrong when something did.
   Kind: fix.
   Source: review-code 2026-09-07 (shell-ci lane).

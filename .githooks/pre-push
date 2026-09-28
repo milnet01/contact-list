@@ -24,8 +24,10 @@ fi
 # Collect every file changed by the commits being pushed. git feeds the hook
 # "<local ref> <local sha> <remote ref> <remote sha>" lines on stdin.
 changed=""
+pushed=""
 while read -r _local_ref local_sha _remote_ref remote_sha; do
     [ "$local_sha" = "$Z40" ] && continue          # branch deletion — nothing to check
+    pushed="$pushed $local_sha"
     if [ "$remote_sha" = "$Z40" ]; then
         # New branch: diff against origin/HEAD's tip if we know it, else the
         # commit's own parent. Falls back to running CI when neither resolves.
@@ -64,6 +66,24 @@ if [ "$changed" != "RUN_ANYWAY" ]; then
     fi
     echo "pre-push: code changed, running local CI:"
     printf '%s\n' "$code_files" | sed 's/^/    /' | head -20
+fi
+
+# local-ci.sh tests the WORKING TREE, but git pushes COMMITS. The two agree only
+# when every pushed commit is HEAD and nothing is uncommitted; otherwise a green
+# run says nothing about what is being pushed (CL-0078).
+head_sha=$(git rev-parse HEAD)
+for sha in $pushed; do
+    if [ "$sha" != "$head_sha" ]; then
+        echo "pre-push: pushing a commit that is not checked out (HEAD) -- local CI would test the wrong code." >&2
+        echo "          Check it out and push from there, or: SKIP_LOCAL_CI=1 git push" >&2
+        exit 1
+    fi
+done
+if [ -n "$(git status --porcelain)" ]; then
+    echo "pre-push: uncommitted changes in the working tree -- local CI would test them, not the commits being pushed." >&2
+    echo "          Commit or stash them (git stash -u), then push again." >&2
+    git status --short | head -10 | sed 's/^/    /' >&2
+    exit 1
 fi
 
 echo

@@ -32,7 +32,29 @@ fi
 # Sync dependencies on EVERY launch so a pulled update (e.g. the new pystray dep
 # for the tray icon) installs even into an existing venv. Idempotent; a small
 # fixed cost (~1-3s) once satisfied.
-"$VENV_DIR/bin/pip" install --quiet -r "$APP_DIR/requirements.txt"
+#
+# A requirement with no copy inside the venv is installed with --ignore-installed,
+# as at creation above: otherwise pip counts the distro's copy as installed and a
+# dependency added later runs on the distro's version (CL-0078). One with a venv
+# copy needs no flag -- the venv's site-packages comes first, so pip upgrades it.
+#
+# Failure here is a warning, not a stop: the venv already holds what the app
+# needed yesterday, so being offline must not stop it starting (CL-0078).
+sync_ok=1
+local_pkgs=$("$VENV_DIR/bin/pip" list --local --format=freeze 2>/dev/null \
+             | cut -d= -f1 | tr 'A-Z_.' 'a-z--') || sync_ok=0
+missing=()
+while IFS= read -r req; do
+    name=$(printf '%s' "$req" | sed -E 's/[[:space:]<>=~!;[].*//' | tr 'A-Z_.' 'a-z--')
+    grep -qx -- "$name" <<<"$local_pkgs" || missing+=("$req")
+done < <(grep -Ev '^[[:space:]]*(#|$)' "$APP_DIR/requirements.txt")
+if [ "${#missing[@]}" -gt 0 ]; then
+    "$VENV_DIR/bin/pip" install --quiet --ignore-installed "${missing[@]}" || sync_ok=0
+fi
+"$VENV_DIR/bin/pip" install --quiet -r "$APP_DIR/requirements.txt" || sync_ok=0
+if [ "$sync_ok" -eq 0 ]; then
+    echo "warning: could not update dependencies (offline?) -- starting with the ones already installed." >&2
+fi
 
 # Run the app. launcher.py owns the tray, and owns the only two browser-opens left:
 # the single-instance hand-off, and the fallback when the tray fails to appear

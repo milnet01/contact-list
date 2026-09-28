@@ -6,7 +6,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-PY="${PYTHON:-python3}"
+# shellcheck source=packaging/find-python.sh
+. packaging/find-python.sh
 
 bash packaging/make-icons.sh                        # produces packaging/icon.icns on Darwin
 "$PY" -m PyInstaller --noconfirm packaging/contact-list.spec
