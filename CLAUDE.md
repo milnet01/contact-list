@@ -66,6 +66,13 @@ emergency override, and it skips the gate only, not the secret scan.
   Two different mechanisms (`browser.py`): from source it is stdlib
   `webbrowser`, so `BROWSER='/path/to/recorder %s'` catches it; when frozen it
   shells out to `xdg-open`, so put a fake `xdg-open` first on `PATH`.
+- **Isolate the home folder AND the database, both** —
+  `HOME=<scratch> CONTACT_LIST_DB=<scratch>/x.db`. Photos, the Google token and
+  the log live under `~/.config/contact-list/`, and a page that checks Google
+  refreshes and rewrites the real token. From source, the default database is
+  `contacts.db` next to the code: the user's real contacts. A script that
+  builds the app itself asserts `config.Config.DATABASE` is under the scratch
+  folder before calling `create_app()`.
 
 ## Privileged commands
 
