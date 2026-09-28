@@ -89,19 +89,22 @@
                 confirming = false;
                 return; // allow the native action
             }
-            e.preventDefault();
             var msg = this.getAttribute('data-confirm');
-            if (!msg) return;
+            if (!msg) return;  // before preventDefault, or an empty message makes the control inert
+            e.preventDefault();
             var self = this;
             showModal(msg).then(function (confirmed) {
-                if (confirmed) {
+                if (!confirmed) return;
+                // For buttons inside forms, submit the form directly
+                if (self.type === 'submit' && self.form) {
+                    self.form.submit();
+                } else {
+                    // Arm only the re-click, which disarms it synchronously.
+                    // Arming before form.submit() left it armed whenever the
+                    // page did not navigate, so the next click skipped the
+                    // confirmation (CL-0079).
                     confirming = true;
-                    // For buttons inside forms, submit the form directly
-                    if (self.type === 'submit' && self.form) {
-                        self.form.submit();
-                    } else {
-                        self.click();
-                    }
+                    self.click();
                 }
             });
         });
@@ -329,8 +332,13 @@
     function layoutCardMasonry() {
         if (!document.body.classList.contains('view-card')) return;
         var form = document.getElementById('bulk-form');
-        var tbody = form && form.querySelector('tbody');
-        if (!tbody) return;
+        if (!form) return;
+        // Every tbody, not the first: the duplicates page has one per group
+        // (CL-0079).
+        form.querySelectorAll('tbody').forEach(layoutTbody);
+    }
+
+    function layoutTbody(tbody) {
         var cards = Array.prototype.slice.call(tbody.querySelectorAll('tr'));
         if (!cards.length) return;
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 import sqlite3
 import zoneinfo
 from collections.abc import Callable
@@ -17,6 +18,17 @@ DATE_FORMATS: dict[str, str] = {
     'iso': '%Y-%m-%d %H:%M',
     'dmy': '%d %b %Y',
     'mdy': '%m/%d/%Y',
+}
+
+# The day-and-month part of each DATE_FORMATS entry, for a date with no year or
+# time: the birthdays page (CL-0079). Keyed identically, so a new date format
+# needs a row here too.
+DAY_MONTH_FORMATS: dict[str, str] = {
+    'dmy_hm': '%d %b',
+    'mdy_hm': '%b %d',
+    'iso': '%m-%d',
+    'dmy': '%d %b',
+    'mdy': '%m/%d',
 }
 
 # Theme choices in UI display order: auto, light, dark, then the rest.
@@ -56,8 +68,16 @@ def _valid_per_page(value: str) -> bool:
     return 1 <= n <= Config.MAX_CONTACTS_PER_PAGE
 
 
+@functools.cache
+def timezones() -> tuple[str, ...]:
+    """Every IANA zone name, sorted. Cached because the walk of the zone
+    database costs about 12 ms, and the Settings page paid it on every render
+    and again for every submitted timezone (CL-0079)."""
+    return tuple(sorted(zoneinfo.available_timezones()))
+
+
 def _valid_timezone(value: str) -> bool:
-    return value in zoneinfo.available_timezones()
+    return value in timezones()
 
 
 SETTINGS_VALIDATORS: dict[str, Callable[[str], bool]] = {

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import zoneinfo
-
 import phonenumbers
 from flask import (
     Blueprint,
@@ -27,7 +25,7 @@ _FORM_KEYS = tuple(settings_mod.SETTINGS_DEFAULTS.keys())
 def _choices() -> dict:
     """Choice lists for the template's <select> controls."""
     return {
-        'timezones': sorted(zoneinfo.available_timezones()),
+        'timezones': settings_mod.timezones(),
         'date_formats': settings_mod.DATE_FORMATS,
         'themes': list(settings_mod.THEMES),
         'regions': sorted(phonenumbers.SUPPORTED_REGIONS),

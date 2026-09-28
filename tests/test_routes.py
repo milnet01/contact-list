@@ -678,6 +678,23 @@ class TestUpcomingBirthdaysView:
         resp = client.get('/contacts/birthdays?days=200')
         assert b'Hundred Days' in resp.data
 
+    @pytest.mark.parametrize('date_format, fmt', [
+        ('dmy', '%d %b'), ('mdy', '%m/%d'), ('iso', '%m-%d'),
+    ])
+    def test_date_follows_the_date_format_setting(self, client, app, date_format, fmt):
+        # CL-0079: this page printed '%B day' -- US order, full month name --
+        # whatever the user picked in Settings.
+        import settings
+        from db import get_db
+        with app.app_context():
+            assert settings.update_settings(get_db(), {'date_format': date_format}) == []
+        token = _get_csrf(client)
+        soon = datetime.date.today() + datetime.timedelta(days=3)
+        self._create_with_birthday(client, token, 'Formatted', soon.strftime('%m-%d'))
+        resp = client.get('/contacts/birthdays')
+        assert soon.strftime(fmt).encode() in resp.data
+        assert soon.strftime('%B').encode() not in resp.data
+
     def test_empty_state(self, client):
         resp = client.get('/contacts/birthdays')
         assert resp.status_code == 200

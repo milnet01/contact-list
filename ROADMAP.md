@@ -225,7 +225,7 @@ it changes what the app promises a user.
   Kind: security.
   Source: review-code 2026-09-07 (google-sync lane).
 
-- 📋 [CL-0079] **Several smaller correctness and UI defects across routes, templates and the frontend.**
+- ✅ [CL-0079] **Several smaller correctness and UI defects across routes, templates and the frontend.**
   Filed as one item because each is small and none needs a decision.
   The full lane reports carry the detail.
 
@@ -262,6 +262,16 @@ it changes what the app promises a user.
   asserts in models.py the review's INDEX filed here. Still open: the
   birthdays date filter, masonry on the duplicates page, the armed
   confirm button, the repeated inline SVGs, and uncached timezone lookups.
+  Resolved (2026-09-28): the rest. Birthdays render through a new
+  day_month filter keyed on the user's date format (settings.
+  DAY_MONTH_FORMATS, with a test pinning its keys to DATE_FORMATS).
+  settings.timezones() caches the zone list (about 12 ms a walk,
+  measured). Card masonry lays out every tbody on the duplicates page.
+  The confirm handler arms only the re-click path, and an empty
+  data-confirm no longer makes a control inert. The five repeated glyphs
+  live in one icon() macro; every affected page rendered byte-identical
+  before and after. The two JS fixes are verified by node --check and by
+  reading only: the project has no JS test runner (CL-0084).
   **Layman:** A list of small things that are wrong but not urgent.
   Kind: ux.
   Source: review-code 2026-09-07 (all lanes); the Low tail.

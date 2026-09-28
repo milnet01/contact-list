@@ -4,7 +4,7 @@ import hmac
 import logging
 import os
 import secrets
-from datetime import datetime
+from datetime import date, datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from flask import Flask, abort, g, render_template, request, session
@@ -167,6 +167,17 @@ def create_app(test_config: dict | None = None) -> Flask:
             return dt.strftime(fmt)
         except (ValueError, AttributeError, ZoneInfoNotFoundError):
             return value
+
+    @app.template_filter('day_month')
+    def day_month(value: date) -> str:
+        """A yearless date (a birthday) in the day-and-month form of the
+        user's date format, so it reads like every other date in the app."""
+        import settings as settings_mod
+        s = getattr(g, 'settings', None) or settings_mod.SETTINGS_DEFAULTS
+        fmt = settings_mod.DAY_MONTH_FORMATS.get(
+            s['date_format'], settings_mod.DAY_MONTH_FORMATS['dmy_hm']
+        )
+        return value.strftime(fmt)
 
     # ------------------------------------------------------------------
     # Security headers

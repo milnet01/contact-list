@@ -226,3 +226,32 @@ class TestDefaultsConsumed:
         # the company option is selected, the individual option is not
         assert b'value="company" selected' in resp.data
         assert b'value="individual" selected' not in resp.data
+
+
+def test_day_month_formats_cover_every_date_format():
+    # The birthdays page looks its format up by the date_format key, so a new
+    # DATE_FORMATS entry with no DAY_MONTH_FORMATS row would fall back silently.
+    import settings
+    assert settings.DAY_MONTH_FORMATS.keys() == settings.DATE_FORMATS.keys()
+
+
+def test_zone_database_is_walked_once(app, monkeypatch):
+    # CL-0079: the Settings page walked the whole zone database on every render
+    # and again for every submitted timezone -- about 12 ms a walk.
+    import zoneinfo
+    real = zoneinfo.available_timezones
+    walks: list[int] = []
+
+    def counting() -> set[str]:
+        walks.append(1)
+        return real()
+
+    monkeypatch.setattr(zoneinfo, 'available_timezones', counting)
+    if hasattr(settings_mod, 'timezones'):
+        settings_mod.timezones.cache_clear()
+    client = app.test_client()
+    client.get('/settings')
+    client.get('/settings')
+    with app.app_context():
+        assert settings_mod.update_settings(get_db(), {'timezone': 'Europe/London'}) == []
+    assert len(walks) == 1

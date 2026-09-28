@@ -44,6 +44,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A form that fails to save keeps what you typed: an invalid custom field stays on the page, and a ticked "Remove photo" stays ticked** (CL-0079)
+
+- **Merging contacts now checks the email and formats the phone number the same way the contact form does** (CL-0079)
+
+- **The birthdays page shows dates in the format you chose in Settings** (CL-0079)
+
+- **On the duplicates page, card view lays out every group, not just the first** (CL-0079)
+
+- **A delete confirmation can no longer be skipped by clicking the same button twice** (CL-0079)
+
 - **Restart relaunches the app from the right place in the downloadable builds** (CL-0063)
   The Linux download relaunched itself from a temporary folder that disappears as the old copy closes, so Restart most likely just closed the app, and at best brought back the old version after an update. It now relaunches the AppImage file itself. Every packaged build also starts the new copy as a clean, independent program. Not yet tried on a real AppImage build.
 
