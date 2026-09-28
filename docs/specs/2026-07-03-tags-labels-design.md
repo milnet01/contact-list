@@ -327,9 +327,9 @@ There are **three** contact-delete paths that can orphan a tag, and each must GC
 
 - `delete_contact` (single) — `_gc_orphan_tags(db)` inside its **existing**
   `with db:` block, after the delete (INV-4).
-- `bulk_delete` (batch) — has no transaction of its own; it loops `delete_contact`
-  per id (`routes/contacts.py`), so it inherits the GC per iteration and needs
-  **no separate change**.
+- `bulk_delete` (batch) — calls `delete_contacts`, which deletes every selected
+  id in one `with db:` block and runs `_gc_orphan_tags(db)` once, after the
+  deletes (CL-0068).
 - `merge_contacts` (survivor + loser deletes) — deletes losers via its own
   `DELETE FROM contacts` (not `delete_contact`), **after** `_write_contact` has
   already run `set_contact_tags`'s GC on the survivor. Consider a loser-only tag

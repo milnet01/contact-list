@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Deleting many contacts at once is now one save instead of one per contact, and is capped at 10,000** (CL-0068)
+
 - **CSV and vCard exports now stream to the browser instead of building the whole file in memory** (CL-0067)
   The vCard export also loads every contact's custom fields in one
   database query instead of one query per contact.

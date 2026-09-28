@@ -42,6 +42,11 @@ MAX_CF_VALUE_LEN = 500
 MAX_DUPLICATE_GROUPS = 200
 MAX_UPCOMING_BIRTHDAYS = 200
 
+# CL-0068: the most ids one bulk delete accepts -- DESIGN 7.1's 10k-contact
+# scale target, so no real selection is refused. It also keeps the IN list well
+# under SQLite's default limit on bound parameters.
+MAX_BULK_DELETE = 10_000
+
 
 def _escape_like(term: str) -> str:
     """Escape special LIKE characters."""
@@ -906,6 +911,34 @@ def delete_contact(db: sqlite3.Connection, contact_id: int) -> None:
     with db:
         db.execute('DELETE FROM contacts WHERE id = ?', [contact_id])
         _gc_orphan_tags(db)  # CL-0037: reap a tag this contact was the last user of
+
+
+def delete_contacts(
+    db: sqlite3.Connection, contact_ids: list[int]
+) -> list[tuple[int, str | None]]:
+    """Delete several contacts in one transaction with one orphan-tag sweep
+    (CL-0068), and return the (id, photo ext) of each one that existed so the
+    caller can remove the photo files once the rows are gone.
+
+    Raises ValueError past MAX_BULK_DELETE ids, before touching anything.
+    """
+    ids = list(dict.fromkeys(contact_ids))
+    if len(ids) > MAX_BULK_DELETE:
+        raise ValueError(f'At most {MAX_BULK_DELETE} contacts can be deleted at once')
+    if not ids:
+        return []
+    marks = ','.join('?' * len(ids))
+    with db:
+        found = [
+            (row['id'], row['ext']) for row in db.execute(
+                'SELECT c.id, p.ext FROM contacts c '
+                'LEFT JOIN contact_photos p ON p.contact_id = c.id '
+                f'WHERE c.id IN ({marks})', ids,
+            )
+        ]
+        db.execute(f'DELETE FROM contacts WHERE id IN ({marks})', ids)
+        _gc_orphan_tags(db)
+    return found
 
 
 _FIELD_NAME_RE = re.compile(r'^[a-zA-Z0-9_ ]{1,64}$')

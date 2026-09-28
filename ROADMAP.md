@@ -85,7 +85,7 @@ it changes what the app promises a user.
   Kind: perf.
   Source: review-code 2026-09-07 (data-layer + routes-io lanes).
 
-- 📋 [CL-0068] **Request-derived values reach loops and writes with no server-side bound.**
+- ✅ [CL-0068] **Request-derived values reach loops and writes with no server-side bound.**
   Four sites, one subject. The choke-point pattern already exists in
   this codebase -- `_normalize_tags` enforces its caps in the model, so
   every caller gets them -- and these four skipped it:
@@ -119,6 +119,12 @@ it changes what the app promises a user.
   body. That is wrong -- CL-0067 is the buffered-exports item. The id was
   miscopied; the work described here is this bullet's. Recorded rather
   than rewritten, since the commit is already pushed.
+  Resolved (2026-09-28): the last open part. bulk_delete now calls
+  models.delete_contacts -- one transaction, one orphan-tag sweep, capped
+  at MAX_BULK_DELETE (10,000, DESIGN §7.1's scale target); an over-cap
+  request deletes nothing and says why. Photo files are unlinked after
+  the commit, for contacts that existed only. Tests red on the old code;
+  the photo test red against a broken ext lookup.
   **Layman:** A few form fields are trusted to be a sensible size without anyone checking.
   Kind: security.
   Source: review-code 2026-09-07 (routes-contacts + data-layer + routes-io lanes).

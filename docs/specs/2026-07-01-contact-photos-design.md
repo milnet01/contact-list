@@ -339,9 +339,11 @@ exists:
 The DB row is handled by `ON DELETE CASCADE`; the **file** is not, so callers
 unlink it explicitly:
 
-- `delete` and `bulk_delete` — before/after deleting each contact, unlink
-  `photos/<id>.*` (via the stored ext from `get_contact_photo_ext`, read before
-  the DB delete). A missing file is ignored.
+- `delete` — unlink `photos/<id>.*` via the stored ext from
+  `get_contact_photo_ext`, read before the DB delete. `bulk_delete` — the
+  stored exts come back from `delete_contacts`, read in the same transaction as
+  the delete, and the files are unlinked after it commits (CL-0068). A missing
+  file is ignored.
 - `merge_apply` — `merge_contacts(db, survivor_id, loser_ids, fields,
   custom_fields=None)` deletes the losers. For each `loser_id`, unlink its photo
   file (read its ext before the delete). The **survivor (`survivor_id`) keeps its own** photo; if the survivor

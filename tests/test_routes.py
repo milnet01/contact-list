@@ -355,6 +355,71 @@ class TestBulkDelete:
         assert b'No contacts selected' in resp.data
 
 
+class TestBulkDeleteBounds:
+    """CL-0068: bulk delete took an unbounded id list, and each id paid its own
+    commit and its own orphan-tag sweep."""
+
+    @staticmethod
+    def _make(app, names: list[str]) -> list[int]:
+        import models
+        from db import get_db
+        with app.app_context():
+            return [models.create_contact(get_db(), 'individual', n) for n in names]
+
+    def test_one_tag_sweep_for_many_ids(self, client, app, monkeypatch):
+        import db as db_module
+        ids = self._make(app, ['A', 'B', 'C'])
+        real_connect = db_module.sqlite3.connect
+        sweeps: list[str] = []
+
+        def connect(*args, **kwargs):
+            conn = real_connect(*args, **kwargs)
+            conn.set_trace_callback(
+                lambda sql: sweeps.append(sql) if sql.startswith('DELETE FROM tags') else None
+            )
+            return conn
+
+        monkeypatch.setattr(db_module.sqlite3, 'connect', connect)
+        token = _get_csrf(client)
+        resp = client.post('/contacts/bulk-delete', data={
+            '_csrf_token': token, 'selected': [str(i) for i in ids],
+        }, follow_redirects=True)
+        assert b'Deleted 3 contacts' in resp.data
+        assert len(sweeps) == 1
+
+    def test_over_cap_deletes_nothing(self, client, app, monkeypatch):
+        import models
+        ids = self._make(app, ['A', 'B', 'C'])
+        monkeypatch.setattr(models, 'MAX_BULK_DELETE', 2)
+        token = _get_csrf(client)
+        resp = client.post('/contacts/bulk-delete', data={
+            '_csrf_token': token, 'selected': [str(i) for i in ids],
+        }, follow_redirects=True)
+        assert b'Too many contacts selected' in resp.data
+        assert b'Deleted' not in resp.data
+        from db import get_db
+        with app.app_context():
+            assert get_db().execute('SELECT COUNT(*) FROM contacts').fetchone()[0] == 3
+
+    def test_photo_files_removed_for_deleted_contacts_only(self, client, app, monkeypatch):
+        import models
+        import photos
+        from db import get_db
+        ids = self._make(app, ['A', 'B'])
+        with app.app_context():
+            db = get_db()
+            with db:
+                models.set_contact_photo(db, ids[0], 'jpg')
+        removed: list[tuple[int, object]] = []
+        monkeypatch.setattr(photos, 'delete_photo',
+                            lambda cfg, cid, ext: removed.append((cid, ext)))
+        token = _get_csrf(client)
+        client.post('/contacts/bulk-delete', data={
+            '_csrf_token': token, 'selected': [str(ids[0]), '999999', 'x'],
+        })
+        assert removed == [(ids[0], 'jpg')]
+
+
 class TestCustomFieldLimits:
     def test_duplicate_field_name(self, client):
         token = _get_csrf(client)

@@ -32,6 +32,7 @@ from models import (
     clear_contact_photo,
     create_contact,
     delete_contact,
+    delete_contacts,
     find_all_duplicates,
     find_duplicates,
     get_all_tags,
@@ -438,18 +439,16 @@ def bulk_delete():
     if not ids:
         flash('No contacts selected.', 'error')
         return redirect(redirect_to)
-    db = get_db()
-    count = 0
-    for cid in ids:
-        try:
-            cid_int = int(cid)
-        except ValueError:
-            continue
-        if get_contact(db, cid_int):
-            old_ext = get_contact_photo_ext(db, cid_int)
-            delete_contact(db, cid_int)
-            photos.delete_photo(current_app.config, cid_int, old_ext)
-            count += 1
+    # isdecimal, not isdigit: '²' is a digit that int() refuses.
+    int_ids = [int(cid) for cid in ids if cid.isdecimal()]
+    try:
+        deleted = delete_contacts(get_db(), int_ids)
+    except ValueError as exc:
+        flash(f'Too many contacts selected. {exc}.', 'error')
+        return redirect(redirect_to)
+    for cid_int, old_ext in deleted:
+        photos.delete_photo(current_app.config, cid_int, old_ext)
+    count = len(deleted)
     flash(f'Deleted {count} contact{"s" if count != 1 else ""}.', 'success')
     return redirect(redirect_to)
 
