@@ -125,7 +125,7 @@ All settings are read from environment variables, with sensible defaults:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SECRET_KEY` | random per run | Flask session signing key. Set it to keep sessions stable across restarts. |
+| `SECRET_KEY` | a generated key, saved in `~/.config/contact-list/secret_key` | Flask session signing key. Must be at least 32 characters; a shorter value is ignored with a warning. |
 | `CONTACT_LIST_DB` | `contacts.db` next to the app (source) / under `~/.config/contact-list/` (downloaded app) | Path to the SQLite database file. |
 | `PORT` | unset | Port for an external process manager to bind. Must be an integer 1024–65535; anything else is a startup error (the app exits non-zero rather than silently using another port). Overrides `CONTACT_LIST_PORT`. Unset or empty means "not supplied" and changes nothing. |
 | `CONTACT_LIST_PORT` | `5002` | Port the local server listens on. |

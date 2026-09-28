@@ -16,4 +16,6 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 # imports config/app, so setting a throwaway key here keeps the whole suite from
 # writing into the real user config dir — order-independent, unlike a guard in a
 # single test module. setdefault lets a real CI SECRET_KEY still win.
-os.environ.setdefault("SECRET_KEY", "test-key-not-persisted")
+# At least config.MIN_SECRET_KEY_LEN characters, or config ignores it and
+# persists a real key after all (CL-0069).
+os.environ.setdefault("SECRET_KEY", "test-key-not-persisted-padded-to-the-minimum-length")

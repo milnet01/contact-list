@@ -129,7 +129,7 @@ it changes what the app promises a user.
   Kind: security.
   Source: review-code 2026-09-07 (routes-contacts + data-layer + routes-io lanes).
 
-- 📋 [CL-0069] **Secret-key persistence and the config directory have gaps a fresh install can hit.**
+- ✅ [CL-0069] **Secret-key persistence and the config directory have gaps a fresh install can hit.**
   Four findings in `config.py`, one subject:
 
     - The secret-key write is read-then-write with no `O_EXCL` and no
@@ -164,6 +164,15 @@ it changes what the app promises a user.
   caller -- and the branch that normally tightens it as a side effect is
   skipped entirely when SECRET_KEY is set, which the README advertises.
   And SECRET_KEY from the environment still has no length floor.
+  Resolved (2026-09-28): the last two parts. create_app now locks the
+  credentials dir to 0700 before making the photos dir inside it, so it
+  no longer depends on the secret-key branch that SECRET_KEY skips. An
+  env SECRET_KEY shorter than config.MIN_SECRET_KEY_LEN (32) is ignored
+  with a warning and the stored key used -- a warning, not a raise, since
+  this runs at import where a frozen build shows nothing. conftest's key
+  lengthened to stay above the floor; the real ~/.config key was checked
+  untouched by a full run. README's SECRET_KEY row corrected. Tests red
+  on the old code.
   **Layman:** The file that keeps you logged in can be written twice at once on first run, and the folder holding your Google credentials is briefly readable by other users on the machine.
   Kind: security.
   Source: review-code 2026-09-07 (app-core lane).

@@ -175,6 +175,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **The folder holding your Google credentials is now always private to you, and a too-short SECRET_KEY is ignored** (CL-0069)
+  A SECRET_KEY under 32 characters no longer signs your sessions; the
+  app warns and uses its saved key instead.
+
 - **A Google photo download can no longer be redirected to another host** (CL-0070)
   The sync only fetches photos from Google's photo servers, but it checked that only for the first address. A redirect from there to any other address, including one on your own machine, was followed. Every redirect is now checked the same way, and one leading anywhere else stops the download.
 

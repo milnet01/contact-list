@@ -92,3 +92,40 @@ class TestSecretKeyRaceSafety:
             key_path.chmod(0o600)  # restore so tmp_path teardown can remove it
 
         assert isinstance(key, str) and key
+
+
+class TestSecretKeyFloor:
+    """CL-0069: SECRET_KEY from the environment had no length floor, so
+    SECRET_KEY=x signed every session and CSRF token with a one-byte key."""
+
+    def test_short_env_key_is_ignored(self, tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(config, '_CONFIG_DIR', str(tmp_path / 'contact-list'))
+        monkeypatch.setenv('SECRET_KEY', 'x')
+        key = config._load_or_create_secret_key()
+        assert key != 'x'
+        assert len(key) >= config.MIN_SECRET_KEY_LEN
+
+    def test_long_env_key_is_used(self, tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(config, '_CONFIG_DIR', str(tmp_path / 'contact-list'))
+        long_key = 'k' * config.MIN_SECRET_KEY_LEN
+        monkeypatch.setenv('SECRET_KEY', long_key)
+        assert config._load_or_create_secret_key() == long_key
+
+
+class TestConfigDirIsPrivate:
+    """CL-0069: create_app locked only the photos dir, so the credentials dir
+    above it stayed at the umask's 0755 whenever SECRET_KEY was set -- the
+    branch that used to tighten it as a side effect never ran."""
+
+    def test_create_app_locks_the_credentials_dir(self, tmp_path) -> None:
+        from app import create_app
+        creds = tmp_path / 'contact-list'
+        creds.mkdir(mode=0o755)
+        os.chmod(creds, 0o755)
+        create_app({
+            'TESTING': True,
+            'DATABASE': str(tmp_path / 'test.db'),
+            'SECRET_KEY': 'test-secret',
+            'GOOGLE_CREDENTIALS_DIR': str(creds),
+        })
+        assert (creds.stat().st_mode & 0o777) == 0o700

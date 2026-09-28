@@ -56,16 +56,16 @@ def create_app(test_config: dict | None = None) -> Flask:
 
         models.backfill_lookup(get_db())
 
+    # The credentials dir holds credentials.json and the OAuth token. Lock it
+    # before the photos dir is made inside it; otherwise it is left at the
+    # umask's 0755 whenever SECRET_KEY is set, since persisting the key is what
+    # used to tighten it (CL-0069).
+    creds_dir = app.config.get('GOOGLE_CREDENTIALS_DIR', Config.GOOGLE_CREDENTIALS_DIR)
+    ensure_private_dir(creds_dir)
     # Contact photos dir (CL-0026). Default it from the credentials dir when a
     # test_config didn't set it explicitly (test_config uses update(), not
     # from_object, so Config.PHOTOS_DIR isn't present), then create it 0700.
-    app.config.setdefault(
-        'PHOTOS_DIR',
-        os.path.join(
-            app.config.get('GOOGLE_CREDENTIALS_DIR', Config.GOOGLE_CREDENTIALS_DIR),
-            'photos',
-        ),
-    )
+    app.config.setdefault('PHOTOS_DIR', os.path.join(creds_dir, 'photos'))
     ensure_private_dir(app.config['PHOTOS_DIR'])
 
     log.info('App initialized — database: %s', app.config['DATABASE'])

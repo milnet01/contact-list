@@ -13,6 +13,11 @@ APP_VERSION = '1.1.0'
 _CONFIG_DIR = os.path.expanduser('~/.config/contact-list')
 _log = logging.getLogger(__name__)
 
+# CL-0069: the shortest SECRET_KEY env value accepted. A generated key is
+# secrets.token_hex(32), 64 characters; a shorter env value is ignored with a
+# warning rather than signing every session and CSRF token with it.
+MIN_SECRET_KEY_LEN = 32
+
 
 def ensure_private_dir(path: str) -> None:
     """Create ``path`` (and parents) if missing and lock it to 0700.
@@ -42,8 +47,15 @@ def _load_or_create_secret_key() -> str:
     one worker.
     """
     env_key = os.environ.get('SECRET_KEY')
-    if env_key:
+    if env_key and len(env_key) >= MIN_SECRET_KEY_LEN:
         return env_key
+    if env_key:
+        # Warn and carry on with the stored key rather than raise: this runs at
+        # import, where a frozen build shows no error on any surface.
+        _log.warning(
+            'Ignoring SECRET_KEY: it is shorter than %d characters. '
+            'Using the stored key instead.', MIN_SECRET_KEY_LEN,
+        )
 
     key_path = os.path.join(_CONFIG_DIR, 'secret_key')
     try:
