@@ -275,8 +275,9 @@ person's photos:
 
 **An unchanged photo is not downloaded again (CL-0088).** Before fetching, the
 sync compares the chosen photo's `url` with `get_photo_source`. When they are
-equal and the contact still has a stored photo (`get_contact_photo_ext` is not
-None), it skips the download. Otherwise it downloads as above and, once
+equal and the contact still has a stored photo — `get_contact_photo_ext` is not
+None **and** the file is on disk — it skips the download. Checking the file keeps
+today's self-healing: a photo whose file went missing is fetched again. Otherwise it downloads as above and, once
 `set_contact_photo` has recorded the new file, calls `set_photo_source` with that
 `url`. A failed download leaves the old source row as it was. Google gives a
 changed photo a new URL, so a changed photo is fetched.
@@ -505,3 +506,4 @@ back-filled here. Columns are the four questions the current gate asks.
 
 | Loop | Date | Lanes | Q1 | Q2 | Q3 | Q4 | Verified | Fixed | Outcome |
 |------|------|-------|----|----|----|----|----------|-------|---------|
+| 1 | 2026-09-28 | 2 | 0 | 0 | 1 | 0 | 1 | 1 | Gate armed by the CL-0088 amendment (§2.2 `contact_photo_sources`, §2.3 helpers, §4 skip-unchanged, §5 clear on manual change, §11 tests, §13). **One loop only, at the user's standing instruction.** Both lanes held all four questions and filed no findings. A lane's open question became the one fix: the skip checked the DB row only, so a photo whose file went missing would never be fetched again while its URL held — §4 now also requires the file on disk. **Unverified, declared:** that Google keeps an unchanged photo's URL stable between syncs (both lanes asked); no Google credentials here. If it does not, the skip never fires and sync behaves as before. Open questions resolved clean, not tallied: a manual upload being replaced by Google's photo on the next sync is today's behaviour, unchanged; §10's file table is not read by a builder of this change. Neither lane arrived with a git snapshot. |
