@@ -826,7 +826,7 @@ item sits here because placing it would be a guess, never because nobody looked.
   Kind: fix.
   Source: review-code 2026-09-07 (routes-io lane).
 
-- 📋 [CL-0032] **Consider SQLite FTS5 for full-text search if the contact count grows large.**
+- 🚫 [CL-0032] **Consider SQLite FTS5 for full-text search if the contact count grows large.**
   Search uses LIKE '%term%' (leading wildcard), which cannot use any index and always full-scans; the idx_contacts_email/phone indexes only help exact-match/dedup paths, not substring search. At the current single-user scale (~330 rows) this is sub-millisecond, so this is deferred. If N reaches the thousands, add an FTS5 virtual table (contentless, synced via triggers) over name/email/phone/notes/custom_fields. Pairs with CL-0025 (search notes + custom fields). NOTE: WAL mode, synchronous=NORMAL, 8MB cache, temp_store=MEMORY, busy_timeout, and indexes on all filter/sort/join columns are already in place (db.py + migrations) — the DB is otherwise well-tuned.
   **Layman:** If the address book ever grows to many thousands of contacts, switch the search to a proper text index so it stays instant.
   Kind: perf.
@@ -837,6 +837,12 @@ item sits here because placing it would be a guess, never because nobody looked.
   has met commits to no release, so there is no version to name. It
   leaves this section when the condition is met or the item is rewritten
   as work.
+  Dropped (2026-09-28, user decision the same day): measured at DESIGN
+  §7.1's scale -- 10,000 contacts with notes and custom fields -- the
+  LIKE search took 7.5-10.3 ms median (max 15 ms) across five terms, and
+  the whole /contacts?q= page 18.7 ms, against the 200 ms target. FTS5
+  would save milliseconds nobody sees and add triggers and a migration.
+  Reopen if a real user reports slow search.
 
 ## Planned Features
 
