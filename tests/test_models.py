@@ -1,4 +1,5 @@
 import datetime
+import sqlite3
 
 import pytest
 
@@ -279,7 +280,10 @@ class TestExportContacts:
     def test_export(self, db):
         models.create_contact(db, 'individual', 'Alice', 'a@b.com', notes='Test note')
         models.create_contact(db, 'company', 'Acme')
-        rows = models.export_contacts(db)
+        cursor = models.export_contacts(db)
+        # A cursor, not a list: the CSV export streams rows off it (CL-0067).
+        assert isinstance(cursor, sqlite3.Cursor)
+        rows = list(cursor)
         assert len(rows) == 2
         assert rows[0]['name'] == 'Acme'  # alphabetical
         assert rows[0]['notes'] is None

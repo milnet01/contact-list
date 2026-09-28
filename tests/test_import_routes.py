@@ -258,3 +258,88 @@ class TestMerge:
             'selected': [str(a), str(b)],
         })
         assert resp.status_code == 403
+
+
+class TestExportStreaming:
+    """CL-0067: DESIGN.md §7.2 requires both exports to stream, and the vCard
+    export used to run one custom-field query per contact (an N+1)."""
+
+    @staticmethod
+    def _trace_statements(monkeypatch) -> list[str]:
+        # Every connection db.get_db opens records its SQL here. PRAGMAs are
+        # connection setup, not export work, so they are left out.
+        import db as db_module
+        real_connect = db_module.sqlite3.connect
+        statements: list[str] = []
+
+        def connect(*args, **kwargs):
+            conn = real_connect(*args, **kwargs)
+            conn.set_trace_callback(
+                lambda sql: None if sql.lstrip().upper().startswith('PRAGMA')
+                else statements.append(sql)
+            )
+            return conn
+
+        monkeypatch.setattr(db_module.sqlite3, 'connect', connect)
+        return statements
+
+    @staticmethod
+    def _dispatch(app, url: str) -> list[bytes]:
+        # The test client joins every body into one WSGI iterator, which hides
+        # how the view produced it. Dispatch directly and keep the chunks the
+        # view's own Response yields.
+        with app.test_request_context(url):
+            resp = app.full_dispatch_request()
+            return [c if isinstance(c, bytes) else c.encode() for c in resp.response]
+
+    @pytest.mark.parametrize('url, needle', [
+        ('/contacts/export', b'Carol'),
+        ('/contacts/export/vcard', b'FN:Carol'),
+    ])
+    def test_export_yields_a_chunk_per_contact(self, app, url, needle):
+        # A buffered body wrapped in a one-yield generator would still report
+        # is_streamed, so the chunk count is the check that can fail.
+        with app.app_context():
+            for name in ('Alice', 'Bob', 'Carol'):
+                models.create_contact(get_db(), 'individual', name)
+        chunks = self._dispatch(app, url)
+        assert len(chunks) >= 3
+        assert needle in b''.join(chunks)
+
+    def test_vcard_export_query_count_does_not_grow_with_contacts(
+        self, client, app, monkeypatch,
+    ):
+        with app.app_context():
+            models.create_contact(get_db(), 'individual', 'Solo',
+                                  custom_fields=[('Nickname', 'S')])
+        statements = self._trace_statements(monkeypatch)
+        client.get('/contacts/export/vcard').get_data()
+        one = len(statements)
+
+        with app.app_context():
+            for i in range(5):
+                models.create_contact(get_db(), 'individual', f'Extra {i}',
+                                      custom_fields=[('Nickname', f'E{i}')])
+        statements.clear()
+        client.get('/contacts/export/vcard').get_data()
+        assert len(statements) == one, statements
+
+    def test_vcard_custom_fields_stay_with_their_contact(self, client, app):
+        # Two contacts whose names tie under NOCASE ordering: grouping the
+        # joined rows must not bleed one contact's fields into the other.
+        with app.app_context():
+            db = get_db()
+            models.create_contact(db, 'individual', 'sam', custom_fields=[('Nickname', 'lower')])
+            models.create_contact(db, 'individual', 'Sam', custom_fields=[('Nickname', 'upper')])
+            models.create_contact(db, 'individual', 'Bare')
+        body = client.get('/contacts/export/vcard').get_data(as_text=True)
+        cards = [c for c in body.split('BEGIN:VCARD') if c.strip()]
+        by_name = {
+            next(line[3:] for line in c.splitlines() if line.startswith('FN:')): c
+            for c in cards
+        }
+        assert set(by_name) == {'sam', 'Sam', 'Bare'}
+        assert 'X-CL;X-LABEL=Nickname:lower' in by_name['sam']
+        assert 'upper' not in by_name['sam']
+        assert 'X-CL;X-LABEL=Nickname:upper' in by_name['Sam']
+        assert 'X-CL' not in by_name['Bare']

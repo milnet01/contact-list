@@ -57,11 +57,14 @@ it changes what the app promises a user.
   6.20 bootloader reads the reset variable. Remaining: a real restart of
   a built AppImage, which the user deferred until RAM allows the build.
   Close this item after that run.
+  Progress (2026-09-28): the user approved the AppImage build and a
+  real restart test (about 17 GB free). Queued after the review-derived
+  items and CL-0061's build; builds run one at a time.
   **Layman:** Restarting the app from the tray or the Settings page probably kills it instead, on the Linux download most people use.
   Kind: fix.
   Source: review-code 2026-09-07 (process-lifecycle lane); queued by close-findings.
 
-- 📋 [CL-0067] **Both exports buffer the whole database in memory, against DESIGN §7.2.**
+- ✅ [CL-0067] **Both exports buffer the whole database in memory, against DESIGN §7.2.**
   §7.2 requires streaming responses for CSV and vCard export, using
   generators rather than full in-memory buffers. Both do the opposite:
   `export_contacts` calls `.fetchall()`, the CSV route builds a
@@ -72,6 +75,12 @@ it changes what the app promises a user.
 
   The code is the wrong side here: §7.2's wording ("any future CSV/vCard
   export") predates the export shipping, and it shipped buffered.
+  Resolved (2026-09-28): both exports stream via stream_with_context,
+  the generator opening its own connection (Flask 3.1 closes the view's
+  before the first chunk). vCard custom fields come from one LEFT JOIN
+  grouped per contact. Spec amended and gated first (review-contract
+  loop 1 in the spec's loop log). New tests proven red against the old
+  code, and the grouping test against a broken grouping key.
   **Layman:** Exporting contacts builds the entire file in memory before sending it, which the design document says not to do.
   Kind: perf.
   Source: review-code 2026-09-07 (data-layer + routes-io lanes).

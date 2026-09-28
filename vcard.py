@@ -9,6 +9,8 @@ custom-field names are already constrained to a param-safe character set.
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Iterator
+
 from importer import split_multivalue
 
 
@@ -69,15 +71,18 @@ def _split_structured(value: str) -> list[str]:
     return parts
 
 
-def emit(contacts: list[dict]) -> str:
+def emit(contacts: Iterable[dict]) -> str:
     """Serialise contacts to one vCard 3.0 document. Each contact is a dict with
     keys type, name, email, phone, notes, custom_fields (list of (name, value))."""
-    lines: list[str] = []
+    return ''.join(iter_emit(contacts))
+
+
+def iter_emit(contacts: Iterable[dict]) -> Iterator[str]:
+    """Yield one serialised vCard per contact, CRLF-terminated, so an export can
+    stream card by card (CL-0067). ``emit`` is these cards joined."""
     for c in contacts:
         name = c['name']
-        lines.append('BEGIN:VCARD')
-        lines.append('VERSION:3.0')
-        lines.append(f'FN:{_escape(name)}')
+        lines = ['BEGIN:VCARD', 'VERSION:3.0', f'FN:{_escape(name)}']
         if c.get('type') == 'company':
             lines.append(f'ORG:{_escape(name)}')
         else:
@@ -93,7 +98,7 @@ def emit(contacts: list[dict]) -> str:
             # — so X-LABEL needs no quoting/escaping.
             lines.append(f'X-CL;X-LABEL={fn}:{_escape(fv)}')
         lines.append('END:VCARD')
-    return '\r\n'.join(lines) + '\r\n'
+        yield '\r\n'.join(lines) + '\r\n'
 
 
 def _finalize(card: dict) -> dict | None:

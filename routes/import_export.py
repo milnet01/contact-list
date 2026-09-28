@@ -19,6 +19,7 @@ from flask import (
     redirect,
     render_template,
     request,
+    stream_with_context,
     url_for,
 )
 
@@ -27,7 +28,7 @@ import vcard
 from db import get_db
 from models import (
     export_contacts,
-    get_custom_fields,
+    export_contacts_with_fields,
     get_import_profile,
     import_contact,
     sanitize_field_name,
@@ -38,22 +39,31 @@ from routes.contacts import bp
 
 @bp.route('/contacts/export')
 def export():
-    """Export all contacts as a CSV download."""
-    db = get_db()
-    contacts = export_contacts(db)
+    """Export all contacts as a CSV download, streamed row by row (DESIGN.md §7.2)."""
+    def rows():
+        # The connection is opened in here, not in the view: Flask closes the
+        # view's connection before the first chunk is sent (CL-0067).
+        buf = io.StringIO()
+        writer = csv.writer(buf)
 
-    output = io.StringIO()
-    writer = csv.writer(output)
-    writer.writerow(['Name', 'Type', 'Email', 'Phone', 'Notes', 'Created', 'Updated'])
-    for c in contacts:
-        writer.writerow([
-            _csv_safe(c['name']), _csv_safe(c['type']), _csv_safe(c['email']),
-            _csv_safe(c['phone']), _csv_safe(c['notes']),
-            c['created_at'], c['updated_at'],
-        ])
+        def take() -> str:
+            chunk = buf.getvalue()
+            buf.seek(0)
+            buf.truncate()
+            return chunk
+
+        writer.writerow(['Name', 'Type', 'Email', 'Phone', 'Notes', 'Created', 'Updated'])
+        yield take()
+        for c in export_contacts(get_db()):
+            writer.writerow([
+                _csv_safe(c['name']), _csv_safe(c['type']), _csv_safe(c['email']),
+                _csv_safe(c['phone']), _csv_safe(c['notes']),
+                c['created_at'], c['updated_at'],
+            ])
+            yield take()
 
     return Response(
-        output.getvalue(),
+        stream_with_context(rows()),
         mimetype='text/csv',
         headers={'Content-Disposition': 'attachment; filename=contacts.csv'},
     )
@@ -260,20 +270,14 @@ def import_apply():
 
 @bp.route('/contacts/export/vcard')
 def export_vcard():
-    """Export all contacts (with their custom fields) as a vCard download."""
-    db = get_db()
-    contacts = []
-    for r in export_contacts(db):
-        contacts.append({
-            'type': r['type'], 'name': r['name'], 'email': r['email'],
-            'phone': r['phone'], 'notes': r['notes'],
-            'custom_fields': [
-                (cf['field_name'], cf['field_value'])
-                for cf in get_custom_fields(db, r['id'])
-            ],
-        })
+    """Export all contacts (with their custom fields) as a vCard download,
+    streamed card by card (DESIGN.md §7.2)."""
+    def cards():
+        # Opened in here for the same reason as the CSV export's rows().
+        yield from vcard.iter_emit(export_contacts_with_fields(get_db()))
+
     return Response(
-        vcard.emit(contacts),
+        stream_with_context(cards()),
         mimetype='text/vcard',
         headers={'Content-Disposition': 'attachment; filename=contacts.vcf'},
     )

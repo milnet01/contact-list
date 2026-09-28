@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import datetime
+import itertools
 import json
+import operator
 import re
 import sqlite3
 import unicodedata
+from collections.abc import Iterator
 
 import phoneutil
 from settings import SETTINGS_DEFAULTS
@@ -301,12 +304,42 @@ def get_letter_counts(db: sqlite3.Connection) -> dict[str, int]:
     return {row['letter']: row['cnt'] for row in rows}
 
 
-def export_contacts(db: sqlite3.Connection) -> list[sqlite3.Row]:
-    """Return all contacts with all fields for CSV export."""
+def export_contacts(db: sqlite3.Connection) -> sqlite3.Cursor:
+    """Return a cursor over every contact's core fields, for the CSV export.
+
+    A cursor rather than a list, so the export streams rows instead of holding
+    the whole table (DESIGN.md §7.2, CL-0067).
+    """
     return db.execute(
         'SELECT id, type, name, email, phone, notes, created_at, updated_at '
         'FROM contacts ORDER BY name COLLATE NOCASE'
-    ).fetchall()
+    )
+
+
+def export_contacts_with_fields(db: sqlite3.Connection) -> Iterator[dict]:
+    """Yield each contact with its custom fields, for the vCard export.
+
+    One LEFT JOIN instead of a custom-field query per contact (CL-0067). The
+    contact id is the second sort key so two contacts whose names tie under
+    NOCASE never interleave, which is what lets groupby split them.
+    """
+    rows = db.execute(
+        'SELECT c.id, c.type, c.name, c.email, c.phone, c.notes, '
+        'cf.field_name, cf.field_value '
+        'FROM contacts c LEFT JOIN custom_fields cf ON cf.contact_id = c.id '
+        'ORDER BY c.name COLLATE NOCASE, c.id, cf.field_name COLLATE NOCASE'
+    )
+    for _, group in itertools.groupby(rows, key=operator.itemgetter('id')):
+        contact_rows = list(group)  # one contact's rows, not the table
+        head = contact_rows[0]
+        yield {
+            'type': head['type'], 'name': head['name'], 'email': head['email'],
+            'phone': head['phone'], 'notes': head['notes'],
+            'custom_fields': [
+                (r['field_name'], r['field_value'])
+                for r in contact_rows if r['field_name'] is not None
+            ],
+        }
 
 
 def find_duplicates(

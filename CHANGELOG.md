@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **CSV and vCard exports now stream to the browser instead of building the whole file in memory** (CL-0067)
+  The vCard export also loads every contact's custom fields in one
+  database query instead of one query per contact.
+
 - **The contact list no longer re-derives its index keys on every render** (CL-0066)
   The alpha-nav counts and the letter filter grouped on a Python callback SQLite cannot index, and duplicate detection re-parsed every stored phone number in Python. Both keys are now computed once when a contact is saved and held in a new indexed `contact_lookup` table, so each is an index lookup. Query plans confirm it: the counts, the letter filter, the phone lookup and the phone grouping all now use an index where every one of them previously scanned the whole table.
 
