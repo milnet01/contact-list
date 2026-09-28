@@ -16,8 +16,8 @@ from flask import (
 )
 from flask.typing import ResponseReturnValue
 
-from db import get_db
 import google_sync
+from db import get_db
 
 log = logging.getLogger(__name__)
 
@@ -66,6 +66,7 @@ def authorize() -> ResponseReturnValue:
         result = subprocess.run(
             cmd,
             capture_output=True, text=True, timeout=120,
+            check=False,  # the return code is read below
         )
         if result.returncode == 0:
             log.info('Google authentication succeeded')

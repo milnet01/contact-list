@@ -386,7 +386,7 @@ Small fixes and housekeeping found while shipping 1.2.0: the lint rules
 
 to adopt, a verification note for sessions, and one layout defect.
 
-- 📋 [CL-0062] **Decide which of ruff 0.16's 35 newly-flagged findings to adopt.**
+- ✅ [CL-0062] **Decide which of ruff 0.16's 35 newly-flagged findings to adopt.**
   Context: pyproject.toml had no [tool.ruff.lint] select, so ruff used its
   implicit default. Ruff 0.16 widened that default, so the routine bump from
   0.15.21 to 0.16.1 turned a clean run into findings across sixteen rules that
@@ -420,11 +420,24 @@ to adopt, a verification note for sessions, and one layout defect.
   is right, NOT as a bulk autofix: thirteen are auto-fixable and seven more
   need --unsafe-fixes, which is exactly the shape that quietly changes
   behaviour.
+  Resolved (2026-09-28): reviewed each rule at ruff 0.16.9 (48
+  findings over 16 rules) and adopted all 16 plus S310 as named codes.
+  Safe autofixes: I001, UP012/017/037, RUF100. By hand: three blind
+  excepts in app.py narrowed to sqlite3.Error and now logged; two kept
+  blind with a reasoned noqa (token probe; photo download, INV-5);
+  root-logger calls moved to a module logger; exc_info=e in the 500
+  handler; fromisoformat reads Z itself; check=False made explicit; the
+  DTZ011 local date kept with a reason (tests exempt, same reason);
+  google_auth.py made executable. Narrowing B017 exposed that
+  test_failed_update_does_not_wipe_existing_custom_fields had stopped
+  testing rollback (the model now rejects its bad value before any
+  write); it now forces the failure with a temp trigger and goes red
+  with the transaction removed.
   **Layman:** A newer version of our code checker suggests improvements it never used to mention. Worth reading through and picking the ones we want, rather than accepting or ignoring them wholesale.
   Kind: refactor.
   Source: in-session-2026-08-06 (dependency sweep; surfaced by the ruff 0.15 to 0.16 bump).
 
-- 📋 [CL-0081] **Hand-verifying a launch needs the CONFIG dir isolated, not just the database.**
+- ✅ [CL-0081] **Hand-verifying a launch needs the CONFIG dir isolated, not just the database.**
   CLAUDE.md's "Verifying a launch by hand" carries three traps -- poll
   for the port, background the server, intercept the browser-open. There
   is a fourth and it bites harder, because its damage lands outside the
@@ -468,6 +481,11 @@ to adopt, a verification note for sessions, and one layout defect.
   the run. No contact rows changed; the same migration runs on the next
   normal launch anyway. The CLAUDE.md edit this item proposes must name
   both variables, and should assert Config.DATABASE before create_app().
+  Resolved (2026-09-28): CLAUDE.md's "Verifying a launch by hand" has
+  the fourth bullet -- HOME and CONTACT_LIST_DB set together before
+  config is imported, and an assertion on config._CONFIG_DIR and the
+  database the app will open. Gated (docs/reviews/claude-md-loop-log.md
+  loop 1), which also fixed the port-poll command's empty $1.
   **Layman:** A note for future sessions: testing the app by running it can touch your real Google login and photo folder unless the whole settings folder is pointed somewhere else.
   Kind: doc.
   Source: in-session-2026-09-07 (learned the expensive way during verify-delivery).

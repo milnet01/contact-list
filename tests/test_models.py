@@ -382,7 +382,7 @@ class TestAccentFoldedNav:
         models.create_contact(db, 'individual', '你好')
         counts = models.get_letter_counts(db)
         assert counts.get('#') == 1
-        results, total = models.list_contacts(db, letter='#')
+        _results, total = models.list_contacts(db, letter='#')
         assert total == 1
 
 
@@ -432,13 +432,20 @@ class TestUpdateAtomicity:
         cid = models.create_contact(
             db, 'individual', 'Alice', custom_fields=[('Phone2', '555')]
         )
-        # A NULL field value violates the NOT NULL constraint, failing the
-        # re-insert *after* the UPDATE + DELETE. Without a rolled-back
-        # transaction this would leave Alice renamed and her custom field gone.
-        with pytest.raises(Exception):
+        # Force the custom-field re-insert to fail *after* the UPDATE + DELETE.
+        # Without a rolled-back transaction this would leave Alice renamed and
+        # her custom field gone. A trigger, not a bad value: since the model
+        # validates field sizes up front (CL-0068), a bad value is rejected
+        # before any write and never reaches the rollback (found in CL-0062).
+        db.execute(
+            "CREATE TEMP TRIGGER fail_cf_insert BEFORE INSERT ON custom_fields "
+            "BEGIN SELECT RAISE(ABORT, 'forced failure'); END"
+        )
+        with pytest.raises(sqlite3.IntegrityError, match='forced failure'):
             models.update_contact(
-                db, cid, 'individual', 'Renamed', custom_fields=[('Birthday', None)]
+                db, cid, 'individual', 'Renamed', custom_fields=[('Birthday', '1990-01-01')]
             )
+        db.execute('DROP TRIGGER fail_cf_insert')
         contact = models.get_contact(db, cid)
         assert contact['name'] == 'Alice'
         cfs = models.get_custom_fields(db, cid)
@@ -853,7 +860,7 @@ class TestLookupKeys:
         counts = models.get_letter_counts(db)
         assert counts == {'E': 2, 'A': 1, '#': 1}
         for letter, expected in counts.items():
-            rows, total = models.list_contacts(db, letter=letter)
+            _rows, total = models.list_contacts(db, letter=letter)
             assert total == expected, f'letter {letter!r} filter disagrees with its count'
 
     def test_delete_reaps_the_lookup_row(self, db):

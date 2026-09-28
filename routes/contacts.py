@@ -51,8 +51,8 @@ from models import (
     list_contacts,
     set_contact_photo,
     set_favourite,
-    update_contact,
     upcoming_birthdays,
+    update_contact,
     valid_field_name,
 )
 

@@ -20,7 +20,23 @@ builtins = ["Analysis", "PYZ", "EXE", "COLLECT", "BUNDLE"]
 # across 16 rules nobody had opted into. Pinning the set keeps tool upgrades a
 # version decision instead of a code-review decision. Widening it is deliberate
 # work, tracked as CL-0062 — not something a dependency bump should do by itself.
-select = ["E4", "E7", "E9", "F"]
+select = [
+    "E4", "E7", "E9", "F",
+    # Adopted one by one in CL-0062 after reviewing each finding. Named codes,
+    # not families, so a ruff upgrade cannot widen the set unannounced.
+    "I001",                          # import order
+    "UP012", "UP017", "UP037",       # modern spellings
+    "RUF012", "RUF059", "RUF100",    # mutable class defaults, unused unpacks, stale noqa
+    "DTZ011",                        # naive date.today()
+    "BLE001",                        # blind `except Exception`
+    "LOG014", "LOG015",              # exc_info outside a handler; root-logger calls
+    "FURB162", "EXE001", "PLW1510", "SIM115", "B017",
+    "S310",                          # URL opens: every one must be audited
+]
+
+[tool.ruff.lint.per-file-ignores]
+# The tests compute "today" exactly as the app does: the machine's local date.
+"tests/*" = ["DTZ011"]
 
 [tool.djlint]
 # Template lint (CL-0077), run with --lint only; djlint never reformats here.

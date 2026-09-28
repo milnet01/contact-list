@@ -197,7 +197,7 @@ class TestMerge:
         resp = client.post('/contacts/merge', data={
             '_csrf_token': token, 'selected': [str(a)],
         }, follow_redirects=True)
-        assert 'at least two'.encode() in resp.data.lower()
+        assert b'at least two' in resp.data.lower()
 
     def test_preview_renders_field_choices(self, client, app):
         a, b = self._two_dupes(app)

@@ -7,6 +7,8 @@ test patches ``threading.Thread`` (so the real body never runs); (2)
 missed patch cannot replace/kill the pytest interpreter.
 """
 
+from typing import ClassVar
+
 import pytest
 
 import server_control
@@ -41,7 +43,7 @@ class _ThreadRecorder:
     """Stand-in for threading.Thread that records construction but never starts,
     so the real _run_after_delay body cannot run in a test."""
 
-    instances: list['_ThreadRecorder'] = []
+    instances: ClassVar[list['_ThreadRecorder']] = []
 
     def __init__(self, *, target=None, args=(), daemon=None):
         self.target, self.args, self.daemon = target, args, daemon

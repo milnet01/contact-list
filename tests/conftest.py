@@ -9,6 +9,7 @@ from __future__ import annotations
 # hosting the test runner. `setdefault` lets a CI override
 # (e.g. QT_QPA_PLATFORM=minimal) still win.
 import os
+
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 # Isolation: config.py persists a secret key into ~/.config/contact-list on its

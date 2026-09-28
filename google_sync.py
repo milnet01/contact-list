@@ -77,7 +77,7 @@ def _token_has_write_scope(config: dict) -> bool:
     from google.oauth2.credentials import Credentials
     try:
         probe = Credentials.from_authorized_user_file(token_path)
-    except Exception:
+    except Exception:  # noqa: BLE001 -- any token file the library cannot load means "not connected"
         return False
     return bool(probe.has_scopes(SCOPES))
 
@@ -394,8 +394,8 @@ def _parse_dt(value: str | None) -> datetime.datetime | None:
     except ValueError:
         return None
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=datetime.timezone.utc)
-    return dt.astimezone(datetime.timezone.utc)
+        dt = dt.replace(tzinfo=datetime.UTC)
+    return dt.astimezone(datetime.UTC)
 
 
 def _contact_update_time(person: dict) -> datetime.datetime | None:
@@ -699,7 +699,7 @@ def _fetch_photo_bytes(url: str) -> bytes:
     deadline = time.monotonic() + _PHOTO_DEADLINE_SECONDS
     chunks: list[bytes] = []
     received = 0
-    with _photo_opener.open(url, timeout=10) as resp:  # noqa: S310 (host is validated by caller and per redirect)
+    with _photo_opener.open(url, timeout=10) as resp:  # host checked by the caller and per redirect
         while received < limit:
             if time.monotonic() > deadline:
                 raise TimeoutError('photo download exceeded its time budget')
@@ -734,7 +734,7 @@ def _store_person_photo(config: Mapping[str, Any], db: sqlite3.Connection, conta
             data = _fetch_photo_bytes(url)
             old_ext = models.get_contact_photo_ext(db, contact_id)
             ext = photos.save_photo(config, contact_id, data, old_ext=old_ext)
-        except Exception:
+        except Exception:  # noqa: BLE001 -- a photo never aborts the import (INV-5); logged
             log.warning('Skipping photo for contact %s (download/validation failed)', contact_id)
             return
         models.set_contact_photo(db, contact_id, ext)

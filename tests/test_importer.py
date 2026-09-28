@@ -56,7 +56,7 @@ class TestApplyMapping:
             ['Name', 'Email'], [['Alice', 'a@x.com']], {0: 'name', 1: 'email'}
         )
         assert skipped == 0
-        fields, cfs = built[0]
+        fields, _cfs = built[0]
         assert fields['name'] == 'Alice'
         assert fields['email'] == 'a@x.com'
         assert fields['type'] == 'individual'

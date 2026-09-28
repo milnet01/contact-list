@@ -583,7 +583,8 @@ def upcoming_birthdays(
     rows (CL-0038).
     """
     if today is None:
-        today = datetime.date.today()
+        # The machine's local date on purpose: a desktop app's clock is its user's.
+        today = datetime.date.today()  # noqa: DTZ011
     rows = db.execute(
         "SELECT c.id, c.name, c.type, cf.field_value AS bday "
         "FROM custom_fields cf JOIN contacts c ON c.id = cf.contact_id "

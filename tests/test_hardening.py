@@ -434,6 +434,7 @@ class TestSyncPhotos:
         and /sync/start 500). CL-0070: the download must run with no transaction
         open, or SQLite's write lock is held across the network call."""
         import googleapiclient.discovery
+
         import google_sync
         import models
 
@@ -585,6 +586,7 @@ class TestOutageIsNotALostGrant:
     ])
     def test_outage_keeps_token_and_reports_unreachable(self, app, monkeypatch, exc):
         import google.auth.exceptions as gae
+
         import google_sync
         from db import get_db
         path = self._expired_token(app)
@@ -599,6 +601,7 @@ class TestOutageIsNotALostGrant:
 
     def test_invalid_grant_is_a_lost_grant(self, app, monkeypatch):
         import google.auth.exceptions as gae
+
         import google_sync
         from db import get_db
         self._expired_token(app)
@@ -623,6 +626,7 @@ class TestOutageIsNotALostGrant:
 
     def test_disconnect_during_an_outage_removes_the_token(self, app, monkeypatch):
         import google.auth.exceptions as gae
+
         import google_sync
         path = self._expired_token(app)
         self._refresh_raises(monkeypatch, gae.TransportError('network down'))
@@ -655,6 +659,7 @@ class TestReconsent:
 
     def test_token_missing_scopes_key_needs_reconsent(self, app):
         import json
+
         import google_sync
         cfg = app.config
         path = cfg['GOOGLE_TOKEN_FILE']
@@ -691,6 +696,7 @@ def test_stylesheet_scopes_nav_and_honours_hidden():
     # CL-0090: .bulk-bar's display:flex beat the hidden attribute, so the
     # "0 selected" bar showed with nothing selected.
     import re
-    css = open(os.path.join(os.path.dirname(__file__), '..', 'static', 'style.css')).read()
+    with open(os.path.join(os.path.dirname(__file__), '..', 'static', 'style.css')) as fh:
+        css = fh.read()
     assert not re.search(r'(?m)^\s*nav\s*\{', css)
     assert '.bulk-bar[hidden] { display: none; }' in css

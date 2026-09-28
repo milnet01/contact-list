@@ -4,6 +4,7 @@ import hmac
 import logging
 import os
 import secrets
+import sqlite3
 from datetime import date, datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -52,7 +53,6 @@ def create_app(test_config: dict | None = None) -> Flask:
         # duplicate detection. One indexed anti-join; a no-op once every
         # contact has a row.
         import models
-
         from db import get_db
 
         models.backfill_lookup(get_db())
@@ -90,9 +90,11 @@ def create_app(test_config: dict | None = None) -> Flask:
         from db import get_db
         try:
             g.settings = settings_mod.get_settings(get_db())
-        except Exception:
+        except sqlite3.Error:
             # Never let a settings-load failure 500 the request; fall back to
-            # defaults so the page (and error pages) still render.
+            # defaults so the page (and error pages) still render. Logged, so a
+            # broken settings table does not silently revert them forever.
+            log.warning('Could not load settings; using defaults', exc_info=True)
             g.settings = dict(settings_mod.SETTINGS_DEFAULTS)
 
     @app.before_request
@@ -116,7 +118,8 @@ def create_app(test_config: dict | None = None) -> Flask:
             from db import get_db
             try:
                 count = get_db().execute('SELECT COUNT(*) FROM contacts').fetchone()[0]
-            except Exception:
+            except sqlite3.Error:
+                log.warning('Could not count contacts', exc_info=True)
                 count = 0
             g.contact_count = count
         return count
@@ -136,7 +139,8 @@ def create_app(test_config: dict | None = None) -> Flask:
                     'SELECT last_synced_at FROM sync_state WHERE id = 1'
                 ).fetchone()
                 g.last_synced = row['last_synced_at'] if row else None
-            except Exception:
+            except sqlite3.Error:
+                log.warning('Could not read the last sync time', exc_info=True)
                 g.last_synced = None
         return g.last_synced
 
@@ -160,7 +164,7 @@ def create_app(test_config: dict | None = None) -> Flask:
         import settings as settings_mod
         s = getattr(g, 'settings', None) or settings_mod.SETTINGS_DEFAULTS
         try:
-            dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
+            dt = datetime.fromisoformat(value)  # 3.11+ reads a trailing Z
             dt = dt.astimezone(ZoneInfo(s['timezone']))
             fmt = settings_mod.DATE_FORMATS.get(
                 s['date_format'], settings_mod.DATE_FORMATS['dmy_hm']
@@ -221,7 +225,7 @@ def create_app(test_config: dict | None = None) -> Flask:
 
     @app.errorhandler(500)
     def server_error(e: Exception) -> ResponseReturnValue:
-        log.error('500 Internal Server Error: %s', e, exc_info=True)
+        log.error('500 Internal Server Error: %s', e, exc_info=e)
         return render_template(
             'error.html', code=500, message='Something went wrong.'
         ), 500
@@ -230,10 +234,10 @@ def create_app(test_config: dict | None = None) -> Flask:
     # Blueprints
     # ------------------------------------------------------------------
 
-    from routes.contacts import bp as contacts_bp
     # import_export and merge attach their routes to contacts_bp; importing them
     # runs the @bp.route decorators so the routes exist before registration.
     from routes import import_export, merge  # noqa: F401
+    from routes.contacts import bp as contacts_bp
     from routes.settings import bp as settings_bp
     from routes.sync import bp as sync_bp
 

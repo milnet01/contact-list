@@ -27,6 +27,8 @@ import time
 from browser import open_url
 from server_control import RESTART_MARKER
 
+log = logging.getLogger(__name__)
+
 
 def _port_is_serving(host: str, port: int, timeout: float = 0.25) -> bool:
     try:
@@ -131,8 +133,9 @@ def main() -> int:
     if sys.platform.startswith('linux'):
         os.environ.setdefault('PYSTRAY_BACKEND', 'appindicator')
 
-    from app import create_app
     from werkzeug.serving import make_server
+
+    from app import create_app
     try:
         app = create_app()
         # The tray must own the main thread, so the server moves to a dedicated
@@ -142,7 +145,7 @@ def main() -> int:
         # use) is caught here and returns 1, like create_app().
         server = make_server('127.0.0.1', port, app, threaded=True)
     except Exception:
-        logging.exception('Server startup failed')
+        log.exception('Server startup failed')
         return 1
 
     # make_server prints no banner (unlike app.run), so this is the only URL line
@@ -157,7 +160,7 @@ def main() -> int:
         try:
             server.serve_forever()
         except Exception:
-            logging.exception('server thread died; shutting down')
+            log.exception('server thread died; shutting down')
 
     server_thread = threading.Thread(target=_serve)
     server_thread.start()
@@ -196,7 +199,7 @@ def main() -> int:
     except Exception:
         # Graceful fallback: no tray → still serve. INFO, not a warning: nobody is
         # worse off (2026-07-12-system-tray-icon.md INV-3).
-        logging.info(
+        log.info(
             'system tray unavailable or failed; running without an icon', exc_info=True
         )
         # No icon means no way in, so open the page after all rather than leave a

@@ -15,8 +15,8 @@ from browser import open_url
 from resources import resource_path
 
 if TYPE_CHECKING:
-    from PIL.Image import Image
     import pystray
+    from PIL.Image import Image
 
 
 class _ServerHandle(Protocol):
@@ -24,7 +24,7 @@ class _ServerHandle(Protocol):
     def shutdown(self) -> None: ...
 
 
-def _load_icon_image() -> "Image":
+def _load_icon_image() -> Image:
     """Load the committed master icon (packaging/icon.png) via Pillow and let it
     downscale in memory. NOT the git-ignored generated contact-list.png, which is
     absent on a fresh from-source clone (spec §6.2)."""
@@ -41,7 +41,7 @@ def _restart() -> None:
     server_control.schedule('restart')
 
 
-def _quit(icon: "pystray.Icon", server: _ServerHandle) -> None:
+def _quit(icon: pystray.Icon, server: _ServerHandle) -> None:
     server.shutdown()  # unblocks serve_forever() on the server thread
     icon.stop()        # makes run_tray's Icon.run() return on the main thread
 

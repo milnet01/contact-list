@@ -6,6 +6,8 @@ following the _FakeService/monkeypatch pattern in test_hardening.py.
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 import pytest
 
 import google_sync
@@ -193,7 +195,7 @@ class TestRateLimitRetries:
 class TestTombstoneForAnEditedContact:
     """CL-0070, INV-9: a delete tombstone is checked before the deferral."""
 
-    _TOMBSTONE = {'connections': [{'resourceName': 'people/lee',
+    _TOMBSTONE: ClassVar[dict] = {'connections': [{'resourceName': 'people/lee',
                                    'metadata': {'deleted': True}}],
                   'nextSyncToken': 'TOK'}
 
@@ -242,7 +244,7 @@ class TestPushUpdate:
         result = _run_sync(app, db, service, monkeypatch)
         assert result.updated == 1
         assert len(service.updated) == 1
-        res_name, fields, body = service.updated[0]
+        res_name, _fields, body = service.updated[0]
         assert res_name == 'people/lee'
         assert body['etag'] == 'fresh-etag'  # carries the fresh get etag
 
@@ -291,14 +293,14 @@ class TestConflictLWW:
 
     def test_local_newer_wins(self, app, db, monkeypatch):
         # Google edited 2020-06, local edited 2021 -> local newer -> push.
-        cid, service = self._setup(db, '2020-06-01T00:00:00Z', '2021-01-01T00:00:00Z')
+        _cid, service = self._setup(db, '2020-06-01T00:00:00Z', '2021-01-01T00:00:00Z')
         result = _run_sync(app, db, service, monkeypatch)
         assert result.conflicts_local == 1
         assert len(service.updated) == 1
 
     def test_fractional_seconds_do_not_misorder(self, app, db, monkeypatch):
         # Google time has fractional seconds and is clearly newer than local.
-        cid, service = self._setup(db, '2021-01-01T00:00:00.500000Z', '2020-06-01T00:00:00Z')
+        _cid, service = self._setup(db, '2021-01-01T00:00:00.500000Z', '2020-06-01T00:00:00Z')
         result = _run_sync(app, db, service, monkeypatch)
         assert result.conflicts_google == 1
 
