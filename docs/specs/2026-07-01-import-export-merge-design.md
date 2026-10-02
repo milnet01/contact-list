@@ -212,8 +212,12 @@ maintained.
   reports the download as incomplete. That is the accepted cost of streaming at
   single-user scale; the server log carries the traceback.
 - Per contact (vCard **3.0**): `BEGIN:VCARD` / `VERSION:3.0` / … / `END:VCARD`.
-  - Individuals: `FN:<name>` + `N:<name>;;;;`. Companies: `FN:<name>` +
-    `N:;;;;` (RFC 2426 makes `N` required in 3.0) + `ORG:<name>`.
+  - Individuals: `FN:<name>` + `N:<family>;<given>;;;`, splitting the name at
+    its last space: the last word is the family name, the rest the given name
+    (CL-0093). A one-word name is given only: `N:;<name>;;;`. Other apps sort
+    and display by `N`; import reads `FN` first (§3.2), so the name
+    round-trips unchanged. Companies: `FN:<name>` + `N:;;;;` (RFC 2426 makes
+    `N` required in 3.0) + `ORG:<name>`.
   - `EMAIL:<email>`, `TEL:<phone>`, `NOTE:<notes>` when present.
   - **Three custom fields map to standard properties (CL-0075)**, matched by
     name case-insensitively — the same three Google sync maps (DESIGN §8.2):
