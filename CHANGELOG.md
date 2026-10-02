@@ -7,9 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **The Linux download builds again.** (CL-0098)
+  A tool the Linux build fetches changed upstream, so the 1.2.1 build
+  failed and 1.2.1 was never published. The build now fetches a fixed
+  version of that tool. 1.2.2 includes [everything listed under
+  1.2.1](https://github.com/milnet01/contact-list/blob/main/CHANGELOG.md#121---2026-10-02).
+
 ## [1.2.1] - 2026-10-02
 
 **Theme:** Tidy-ups after 1.2.0
+
+Tagged but never published: the Linux build failed. These changes ship in 1.2.2.
 
 ### Fixed
 

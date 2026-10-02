@@ -36,12 +36,12 @@ APPIMAGETOOL_SHA256="46fdd785094c7f6e545b61afcfb0f3d98d8eab243f644b4b17698c01d06
 # We fetch it OURSELVES with curl and pass it via --runtime-file below, because
 # appimagetool's built-in downloader hangs indefinitely on some networks (it
 # leaves the connection in CLOSE-WAIT and never times out). curl follows redirects
-# and honours timeouts, so it's reliable. NOTE: "continuous" is a rolling tag — if
-# upstream rebuilds it, this checksum stops matching and the build fails loudly;
-# re-run `sha256sum packaging/.tools/runtime-x86_64` and update the hash here.
+# and honours timeouts, so it's reliable. Pinned to a dated release, not the
+# rolling "continuous" tag: upstream rebuilt "continuous" on 2026-09-28, its
+# checksum stopped matching, and the v1.2.1 Linux build failed (CL-0098).
 RUNTIME="$TOOLS/runtime-x86_64"
-RUNTIME_URL="https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-x86_64"
-RUNTIME_SHA256="1cc49bcf1e2ccd593c379adb17c9f85a36d619088296504de95b1d06215aebbf"
+RUNTIME_URL="https://github.com/AppImage/type2-runtime/releases/download/20251108/runtime-x86_64"
+RUNTIME_SHA256="2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d"
 
 mkdir -p "$TOOLS"
 

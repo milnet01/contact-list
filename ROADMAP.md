@@ -534,6 +534,21 @@ to adopt, a verification note for sessions, and one layout defect.
   Kind: doc-fix.
   Source: field pass for claude-config on versioning.md § 3, 2026-09-28.
 
+## 1.2.2 — Tidy-ups after 1.2.0, with a working Linux build
+
+1.2.1 was tagged but never published: its Linux build failed. 1.2.2 carries
+everything in 1.2.1 plus the build fix.
+
+- ✅ [CL-0098] **The Linux build pins a rolling AppImage runtime download, so an upstream rebuild breaks the release.**
+  Upstream rebuilt type2-runtime's "continuous" asset on 2026-09-28. Its sha256
+  no longer matched the pin, so the v1.2.1 release run's build-linux job failed
+  (run 37005678988) and nothing was published. Fixed by pinning the dated
+  release 20251108, the newest non-rolling one, with its sha256.
+  **Layman:** The Linux download stopped building because a tool it fetches changed upstream; it now fetches a fixed version.
+  Kind: fix.
+  Source: in-session-2026-10-02 release v1.2.1.
+  Lanes: packaging.
+
 ## No release depends on these
 
 Internal hygiene — tooling coverage, CI paths, build noise, stale citations.
