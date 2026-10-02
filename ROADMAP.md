@@ -1659,6 +1659,42 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   Source: check-doc-run-2026-09-21.
   Evidence: docs/specs/2026-07-10-standalone-launchers-design.md, docs/specs/2026-07-01-import-export-merge-design.md, docs/plans/2026-07-10-standalone-launchers.md, docs/specs/2026-08-06-tray-delivery-and-page-opening.md, docs/superpowers/specs/2026-06-30-settings-page-design.md
 
+- 📋 [CL-0092] **Custom-field name and value boxes have no label a screen reader can read.**
+  templates/contact_form.html renders cf_name / cf_value inputs with a placeholder
+  only (no <label>, no aria-label); static/app.js builds the same rows for
+  new fields. The drag handle is a <span> with aria-label and no role, so it
+  is likely ignored and is not keyboard-reachable. Server-rendered Remove
+  buttons say only "Remove"; the JS-built ones say which field.
+  **Layman:** On the contact form, the two boxes for a custom field show only grey hint text, so a screen reader may not say what they are for.
+  Kind: accessibility.
+  Source: in-session-2026-10-02 website About-page check.
+
+- 📋 [CL-0093] **vCard export puts a person's whole name in the family-name slot of N.**
+  vcard.py writes N:{full name};;;; for an individual. Apps that build display
+  name or sort order from N rather than FN read the whole name as the family
+  name. No test opens an exported file in another app; the fix wants a
+  name split (or FN-only fallback) and a check against a real reader.
+  **Layman:** Phones and mail apps that sort by surname may file "Amara Okafor" under a surname of "Amara Okafor".
+  Kind: fix.
+  Source: in-session-2026-10-02 website About-page check.
+
+- 📋 [CL-0094] **README says CSV export covers everything; it writes only the main fields.**
+  README.md Import / export says CSV exports "everything"; routes/import_export.py
+  writes Name, Type, Email, Phone, Notes, Created, Updated only. Either
+  correct the README or export custom fields and tags.
+  **Layman:** The README promises a full CSV export, but custom fields and tags are left out of it.
+  Kind: doc-fix.
+  Source: in-session-2026-10-02 website About-page check.
+
+- 📋 [CL-0095] **Unverified: does the tray fail, and so open the browser, on GNOME without an AppIndicator extension?**
+  launcher.py opens the browser only when tray.run_tray raises. If pystray
+  starts without error on GNOME and shows no icon, the user gets no icon and
+  no tab. README and the website both make the GNOME claim. Needs a run on
+  stock GNOME.
+  **Layman:** The app promises to open the browser when a desktop has no tray, but nobody has checked that it notices the missing tray on GNOME.
+  Kind: investigate.
+  Source: in-session-2026-10-02 website About-page check.
+
 ## Efficiency & Refactoring
 
 Performance and code-health opportunities surfaced during the 2026-06-30 review.
