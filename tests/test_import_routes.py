@@ -431,3 +431,49 @@ class TestAccessibleNames:
         # live region must exist before it changes to be announced.
         assert re.search(r'<span id="bulk-status" class="visually-hidden" role="status"></span>', html)
         assert html.index('id="bulk-status"') < html.index('id="bulk-bar"')
+
+
+class TestImportProfileColumns:
+    """CL-0097: the saved mapping was keyed by header text, so two columns
+    sharing a header kept one choice between them."""
+
+    @staticmethod
+    def _map_stage(client, csv_bytes: bytes) -> str:
+        data = _upload(csv_bytes)
+        data['_csrf_token'] = _csrf(client)
+        return client.post('/contacts/import', data=data,
+                           content_type='multipart/form-data').get_data(as_text=True)
+
+    @staticmethod
+    def _selected(html: str, col: int) -> str:
+        select = re.search(rf'<select name="map_{col}".*?</select>', html, re.S)
+        assert select, f'no select for column {col}'
+        return re.search(r'<option value="(\w+)" selected', select.group(0)).group(1)
+
+    def test_duplicate_header_choices_are_remembered_per_column(self, client):
+        csv_bytes = b'Name,Email,Email\nAda,a@x.com,b@x.com\n'
+        self._map_stage(client, csv_bytes)
+        client.post('/contacts/import/apply', data={
+            '_csrf_token': _csrf(client), 'csv_text': csv_bytes.decode(),
+            'map_0': 'name', 'map_1': 'email', 'map_2': 'custom',
+            'default_type': 'individual',
+        })
+        html = self._map_stage(client, csv_bytes)
+        assert self._selected(html, 1) == 'email'
+        assert self._selected(html, 2) == 'custom'
+
+    def test_header_keyed_profile_saved_before_the_fix_still_prefills(self, client, app):
+        import importer
+        with app.app_context():
+            models.save_import_profile(
+                get_db(), importer.header_signature(['Name', 'Col B']),
+                {'Name': 'name', 'Col B': 'notes'}, 'individual')
+        html = self._map_stage(client, b'Name,Col B\nAda,hi\n')
+        assert self._selected(html, 1) == 'notes'
+
+    def test_apply_form_posts_multipart(self, client):
+        # A urlencoded re-post of csv_text can grow a 1 MiB file to six times
+        # its size (line breaks become %0D%0A), past MAX_CONTENT_LENGTH.
+        html = self._map_stage(client, b'Name\nAda\n')
+        form = re.search(r'<form[^>]*contacts/import/apply[^>]*>', html)
+        assert form and 'enctype="multipart/form-data"' in form.group(0)

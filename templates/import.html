@@ -33,7 +33,7 @@
 <div class="card">
     <p>Match each column in your file to a contact field. We pre-filled the ones
        we recognised (and remembered your last choices for this layout).</p>
-    <form method="post" action="{{ url_for('contacts.import_apply') }}">
+    <form method="post" action="{{ url_for('contacts.import_apply') }}" enctype="multipart/form-data">
         <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
         <textarea name="csv_text" hidden>{{ csv_text }}</textarea>
         <table class="mb-md">

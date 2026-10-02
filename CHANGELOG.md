@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **CSV import remembers your choice for each column, even when two share a heading.** (CL-0097)
+  With two columns both called "Email", the app kept one choice for both the
+  next time you imported the same layout. Choices saved before this change
+  still load.
+
 - **Exported vCards now give other apps a separate first and last name.** (CL-0093)
   A person's whole name went into the surname field, so phones and mail apps
   that sort by surname filed "Amara Okafor" under A. The last word is now the

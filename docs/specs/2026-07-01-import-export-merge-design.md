@@ -114,7 +114,7 @@ select before importing.
   ```sql
   CREATE TABLE IF NOT EXISTS import_profiles (
       header_signature TEXT PRIMARY KEY,
-      mapping          TEXT NOT NULL,   -- JSON: {source_header: target}
+      mapping          TEXT NOT NULL,   -- JSON: [target, ...], one per column
       default_type     TEXT NOT NULL,
       updated_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
   );
@@ -123,6 +123,9 @@ select before importing.
   `strip()`-ed and lower-cased, joined with `\x1f`, preserving source order.
   Fixed-size; one row per distinct layout.
 - On **Apply**, upsert (`INSERT ... ON CONFLICT(header_signature) DO UPDATE`).
+  `mapping` lists one target per column in header order, so two columns sharing a
+  header keep separate choices (CL-0097). A profile saved earlier as an object
+  keyed by header text still pre-fills, by header.
   On **Upload**, look up and use as top-precedence pre-fill (§2.2). Saved keys
   absent from the current file are ignored; current headers absent from the
   saved mapping fall through to name-guess.
@@ -165,8 +168,9 @@ new fields are imported."
   `Email`,`Email 2`. (This is the same numbering scheme as §2.3's extra-value
   labels, so a duplicate header mapped to `Custom field` and an extra value
   mapped to Email both yield `Email 2` — one consistent rule, and never a
-  collision on `idx_cf_unique`.) The `header_signature` (§2.4) uses the raw
-  ordered header list, so duplicate headers still yield a stable signature.
+  collision on `idx_cf_unique`.) The `header_signature` (§2.4) uses the
+  normalised ordered header list, so duplicate headers still yield a stable
+  signature.
 - **Encoding.** Decoded `utf-8-sig` (§2.1); non-UTF-8 flashes an error, not 500.
 - **Malformed CSV.** `csv.Error` is caught and flashed.
 
@@ -369,8 +373,11 @@ up in order and must be idempotent (`CREATE TABLE IF NOT EXISTS`) — it is.
   `create_app`); an oversize request gets Flask's 413 before any
   handler runs. This hard ceiling covers both the file upload and the
   carried-CSV re-post. In addition, the upload handler rejects a **decoded body
-  larger than 1 MiB** with a flashed error, so the carried `csv_text` re-post
-  (§2.1) stays well under `MAX_CONTENT_LENGTH` regardless of escaping. Both
+  larger than 1 MiB** (counted in uploaded bytes) with a flashed error. The
+  mapping form re-posts `csv_text` (§2.1) as `multipart/form-data`, which only
+  turns each line break into CRLF, so the re-post stays at most twice the upload
+  and under `MAX_CONTENT_LENGTH`. Urlencoded, a byte grows up to three times and
+  a line break six (CL-0097). Both
   bounds are tested (§8).
 - **CSRF.** The new POST endpoints — `import_view` (POST), `import_apply`,
   `merge_preview`, `merge_apply` — all carry the signed token in the body,

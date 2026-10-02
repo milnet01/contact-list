@@ -209,9 +209,14 @@ def import_view() -> ResponseReturnValue:
     db = get_db()
     profile = get_import_profile(db, importer.header_signature(headers))
     if profile:
-        for i, h in enumerate(headers):
-            if h in profile['mapping']:
-                mapping[i] = profile['mapping'][h]
+        saved = profile['mapping']
+        if isinstance(saved, dict):
+            # Saved before CL-0097, keyed by header text: two columns sharing a
+            # header got one choice between them.
+            saved = [saved.get(h) for h in headers]
+        for i, target in enumerate(saved[:len(headers)]):
+            if target in importer.TARGETS:
+                mapping[i] = target
         default_type = profile['default_type']
     else:
         default_type = g.settings['default_type']
@@ -262,7 +267,7 @@ def import_apply() -> ResponseReturnValue:
 
     save_import_profile(
         db, importer.header_signature(headers),
-        {headers[i]: mapping[i] for i in range(len(headers))}, default_type,
+        [mapping[i] for i in range(len(headers))], default_type,
     )
     return render_template(
         'import.html', stage='summary', created=created, updated=updated,

@@ -1734,7 +1734,7 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   Kind: review-fix.
   Source: review-contract-2026-10-02 versioning-overrides loop 2.
 
-- 📋 [CL-0097] **A saved CSV column mapping loses the choice for a second column with the same header.**
+- ✅ [CL-0097] **A saved CSV column mapping loses the choice for a second column with the same header.**
   Filed outside the gated change (CL-0093 amended only §3.1's N line).
   Verified 2026-10-02:
   1. [Q3, code defect] routes/import_export.py saves the profile as
@@ -1754,6 +1754,11 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   Dismissed while verifying: "never a collision on idx_cf_unique" holds
   (importer's label loop bumps n until unique, case-insensitive); vCard
   skip count exists (routes/import_export.py counts unusable cards).
+  Resolved (2026-10-02): profiles store one target per column (a
+  header-keyed profile still loads); spec §2.4/§2.6 corrected. Item 3
+  measured: urlencoded csv_text grows 3x per byte (6x per line break
+  after CRLF), so the mapping form now posts multipart, bounding the
+  re-post at 2x. Tests: TestImportProfileColumns.
   **Layman:** If a spreadsheet has two columns with the same heading, the app forgets how you matched one of them the next time you import it.
   Kind: review-fix.
   Source: review-contract-2026-10-02 import-export spec loop 3 (out of radius).

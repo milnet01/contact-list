@@ -1143,9 +1143,11 @@ def get_import_profile(db: sqlite3.Connection, header_signature: str) -> dict | 
 
 
 def save_import_profile(
-    db: sqlite3.Connection, header_signature: str, mapping: dict, default_type: str
+    db: sqlite3.Connection, header_signature: str, mapping: list[str] | dict,
+    default_type: str,
 ) -> None:
-    """Upsert the chosen column mapping for this header layout (CL-0022)."""
+    """Upsert the chosen column mapping for this header layout (CL-0022): one
+    target per column, in header order (CL-0097)."""
     with db:
         db.execute(
             'INSERT INTO import_profiles (header_signature, mapping, default_type) '
