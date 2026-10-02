@@ -518,7 +518,7 @@ to adopt, a verification note for sessions, and one layout defect.
   Kind: fix.
   Source: in-session-2026-09-28 (seen in the CL-0089 before/after screenshots).
 
-- 📋 [CL-0091] **versioning-overrides.md names the packaged database's location but not the from-source one.**
+- ✅ [CL-0091] **versioning-overrides.md names the packaged database's location but not the from-source one.**
   config._default_db_path() puts contacts.db in ~/.config/contact-list/
   when frozen (listed) and next to config.py from source (not listed) --
   where every ./run.sh user's contacts live. The CONTACT_LIST_DB override
@@ -526,6 +526,10 @@ to adopt, a verification note for sessions, and one layout defect.
   now names "where that file lives on disk" as a candidate surface. The fix
   adds the location to the database bullet; it changes what a conformer
   calls MAJOR, so it runs the review gate first (one loop).
+  Resolved (2026-10-02): the database bullet now says the file lives
+  beside the code when run from source, and in the config folder in the
+  downloadable builds. Gated by review-contract (one loop, 2 lanes); its
+  three out-of-scope findings are CL-0096.
   **Layman:** The list of things a release must not break forgets where the database lives when you run the app from source.
   Kind: doc-fix.
   Source: field pass for claude-config on versioning.md § 3, 2026-09-28.
@@ -1694,6 +1698,24 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   **Layman:** The app promises to open the browser when a desktop has no tray, but nobody has checked that it notices the missing tray on GNOME.
   Kind: investigate.
   Source: in-session-2026-10-02 website About-page check.
+
+- 📋 [CL-0096] **versioning-overrides.md leaves three breaking-change surfaces undecided.**
+  Filed outside the gated change (CL-0091 edited only the database bullet).
+  Both lanes, [Q3]:
+  1. "the GET page URLs in DESIGN.md §9 — people bookmark them" does not say
+     whether DESIGN.md §9.1's query parameters (q, type, letter, tag, page,
+     per_page, sort, dir, and the sort values) are part of the surface.
+  One lane each, [Q3]:
+  2. "What sync writes to Google" points at DESIGN.md §8.2's table, which is
+     written Google-to-local and has a row (organizations[0].name -> "type=
+     company or custom field") that leaves the written set open; google_sync.py
+     pushes organizations only from the explicit custom field.
+  3. "keep their names and meaning" does not say whether narrowing the values
+     an environment variable accepts (MIN_SECRET_KEY_LEN = 32 in config.py,
+     PORT's 1024-65535 range) is breaking.
+  **Layman:** The list of things a release must not break is unclear on three points, so two people could disagree on whether a change needs a major version.
+  Kind: review-fix.
+  Source: review-contract-2026-10-02 versioning-overrides loop 2.
 
 ## Efficiency & Refactoring
 
