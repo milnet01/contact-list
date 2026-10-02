@@ -12,7 +12,9 @@ The project is past `1.0`, so § 4's `1.0` exit condition does not apply.
 A release that breaks any of these is a MAJOR bump.
 
 - **The database.** A `contacts.db` written by an earlier 1.x release opens and
-  migrates forward on the first launch. Migrations run forward only.
+  migrates forward on the first launch. Migrations run forward only. Run from
+  source, it lives beside the code as `contacts.db`; the downloadable builds
+  keep it in the config folder below.
 - **Exported files.** A vCard exported by an earlier 1.x release imports with
   nothing lost (the import/export spec's INV-2, held across versions). A CSV
   export's `Name, Type, Email, Phone, Notes` import back into those fields. The
