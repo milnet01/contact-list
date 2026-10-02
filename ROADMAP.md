@@ -1692,10 +1692,13 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   Kind: fix.
   Source: in-session-2026-10-02 website About-page check.
 
-- 📋 [CL-0094] **README says CSV export covers everything; it writes only the main fields.**
+- ✅ [CL-0094] **README says CSV export covers everything; it writes only the main fields.**
   README.md Import / export says CSV exports "everything"; routes/import_export.py
   writes Name, Type, Email, Phone, Notes, Created, Updated only. Either
   correct the README or export custom fields and tags.
+  Resolved (2026-10-02): README now says the CSV export holds the main
+  fields, custom fields go out in vCard, and tags are not exported
+  (vcard.py writes no CATEGORIES).
   **Layman:** The README promises a full CSV export, but custom fields and tags are left out of it.
   Kind: doc-fix.
   Source: in-session-2026-10-02 website About-page check.
