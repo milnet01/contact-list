@@ -141,7 +141,12 @@ def iter_emit(contacts: Iterable[dict]) -> Iterator[str]:
             lines.append('N:;;;;')
             lines.append(f'ORG:{_escape(name)}')
         else:
-            lines.append(f'N:{_escape(name)};;;;')
+            # Family name is the last word, given the rest: other apps sort and
+            # display by N, while our own import reads FN first (CL-0093).
+            *given, family = name.split() or ['']
+            if not given:
+                given, family = [family], ''
+            lines.append(f'N:{_escape(family)};{_escape(" ".join(given))};;;')
         if c.get('email'):
             lines.append(f'EMAIL:{_escape(c["email"])}')
         if c.get('phone'):

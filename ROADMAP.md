@@ -1677,11 +1677,17 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   Kind: accessibility.
   Source: in-session-2026-10-02 website About-page check.
 
-- 📋 [CL-0093] **vCard export puts a person's whole name in the family-name slot of N.**
+- ✅ [CL-0093] **vCard export puts a person's whole name in the family-name slot of N.**
   vcard.py writes N:{full name};;;; for an individual. Apps that build display
   name or sort order from N rather than FN read the whole name as the family
   name. No test opens an exported file in another app; the fix wants a
   name split (or FN-only fallback) and a check against a real reader.
+  Resolved (2026-10-02): spec
+  docs/specs/2026-07-01-import-export-merge-design.md §3.1 amended and
+  gated (loop 3, one loop); vcard.iter_emit splits at the last word, a
+  one-word name goes in given. Tests: test_n_splits_at_the_last_word,
+  test_split_name_round_trips_as_an_individual. Still unverified:
+  opening an export in a real other app, which this machine cannot run.
   **Layman:** Phones and mail apps that sort by surname may file "Amara Okafor" under a surname of "Amara Okafor".
   Kind: fix.
   Source: in-session-2026-10-02 website About-page check.
@@ -1720,6 +1726,30 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   **Layman:** The list of things a release must not break is unclear on three points, so two people could disagree on whether a change needs a major version.
   Kind: review-fix.
   Source: review-contract-2026-10-02 versioning-overrides loop 2.
+
+- 📋 [CL-0097] **A saved CSV column mapping loses the choice for a second column with the same header.**
+  Filed outside the gated change (CL-0093 amended only §3.1's N line).
+  Verified 2026-10-02:
+  1. [Q3, code defect] routes/import_export.py saves the profile as
+     {headers[i]: mapping[i]}, so two columns sharing a header keep one
+     target; pre-fill (profile['mapping'][h]) then applies it to both. The
+     spec's import_profiles.mapping comment ("JSON: {source_header:
+     target}") prescribes the same lossy shape, though §2.6 supports
+     duplicate headers. Fix: key by column index (header_signature already
+     pins the layout) or store an ordered list.
+  2. [Q2, spec wording] §2.6 says header_signature uses "the raw ordered
+     header list"; §2.4 and importer.header_signature strip and lower-case.
+     The code follows §2.4; §2.6 should say so.
+  3. [Q3, unverified] §8's 1 MiB decoded-body limit does not say bytes or
+     characters, nor how the urlencoded csv_text re-post inflates; one
+     reading lets Apply return 413 on input Upload accepted. Needs a
+     measurement with multi-byte text.
+  Dismissed while verifying: "never a collision on idx_cf_unique" holds
+  (importer's label loop bumps n until unique, case-insensitive); vCard
+  skip count exists (routes/import_export.py counts unusable cards).
+  **Layman:** If a spreadsheet has two columns with the same heading, the app forgets how you matched one of them the next time you import it.
+  Kind: review-fix.
+  Source: review-contract-2026-10-02 import-export spec loop 3 (out of radius).
 
 ## Efficiency & Refactoring
 

@@ -19,7 +19,8 @@ class TestEmit:
         assert 'BEGIN:VCARD' in out and 'END:VCARD' in out
         assert 'VERSION:3.0' in out
         assert 'FN:Alice Smith' in out
-        assert 'N:Alice Smith;;;;' in out
+        # Family name first: other apps sort and display by N (CL-0093).
+        assert 'N:Smith;Alice;;;' in out
         assert 'EMAIL:a@b.com' in out
         assert 'TEL:555-1' in out
 
@@ -31,6 +32,23 @@ class TestEmit:
         # RFC 2426 requires N in 3.0; a company's is all-empty so it re-imports
         # as a company, not a person (CL-0075).
         assert [ln for ln in out.splitlines() if ln.startswith('N:')] == ['N:;;;;']
+
+    def test_n_splits_at_the_last_word(self):
+        def n_line(name: str) -> str:
+            out = vcard.emit([{'type': 'individual', 'name': name, 'email': None,
+                               'phone': None, 'notes': None, 'custom_fields': []}])
+            return next(ln for ln in out.splitlines() if ln.startswith('N:'))
+        assert n_line('Mary Ann  Lee') == 'N:Lee;Mary Ann;;;'
+        assert n_line('Cher') == 'N:;Cher;;;'
+        assert n_line('Jo, Jr; Smith') == 'N:Smith;Jo\\, Jr\\;;;;'
+
+    def test_split_name_round_trips_as_an_individual(self):
+        out = vcard.emit([{'type': 'individual', 'name': 'Cher', 'email': None,
+                           'phone': None, 'notes': None,
+                           'custom_fields': [('organization', 'Acme')]}])
+        card = vcard.parse(out)[0]
+        assert card['name'] == 'Cher'
+        assert card['type'] == 'individual'
 
     def test_custom_field_as_x_cl(self):
         out = vcard.emit([{'type': 'individual', 'name': 'Bob', 'email': None,
