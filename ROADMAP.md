@@ -1712,7 +1712,7 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   Kind: investigate.
   Source: in-session-2026-10-02 website About-page check.
 
-- 📋 [CL-0096] **versioning-overrides.md leaves three breaking-change surfaces undecided.**
+- ✅ [CL-0096] **versioning-overrides.md leaves three breaking-change surfaces undecided.**
   Filed outside the gated change (CL-0091 edited only the database bullet).
   Both lanes, [Q3]:
   1. "the GET page URLs in DESIGN.md §9 — people bookmark them" does not say
@@ -1726,6 +1726,10 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   3. "keep their names and meaning" does not say whether narrowing the values
      an environment variable accepts (MIN_SECRET_KEY_LEN = 32 in config.py,
      PORT's 1024-65535 range) is breaking.
+  Resolved (2026-10-02): §9.1 query parameter names and values are part
+  of the URL surface; the Google surface is the fields in
+  google_sync._MANAGED_FIELDS; narrowing an environment variable's
+  accepted values is breaking, widening is not.
   **Layman:** The list of things a release must not break is unclear on three points, so two people could disagree on whether a change needs a major version.
   Kind: review-fix.
   Source: review-contract-2026-10-02 versioning-overrides loop 2.

@@ -22,18 +22,20 @@ A release that breaks any of these is a MAJOR bump.
   order — are what other tools read.
 - **Environment variables.** `SECRET_KEY`, `CONTACT_LIST_DB`,
   `CONTACT_LIST_PORT`, `PORT` and `LWSM_MANAGED` keep their names and meaning.
+  Narrowing the values one accepts is breaking; accepting more is not.
 - **The config folder.** `~/.config/contact-list/` and what it holds:
   `secret_key`, `credentials.json`, `token.json`, `photos/`,
   `contact-list.log`, and — in the downloadable builds — `contacts.db`.
 - **The default address.** `http://127.0.0.1:5002`, and the GET page URLs in
-  DESIGN.md §9 — people bookmark them. The POST routes are form targets on the
+  DESIGN.md §9 with §9.1's query parameter names and values — people bookmark
+  them. The POST routes are form targets on the
   app's own pages and are not surfaces.
 - **Keyboard shortcuts.** `/` or `s` to search, `n` for a new contact, `Escape`
   to dismiss.
-- **What sync writes to Google.** The set of fields the app manages on a
-  person's Google contact (DESIGN.md §8.2's mapping table) — adding a field
-  or dropping one is breaking, since either changes what sync overwrites —
-  and that it never deletes a Google contact.
+- **What sync writes to Google.** The People API fields in
+  `google_sync._MANAGED_FIELDS`, and nothing outside them — adding a field or
+  dropping one is breaking, since either changes what sync overwrites — and
+  that it never deletes a Google contact.
 - **Release download names.** `Contact-List-x86_64.AppImage`,
   `Contact-List.exe` and `Contact-List.dmg`, which links and updaters point at.
 
