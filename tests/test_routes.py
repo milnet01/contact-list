@@ -881,6 +881,26 @@ class TestConfirmDialogSemantics:
         assert 'id="confirm-message"' in body
 
 
+class TestCustomFieldLabels:
+    """CL-0092: a custom-field row's inputs had only placeholder text.
+
+    Asserted against the rendered edit form. The rows static/app.js builds for
+    a new field carry the same labels, and are not covered: the project ships
+    no JavaScript test runner (CL-0073).
+    """
+
+    def test_existing_row_inputs_and_remove_are_labelled(self, client, app):
+        import models
+        from db import get_db
+        with app.app_context():
+            cid = models.create_contact(
+                get_db(), 'individual', 'Ada', custom_fields=[('locker', '14B')])
+        body = client.get(f'/contacts/{cid}/edit').data.decode()
+        assert 'aria-label="Field name"' in body
+        assert 'aria-label="Field value"' in body
+        assert 'aria-label="Remove this custom field"' in body
+
+
 class TestFormErrorRerender:
     """CL-0079: three ways a failed save lost what the user had entered."""
 

@@ -456,13 +456,16 @@
         var handle = document.createElement('span');
         handle.className = 'drag-handle';
         handle.textContent = '\u2817';
-        handle.setAttribute('aria-label', 'Drag to reorder');
+        // Mouse-only; the Move up/down buttons are the keyboard and screen-reader
+        // route, so the handle is hidden from assistive tech (CL-0092).
+        handle.setAttribute('aria-hidden', 'true');
         handle.title = 'Drag to reorder';
 
         var nameInput = document.createElement('input');
         nameInput.name = 'cf_name';
         nameInput.type = 'text';
         nameInput.placeholder = 'Field name';
+        nameInput.setAttribute('aria-label', 'Field name');
         nameInput.maxLength = 64;
         nameInput.required = true;
         nameInput.value = name || '';
@@ -471,6 +474,7 @@
         valInput.name = 'cf_value';
         valInput.type = 'text';
         valInput.placeholder = 'Value';
+        valInput.setAttribute('aria-label', 'Field value');
         valInput.maxLength = 500;
         valInput.required = true;
         valInput.value = value || '';
@@ -527,7 +531,7 @@
             var handle = document.createElement('span');
             handle.className = 'drag-handle';
             handle.textContent = '\u2817';
-            handle.setAttribute('aria-label', 'Drag to reorder');
+            handle.setAttribute('aria-hidden', 'true');
             handle.title = 'Drag to reorder';
             row.insertBefore(handle, row.firstChild);
         }

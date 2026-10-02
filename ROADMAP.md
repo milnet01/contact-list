@@ -1663,12 +1663,16 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   Source: check-doc-run-2026-09-21.
   Evidence: docs/specs/2026-07-10-standalone-launchers-design.md, docs/specs/2026-07-01-import-export-merge-design.md, docs/plans/2026-07-10-standalone-launchers.md, docs/specs/2026-08-06-tray-delivery-and-page-opening.md, docs/superpowers/specs/2026-06-30-settings-page-design.md
 
-- 📋 [CL-0092] **Custom-field name and value boxes have no label a screen reader can read.**
+- ✅ [CL-0092] **Custom-field name and value boxes have no label a screen reader can read.**
   templates/contact_form.html renders cf_name / cf_value inputs with a placeholder
   only (no <label>, no aria-label); static/app.js builds the same rows for
   new fields. The drag handle is a <span> with aria-label and no role, so it
   is likely ignored and is not keyboard-reachable. Server-rendered Remove
   buttons say only "Remove"; the JS-built ones say which field.
+  Resolved (2026-10-02): aria-label on both inputs (template and
+  JS-built rows) and on the server-rendered Remove button; drag handle
+  aria-hidden. Test: TestCustomFieldLabels (red before, green after).
+  JS-built rows untested: no JS runner (CL-0073).
   **Layman:** On the contact form, the two boxes for a custom field show only grey hint text, so a screen reader may not say what they are for.
   Kind: accessibility.
   Source: in-session-2026-10-02 website About-page check.

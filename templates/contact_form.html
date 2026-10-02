@@ -104,10 +104,13 @@
             {% for cf in custom_fields %}
             <div class="custom-field-row">
                 <input name="cf_name" type="text" placeholder="Field name" maxlength="64"
+                       aria-label="Field name"
                        value="{{ cf.field_name }}" required>
                 <input name="cf_value" type="text" placeholder="Value" maxlength="500"
+                       aria-label="Field value"
                        value="{{ cf.field_value }}" required>
-                <button type="button" class="btn btn-small btn-danger remove-field">Remove</button>
+                <button type="button" class="btn btn-small btn-danger remove-field"
+                        aria-label="Remove this custom field">Remove</button>
             </div>
             {% endfor %}
         </div>

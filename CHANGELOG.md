@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Screen readers now name the custom-field boxes on the contact form.** (CL-0092)
+  The field-name and value boxes had only hint text, and the Remove button said
+  just "Remove". The drag handle, which only a mouse can use, is now hidden
+  from screen readers; the Move up and Move down buttons do the same job.
+
 - **The breadcrumb at the top of a page sits together again instead of stretching across the page** (CL-0089)
 
 - **The "0 selected" bar on the contact list is hidden until you tick a contact** (CL-0090)
