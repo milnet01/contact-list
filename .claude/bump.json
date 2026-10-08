@@ -1,0 +1,17 @@
+{
+  "version_source": "config.py",
+  "version_pattern": "APP_VERSION = '([0-9]+\\.[0-9]+\\.[0-9]+)'",
+  "files": [
+    {
+      "path": "config.py",
+      "pattern": "APP_VERSION = '{OLD}'",
+      "replace": "APP_VERSION = '{NEW}'"
+    }
+  ],
+  "post_check": "bash packaging/check-version-drift.sh",
+  "todos": [
+    "Cut the changelog: changelog_log op:\"release\" version:\"{NEW}\" moves the entries already in `## [Unreleased]` into `## [{NEW}] - {TODAY}` and opens a fresh `[Unreleased]`. Never draft entries from git log (releases.md \u00a7 7). Then add the `**Theme:**` line the user chooses -- the release workflow takes the title from it.",
+    "Push the branch, then the tag on its own: the tag push runs release.yml, which builds the AppImage / .exe / .dmg and publishes the release with the CHANGELOG section as its notes. Verify the published body, title and three assets."
+  ],
+  "tag": "v{NEW}"
+}

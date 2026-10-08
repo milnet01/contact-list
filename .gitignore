@@ -15,7 +15,11 @@ token.json
 .ci-venvs/
 
 # Local development / tooling artifacts (not part of the app)
-.claude/
+.claude/*
+!.claude/settings.json
+!.claude/rules/
+!.claude/bump.json
+!.claude/hook-on-model-edit.sh
 .superpowers/
 .audit_cache/
 audit_config.yaml
