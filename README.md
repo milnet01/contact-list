@@ -78,9 +78,11 @@ out of your way — **it does not throw a browser tab at you**. Click the icon f
 doesn't depend on having a browser tab open. Launching the app a second time while
 it's already running also just opens the page.
 
-Where a desktop has no system tray at all (GNOME, unless you've added an AppIndicator
-extension), there'd be no icon to click — so in that case the app opens your browser on
-startup instead, rather than leaving you with no way to reach it.
+If the tray icon fails to start, the app opens your browser instead, so you're never left
+with no way to reach it. **This is not yet tested on GNOME.** GNOME has no tray unless you
+add the "AppIndicator and KStatusNotifierItem Support" extension, and the app may not
+notice the tray is missing. On GNOME, add that extension, or open `http://localhost:5002`
+yourself.
 
 ### Option 2 — Run from source (for developers)
 

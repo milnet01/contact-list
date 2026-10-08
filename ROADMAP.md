@@ -1723,6 +1723,11 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   starts without error on GNOME and shows no icon, the user gets no icon and
   no tab. README and the website both make the GNOME claim. Needs a run on
   stock GNOME.
+  Progress (2026-10-08): the user chose to soften the claim until it
+  is tested. README now says GNOME is untested and tells GNOME users to
+  add the AppIndicator extension or open the page themselves. The
+  website session was sent matching text. Still open: a run on stock
+  GNOME.
   **Layman:** The app promises to open the browser when a desktop has no tray, but nobody has checked that it notices the missing tray on GNOME.
   Kind: investigate.
   Source: in-session-2026-10-02 website About-page check.
@@ -1777,6 +1782,28 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   **Layman:** If a spreadsheet has two columns with the same heading, the app forgets how you matched one of them the next time you import it.
   Kind: review-fix.
   Source: review-contract-2026-10-02 import-export spec loop 3 (out of radius).
+
+- 📋 [CL-0099] **Unverified: does a Google contact photo's URL stay the same across syncs?**
+  Waiting on the user's next Google sync. Answer by comparing a
+  contact's photo URL before and after a re-sync.
+  **Layman:** Nobody has checked whether Google keeps the same web address for a contact's photo each time we sync.
+  Kind: investigate.
+  Source: user-decision-2026-10-08 (from handoff note).
+
+- 📋 [CL-0100] **Unverified: does Google accept a birthday with no year (BDAY --MM-DD)?**
+  Waiting on the user's next Google sync. Answer by exporting a contact
+  with a yearless birthday and checking how Google shows it.
+  **Layman:** Nobody has checked whether Google accepts a birthday saved without a year.
+  Kind: investigate.
+  Source: user-decision-2026-10-08 (from handoff note).
+
+- 📋 [CL-0101] **Hand-check before the next release: delete confirm on a second click, and the Duplicates card view.**
+  A second click on delete must still ask for confirmation. The
+  Duplicates card view must lay out every group. Both have automated
+  tests; this is the user's browser check, run before the next release.
+  **Layman:** Before the next release, click through two screens by hand to confirm they behave.
+  Kind: test.
+  Source: user-decision-2026-10-08 (from handoff note).
 
 ## Efficiency & Refactoring
 
