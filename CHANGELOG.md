@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Ticking several contacts no longer unticks the first.** (CL-0102)
+  The "selected" bar used to appear above the list on the first tick and
+  push every row down, so a quick second click landed on the first box
+  again. The bar now floats at the bottom of the window, and ticking a
+  box moves nothing.
+
 ## [1.2.2] - 2026-10-02
 
 **Theme:** Tidy-ups after 1.2.0, with a working Linux build

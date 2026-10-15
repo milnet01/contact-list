@@ -700,3 +700,15 @@ def test_stylesheet_scopes_nav_and_honours_hidden():
         css = fh.read()
     assert not re.search(r'(?m)^\s*nav\s*\{', css)
     assert '.bulk-bar[hidden] { display: none; }' in css
+
+
+def test_bulk_bar_appearing_moves_no_rows():
+    # CL-0102: the bar sat in the page flow above the table, so the first tick
+    # pushed every row down and a quick second click unticked the first box.
+    # Out of the flow, showing it moves nothing.
+    import re
+    with open(os.path.join(os.path.dirname(__file__), '..', 'static', 'style.css')) as fh:
+        css = fh.read()
+    rule = re.search(r'(?m)^\.bulk-bar\s*\{([^}]*)\}', css)
+    assert rule, 'no .bulk-bar rule'
+    assert re.search(r'position:\s*fixed', rule.group(1))

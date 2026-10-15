@@ -1,5 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
+<!-- ants-roadmap-id-high-water: CL=102 -->
 
 # Contact List — Roadmap
 
@@ -1804,6 +1805,23 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   **Layman:** Before the next release, click through two screens by hand to confirm they behave.
   Kind: test.
   Source: user-decision-2026-10-08 (from handoff note).
+
+- ✅ [CL-0102] **Ticking a row's box pushes the table down, so the next quick click unticks it.**
+  The bulk bar (`#bulk-bar`, "N selected · Merge · Delete · Clear")
+  is `hidden` until the first tick, then appears ABOVE the table in the
+  page flow. On /contacts/duplicates at 1920x1080 and 150% zoom it moved
+  every row down about 87 px. A click aimed at row 2 then lands on row
+  1's box, unticks it, and the bar hides again: net nothing selected.
+  Seen 2026-10-15 in both Firefox and Chrome while scripting trailer
+  footage; one tick alone works. The contacts list uses the same bar.
+  Fix: reserve the bar's space, or overlay it, so a tick moves nothing.
+  Resolved (2026-10-15): .bulk-bar is now position: fixed at the bottom
+  centre, out of the page flow, so a tick moves no row. Verified by two
+  quick ticks in Firefox (both stay ticked); test
+  test_bulk_bar_appearing_moves_no_rows.
+  **Layman:** When you tick one contact, the list jumps down, so your next click can untick it instead of ticking the next one.
+  Kind: fix.
+  Source: in-session-2026-10-15 trailer recording.
 
 ## Efficiency & Refactoring
 
