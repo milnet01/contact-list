@@ -80,6 +80,12 @@ class TestCreateContact:
         })
         assert resp.status_code == 403
 
+    def test_csrf_required_for_patch(self, client):
+        # Every method that is not safe needs the token, PATCH included, even
+        # where no route takes it yet: a PATCH route added later is covered.
+        resp = client.patch('/contacts', data={'name': 'Hacker'})
+        assert resp.status_code == 403
+
     def test_with_custom_fields(self, client):
         token = _get_csrf(client)
         resp = client.post('/contacts', data={

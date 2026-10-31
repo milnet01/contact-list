@@ -11,8 +11,9 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from flask import Flask, Response, abort, g, render_template, request, session
 from flask.typing import ResponseReturnValue
 
+import settings as settings_mod
 from config import APP_VERSION, Config, ensure_private_dir
-from db import close_db, init_db
+from db import close_db, get_db, init_db
 from resources import resource_path
 
 
@@ -53,7 +54,6 @@ def create_app(test_config: dict | None = None) -> Flask:
         # duplicate detection. One indexed anti-join; a no-op once every
         # contact has a row.
         import models
-        from db import get_db
 
         models.backfill_lookup(get_db())
 
@@ -72,9 +72,11 @@ def create_app(test_config: dict | None = None) -> Flask:
     log.info('App initialized — database: %s', app.config['DATABASE'])
 
     # ------------------------------------------------------------------
-    # CSRF protection
+    # Request hooks, template globals and filters
     # ------------------------------------------------------------------
 
+    # CSRF: csrf_token() mints the per-session token; _check_csrf rejects any
+    # unsafe request that does not echo it.
     def csrf_token() -> str:
         if '_csrf_token' not in session:
             session['_csrf_token'] = secrets.token_hex(32)
@@ -86,8 +88,6 @@ def create_app(test_config: dict | None = None) -> Flask:
 
     @app.before_request
     def _load_settings() -> None:
-        import settings as settings_mod
-        from db import get_db
         try:
             g.settings = settings_mod.get_settings(get_db())
         except sqlite3.Error:
@@ -99,11 +99,18 @@ def create_app(test_config: dict | None = None) -> Flask:
 
     @app.before_request
     def _check_csrf() -> None:
-        if request.method in ('POST', 'PUT', 'DELETE'):
+        # Exempt the safe methods rather than list the unsafe ones, so a route
+        # added later under PATCH or any other method is protected by default.
+        if request.method not in ('GET', 'HEAD', 'OPTIONS', 'TRACE'):
             token = request.form.get('_csrf_token', '')
             expected = session.get('_csrf_token', '')
             if not token or not expected or not hmac.compare_digest(token, expected):
                 abort(403)
+
+    def current_settings() -> dict:
+        """The request's settings, or the defaults when ``_load_settings`` did
+        not run -- e.g. an error raised before the before_request hooks."""
+        return getattr(g, 'settings', None) or settings_mod.SETTINGS_DEFAULTS
 
     def contact_count() -> int:
         """Total contacts for the nav badge, cached on ``g`` for the request.
@@ -115,7 +122,6 @@ def create_app(test_config: dict | None = None) -> Flask:
         request (CL-0031)."""
         count = getattr(g, 'contact_count', None)
         if count is None:
-            from db import get_db
             try:
                 count = get_db().execute('SELECT COUNT(*) FROM contacts').fetchone()[0]
             except sqlite3.Error:
@@ -133,7 +139,6 @@ def create_app(test_config: dict | None = None) -> Flask:
         # hasattr (not a None check) distinguishes "not yet computed" from
         # "computed as None" — None is a valid cached value here.
         if not hasattr(g, 'last_synced'):
-            from db import get_db
             try:
                 row = get_db().execute(
                     'SELECT last_synced_at FROM sync_state WHERE id = 1'
@@ -146,14 +151,13 @@ def create_app(test_config: dict | None = None) -> Flask:
 
     @app.context_processor
     def _inject_globals() -> dict:
-        import settings as settings_mod
         return {
             'csrf_token': csrf_token,
             'active_nav': request.path,
             'app_version': APP_VERSION,
             'contact_count': contact_count(),
             'last_synced': last_synced(),
-            'settings': getattr(g, 'settings', None) or settings_mod.SETTINGS_DEFAULTS,
+            'settings': current_settings(),
         }
 
     @app.template_filter('friendly_date')
@@ -161,8 +165,7 @@ def create_app(test_config: dict | None = None) -> Flask:
         """Convert an ISO-8601 UTC timestamp to the user's timezone and format."""
         if not value:
             return ''
-        import settings as settings_mod
-        s = getattr(g, 'settings', None) or settings_mod.SETTINGS_DEFAULTS
+        s = current_settings()
         try:
             dt = datetime.fromisoformat(value)  # 3.11+ reads a trailing Z
             dt = dt.astimezone(ZoneInfo(s['timezone']))
@@ -177,8 +180,7 @@ def create_app(test_config: dict | None = None) -> Flask:
     def day_month(value: date) -> str:
         """A yearless date (a birthday) in the day-and-month form of the
         user's date format, so it reads like every other date in the app."""
-        import settings as settings_mod
-        s = getattr(g, 'settings', None) or settings_mod.SETTINGS_DEFAULTS
+        s = current_settings()
         fmt = settings_mod.DAY_MONTH_FORMATS.get(
             s['date_format'], settings_mod.DAY_MONTH_FORMATS['dmy_hm']
         )
