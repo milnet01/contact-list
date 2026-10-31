@@ -15,7 +15,9 @@ from settings import SETTINGS_DEFAULTS
 
 # CL-0037: tag caps. MAX_TAG_LEN bounds a single tag's length; MAX_TAGS bounds
 # how many tags one contact may carry. Both are enforced in _normalize_tags,
-# which is the single choke-point for every tag write.
+# which every caller must run BEFORE passing tags in: create_contact,
+# update_contact and set_contact_tags do not check them. The routes do
+# (routes/contacts.py, routes/merge.py).
 MAX_TAG_LEN = 50
 MAX_TAGS = 50
 
@@ -26,8 +28,9 @@ MAX_TAGS = 50
 # lengths existed only as browser maxlength attributes, which a direct POST
 # ignores, so a single request could store a multi-megabyte name that then
 # rendered into every list page, the duplicates scan and the CSV export.
-# These mirror templates/contact_form.html's maxlength values; change both
-# together.
+# The name, email, phone, notes and custom-field value caps mirror
+# templates/contact_form.html's maxlength values; change both together.
+# MAX_CUSTOM_FIELDS has no maxlength: its browser copy is in static/app.js.
 MAX_CUSTOM_FIELDS = 50
 MAX_NAME_LEN = 200
 MAX_EMAIL_LEN = 254
@@ -85,8 +88,7 @@ def _phone_key(phone: str | None, region: str) -> str | None:
     """Bucket key for duplicate detection: the E.164 form, or the raw string
     when it can't be parsed, or None when there is no phone at all.
 
-    The raw-string fallback and the empty-phone exclusion preserve exactly what
-    find_duplicates and find_all_duplicates computed per row before CL-0066.
+    find_duplicates and find_all_duplicates both bucket on this key.
     """
     if not phone:
         return None
@@ -178,7 +180,8 @@ def _build_contact_query(
     letter: str | None = None,
     tags: list[str] | None = None,
 ) -> tuple[str, list[str | int]]:
-    """Build WHERE clause for contact listing. Returns (query_fragment, params)."""
+    """Build the complete listing SELECT, with its WHERE clause for the given
+    filters. Returns (query, params); append only ORDER BY / LIMIT."""
     # has_photo is a scalar EXISTS column spliced into the static SELECT prefix,
     # not a JOIN — a JOIN would fan out rows and inflate the COUNT(*)-over-subquery
     # total (the same constraint as CL-0025). No bound param, no effect on ordering.
@@ -213,10 +216,8 @@ def _build_contact_query(
         conditions.append('type = ?')
         params.append(contact_type)
 
-    # CL-0066: an indexed membership test against the stored letter, replacing
-    # `first_letter(name) = ?`. That predicate wrapped the column in an
-    # application-defined function, which SQLite cannot index, so every filtered
-    # render scanned the table with one interpreter round trip per row.
+    # CL-0066: an indexed membership test against the stored letter. A function
+    # of the name column could not be indexed and scanned the table per render.
     if letter == '#':
         conditions.append(
             'id IN (SELECT contact_id FROM contact_lookup WHERE letter = ?)'
@@ -377,11 +378,9 @@ def find_duplicates(
     if phone:
         # Compare on the normalized E.164 form so the same number typed
         # differently ('+1 202-555-0123' vs '2025550123') is still caught
-        # (CL-0013). CL-0066: that form is now stored per contact, so this is a
-        # single indexed lookup instead of a scan of every phone-bearing row
-        # with a Python parse each. _phone_key keeps the old fallback -- an
-        # unparseable number keys on its raw string, matching only an identical
-        # raw string, exactly as the pre-CL-0066 exact-match branch did.
+        # (CL-0013). That form is stored per contact (CL-0066), so this is a
+        # single indexed lookup. An unparseable number keys on its raw string
+        # (_phone_key) and matches only an identical raw string.
         target = _phone_key(phone, _stored_region(db))
         rows = db.execute(
             f'SELECT c.name FROM contact_lookup l '
@@ -453,9 +452,8 @@ def find_all_duplicates(
     # matching the on-create warning (find_duplicates, CL-0013/CL-0027).
     # CL-0066: that form is stored per contact and indexed, so this is a GROUP
     # BY over an index instead of a full scan re-parsing every phone in Python.
-    # _phone_key stores NULL for an absent or empty phone, which is what the old
-    # `phone IS NOT NULL AND phone != ''` filter excluded, and keys an
-    # unparseable number on its raw string, which is the old Python fallback.
+    # _phone_key stores NULL for an absent or empty phone, which this skips, and
+    # keys an unparseable number on its raw string.
     phone_groups = db.execute(
         'SELECT phone_key FROM contact_lookup WHERE phone_key IS NOT NULL '
         'GROUP BY phone_key HAVING COUNT(*) > 1 LIMIT ?',
@@ -514,7 +512,7 @@ def get_dirty_linked(db: sqlite3.Connection, prev_sync: str | None) -> list[sqli
     """Google-linked contacts the USER edited since the last sync — candidates
     for push-update (CL-0033). A NULL prev_sync (never synced) yields zero rows:
     nothing has diverged from a Google baseline yet, so the first sync only
-    creates local-only contacts. The `:prev_sync IS NOT NULL` guard is
+    creates local-only contacts. The `:prev IS NOT NULL` guard is
     belt-and-braces over SQLite's 3VL (`edited_at > NULL` is already NULL)."""
     return db.execute(
         'SELECT c.id, c.google_id FROM contacts c '
@@ -553,6 +551,8 @@ def set_contact_etag(db: sqlite3.Connection, contact_id: int, etag: str | None) 
 
 # Birthdays are stored as a 'birthday' custom field, either 'YYYY-MM-DD' or the
 # year-less 'MM-DD' (see google_sync._upsert_person and DESIGN.md § data model).
+# Despite the underscore, vcard.py and google_sync.py import this: changing it
+# changes what vCard exports as BDAY (otherwise X-CL) and what Google pushes.
 _BIRTHDAY_RE = re.compile(r'^(?:(\d{4})-)?(\d{2})-(\d{2})$')
 
 
@@ -786,7 +786,8 @@ def get_all_tags(db: sqlite3.Connection) -> list[sqlite3.Row]:
 
 
 def _validate_custom_field_names(custom_fields: list[tuple[str, str]] | None) -> None:
-    """Reject invalid or case-insensitively-duplicate custom field names before
+    """Validate a whole custom-field list: its count (MAX_CUSTOM_FIELDS), each
+    value's length, and invalid or case-insensitively-duplicate names, before
     any DML, so the persistence layer enforces the contract for every caller
     (and so a colliding name can't trip the idx_cf_unique constraint mid-write)."""
     if not custom_fields:
@@ -816,7 +817,9 @@ def _validate_field_lengths(
     phone: str | None,
     notes: str | None,
 ) -> None:
-    """Bound the core contact fields, for every caller including the importers.
+    """Bound the core contact fields, for every caller of this module including
+    the importers. google_sync._upsert_person writes contacts directly and does
+    NOT call this, so a Google-pulled name or note can exceed these caps.
 
     Paired with _validate_contact_type at each write site, so the import paths
     get the same limits the contact form does (CL-0067).
@@ -1175,7 +1178,11 @@ def merge_contacts(
 
 
 def get_import_profile(db: sqlite3.Connection, header_signature: str) -> dict | None:
-    """Return a saved CSV column-mapping profile for this header layout, or None."""
+    """Return a saved CSV column-mapping profile for this header layout, or None.
+
+    ``mapping`` is a list of targets in header order (CL-0097), or the older
+    dict keyed by header text from a profile saved before that; see
+    routes/import_export.py for how each is applied."""
     row = db.execute(
         'SELECT mapping, default_type FROM import_profiles WHERE header_signature = ?',
         [header_signature],

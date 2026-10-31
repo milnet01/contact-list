@@ -6,7 +6,10 @@ import phonenumbers
 def format_phone(raw: str, region: str) -> str:
     """Parse and format a phone number to international format.
 
-    Returns the raw input unchanged if it can't be parsed.
+    Returns the raw input unchanged if it can't be parsed. Accepts a number that
+    is merely "possible" as well as a valid one, so a real but unusual number
+    still gets formatted; normalize_e164 applies the same test, and the two must
+    agree or displayed numbers and duplicate keys would disagree.
     """
     try:
         parsed = phonenumbers.parse(raw, region)
@@ -24,7 +27,7 @@ def normalize_e164(raw: str, region: str) -> str | None:
     it can't be parsed to a valid/possible number.
 
     Used to compare two phone numbers for equality regardless of how they were
-    typed or formatted (CL-0013).
+    typed or formatted (CL-0013). Same valid-or-possible test as format_phone.
     """
     try:
         parsed = phonenumbers.parse(raw, region)
