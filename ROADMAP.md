@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: CL=112 -->
+<!-- ants-roadmap-id-high-water: CL=113 -->
 
 # Contact List — Roadmap
 
@@ -1903,8 +1903,13 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   Kind: fix.
   Source: review-readability 2026-10-31.
 
-- 🚧 [CL-0111] **Readability review 2026-10-31: close the data lane.**
+- ✅ [CL-0111] **Readability review 2026-10-31: close the data lane.**
   Lane file docs/reviews/review-readability-2026-10-31/lane-01-data.md; ledger closed-data.md.
+  Closed: photo thumbnail 500/stale bug, vCard repeated label, CSV
+  mapping IndexError, migration encoding, one VALID_CONTACT_TYPES, one
+  custom-field insert helper, import_contact split, vcard.parse card
+  docs, comment fixes. Queued CL-0112, CL-0113. Ledger:
+  docs/reviews/review-readability-2026-10-31/closed-data.md.
   **Layman:** Tidy the code that stores contacts, photos and imports so the next person can follow it, and fix a photo bug found on the way.
   Kind: review-fix.
   Source: review-readability 2026-10-31.
@@ -1912,6 +1917,12 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
 - 📋 [CL-0112] **CSV import keeps a row with an email and no name, storing an empty name.**
   importer.apply_mapping skips only rows with neither name nor email. The form (validate_core_fields), vcard.parse and Google sync all refuse a nameless contact. Needs a design decision, not made now: skip the row (loses email-only lists), or use the email as the name. Either changes what a user's CSV import produces; no spec covers it. Hazard: tests/test_importer.py and the import summary count rows as skipped.
   **Layman:** A CSV row that has an email but no name creates a contact with a blank name, unlike every other way of adding a contact.
+  Kind: fix.
+  Source: review-readability 2026-10-31.
+
+- 📋 [CL-0113] **Google pull may fail on a linked contact that has a local field named Birthday, Address or Organization in other letter case.**
+  google_sync._upsert_person deletes the old birthday/address/organization custom fields with a case-sensitive IN list, but idx_cf_unique is NOCASE, so inserting 'birthday' next to a local 'Birthday' violates it. Not reproduced here (needs a two-way-sync fixture). Fix is LOWER(field_name) IN (...), but that also deletes the user's own differently-cased field on sync; decide that first. Lane: routes-sync owns google_sync.py.
+  **Layman:** A Google sync could hit a database error for a contact that has a hand-typed field such as "Birthday" with a capital letter.
   Kind: fix.
   Source: review-readability 2026-10-31.
 

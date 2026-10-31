@@ -17,6 +17,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A photo that cannot be resized no longer breaks the page.** (CL-0111)
+  A full disk or read-only photo folder, or a replacement photo that cannot be read, no longer shows an error page or an old picture: the full-size photo is shown instead.
+
+- **vCard import keeps a repeated custom field.** (CL-0111)
+  A card that repeats a custom-field label now keeps every value as Label, Label 2, and so on, as the CSV import already did.
+
+- **The app starts on a computer whose default text encoding is not UTF-8.** (CL-0111)
+  The database set-up files are now read as UTF-8.
+
 - **The Windows build no longer fails at start-up when saving its secret key; the CSRF check now covers every unsafe request method.** (CL-0107)
 
 - **Ticking several contacts no longer unticks the first.** (CL-0102)
