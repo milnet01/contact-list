@@ -11,6 +11,12 @@
 </div>
 {% endmacro %}
 
+{# The Google disclaimer (CL-0103), one copy for the About and Google Sync pages.
+   The projects site and the trailers quote this wording: change it there too. #}
+{% macro google_disclaimer(cls='') %}
+<p{% if cls %} class="{{ cls }}"{% endif %}>Contact List is an independent app. It is not made by, affiliated with or endorsed by Google. Google Contacts is a Google product.</p>
+{% endmacro %}
+
 {# Inline icons drawn more than once (CL-0079). One copy of each glyph, so the
    pages cannot drift apart; the caller passes any class. Icons used once stay
    inline where they are used.

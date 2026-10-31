@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **An About page.** (CL-0103)
+  A new **About** link in the menu shows the version, the licence and a link
+  to the code. It also says plainly that Contact List is an independent app,
+  not made by, affiliated with or endorsed by Google. The Google Sync page and
+  the README say the same.
+
 ### Fixed
 
 - **Ticking several contacts no longer unticks the first.** (CL-0102)

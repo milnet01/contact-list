@@ -242,7 +242,7 @@ class TestTightenedCSP:
             'type': 'individual', 'name': 'Zoe',
         })
         for path in ('/contacts', '/contacts/new', '/contacts/duplicates',
-                     '/sync', '/settings'):
+                     '/sync', '/settings', '/about'):
             resp = client.get(path)
             assert resp.status_code == 200, f'{path} -> {resp.status_code}'
             assert b'style="' not in resp.data, f'{path} still has an inline style'

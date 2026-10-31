@@ -160,6 +160,9 @@ on Google. A contact deleted on Google that you had edited here since the last s
 kept, and the sync puts it back on Google; delete it again if you meant to. If you previously connected with the old read-only permission, the Sync page
 will ask you to reconnect.
 
+Contact List is an independent app. It is not made by, affiliated with or endorsed by
+Google. Google Contacts is a Google product.
+
 ## Running the tests
 
 ```bash

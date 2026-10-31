@@ -592,6 +592,7 @@ All routes are server-rendered HTML. No REST/JSON API in v1 (add in v2 if needed
 | GET | `/settings` | Settings page |
 | POST | `/settings` | Save settings |
 | POST | `/settings/server` | Restart or shut down the local server (CL-0046) |
+| GET | `/about` | About page: version, licence, source link, Google disclaimer (CL-0103) |
 
 ### 9.1 Query Parameters for `/contacts`
 

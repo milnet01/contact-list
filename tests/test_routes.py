@@ -1,10 +1,12 @@
 import datetime
 import io
+import os
 import re
 
 import pytest
 
 from app import create_app
+from config import APP_VERSION
 
 
 @pytest.fixture()
@@ -186,6 +188,39 @@ class TestSyncPage:
         resp = client.get('/sync')
         assert resp.status_code == 200
         assert b'Setup Required' in resp.data
+
+
+class TestAboutPage:
+    # CL-0103. The site and the trailers quote this wording: change it there too.
+    DISCLAIMER = (
+        b'Contact List is an independent app. It is not made by, affiliated with '
+        b'or endorsed by Google. Google Contacts is a Google product.'
+    )
+
+    def test_says_what_the_app_is(self, client):
+        resp = client.get('/about')
+        assert resp.status_code == 200
+        assert f'Version {APP_VERSION}'.encode() in resp.data
+        assert b'href="https://github.com/milnet01/contact-list"' in resp.data
+        assert b'MIT' in resp.data
+        assert self.DISCLAIMER in resp.data
+
+    def test_every_page_links_to_it(self, client):
+        resp = client.get('/contacts')
+        assert b'href="/about"' in resp.data
+
+    def test_sync_page_carries_the_disclaimer_before_setup(self, client):
+        resp = client.get('/sync')
+        assert b'Setup Required' in resp.data
+        assert self.DISCLAIMER in resp.data
+
+    def test_sync_page_carries_the_disclaimer_after_setup(self, app):
+        os.makedirs(app.config['GOOGLE_CREDENTIALS_DIR'], exist_ok=True)
+        with open(app.config['GOOGLE_CREDENTIALS_FILE'], 'w') as f:
+            f.write('{}')
+        resp = app.test_client().get('/sync')
+        assert b'Connect Google Account' in resp.data
+        assert self.DISCLAIMER in resp.data
 
 
 class TestXSSPrevention:

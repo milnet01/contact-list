@@ -33,6 +33,11 @@ def _choices() -> dict:
     }
 
 
+@bp.route('/about')
+def about() -> ResponseReturnValue:
+    return render_template('about.html')
+
+
 @bp.route('/settings')
 def settings_page() -> ResponseReturnValue:
     return render_template('settings.html', settings=g.settings, **_choices())

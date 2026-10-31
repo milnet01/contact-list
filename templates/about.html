@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% from "_macros.html" import google_disclaimer, page_header %}
+{% block title %}About — Contacts{% endblock %}
+
+{% block content %}
+{{ page_header('About') }}
+
+<div class="card">
+    <h2>Contact List</h2>
+    <p>Version {{ app_version }}</p>
+    <p class="mt-md">A lightweight, self-hosted contact manager. Your contacts stay on your own
+       computer. Nothing leaves it except the Google sync you choose to run.</p>
+    <p class="mt-md">Free and open source under the
+       <a href="https://github.com/milnet01/contact-list/blob/main/LICENSE" rel="noopener">MIT licence</a>.
+       The code and the issue tracker are on
+       <a href="https://github.com/milnet01/contact-list" rel="noopener">GitHub</a>.</p>
+    {{ google_disclaimer('mt-md') }}
+</div>
+{% endblock %}

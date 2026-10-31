@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import icon, page_header %}
+{% from "_macros.html" import google_disclaimer, icon, page_header %}
 {% block title %}Google Sync — Contacts{% endblock %}
 
 {% block content %}
@@ -76,6 +76,8 @@
     </div>
 </div>
 {% endif %}
+
+{{ google_disclaimer() }}
 
 <div class="detail-meta mt-lg">
     <a href="{{ url_for('contacts.contact_list') }}">

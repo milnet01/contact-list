@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: CL=102 -->
+<!-- ants-roadmap-id-high-water: CL=104 -->
 
 # Contact List — Roadmap
 
@@ -1822,6 +1822,26 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   **Layman:** When you tick one contact, the list jumps down, so your next click can untick it instead of ticking the next one.
   Kind: fix.
   Source: in-session-2026-10-15 trailer recording.
+
+- 📋 [CL-0103] **Tell the website session which release first carries the About page and Google disclaimer.**
+  The About page, and the disclaimer there, on the Google Sync page and
+  in the README, are built and unreleased. The website session asked for
+  the version once it ships. The wording is unchanged from what it
+  suggested. When that release is out, message
+  ants-projects-hub-website, then close this.
+  **Layman:** The website is waiting to hear which release includes the "not made by Google" notice.
+  Kind: chore.
+  Source: user-decision-2026-10-31; ants-projects-hub-website request 2026-10-16.
+
+- 📋 [CL-0104] **The back-to-top button shows on every page, even unscrolled.**
+  app.js sets backToTop.hidden while scrollY is under 400, but
+  .back-to-top has display: flex in style.css, which beats the browser's
+  [hidden] rule. Seen 2026-10-31 at scroll 0 on /about and /sync in
+  Firefox. Same fault as CL-0090: add .back-to-top[hidden] beside
+  .bulk-bar[hidden], and extend test_stylesheet_scopes_nav_and_honours_hidden.
+  **Layman:** The round arrow button in the corner should only appear after you scroll down, but it is always there.
+  Kind: fix.
+  Source: in-session-2026-10-31 About page visual check.
 
 ## Efficiency & Refactoring
 
