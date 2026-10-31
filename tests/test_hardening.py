@@ -688,6 +688,21 @@ class TestDisconnectRevokesAtGoogle:
         google_sync.revoke_credentials(app.config)
         assert not os.path.isfile(path)
 
+    def test_a_bad_proxy_reply_still_removes_the_token(self, app, monkeypatch):
+        import http.client
+        import urllib.request
+
+        import google_sync
+        path = app.config['GOOGLE_TOKEN_FILE']
+        _write_token(path, _WRITE)
+
+        def boom(req, timeout=None):
+            raise http.client.BadStatusLine('garbage')
+
+        monkeypatch.setattr(urllib.request, 'urlopen', boom)
+        google_sync.revoke_credentials(app.config)
+        assert not os.path.isfile(path)
+
 
 class TestReconsent:
     def test_no_token_neither_authenticated_nor_reconsent(self, app):

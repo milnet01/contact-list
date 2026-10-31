@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime
+import http.client
 import json
 import logging
 import os
@@ -193,9 +194,10 @@ def revoke_credentials(config: dict) -> None:
                 headers={'Content-Type': 'application/x-www-form-urlencoded'})
             with urllib.request.urlopen(request, timeout=10):  # noqa: S310 -- constant https URL
                 pass
-        except (OSError, ValueError):
+        except (OSError, ValueError, http.client.HTTPException):
             # URLError and HTTPError are OSErrors; Google answers 400 for a
-            # token it has already revoked.
+            # token it has already revoked. A malformed reply (for example from
+            # a proxy) raises HTTPException, which is not an OSError.
             log.warning(
                 'Could not revoke the token at Google; removing the local copy '
                 'anyway. The grant may still be listed in the Google account.',
