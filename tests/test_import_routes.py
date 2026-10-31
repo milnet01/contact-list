@@ -114,6 +114,22 @@ class TestImportApply:
             assert total == 2
             assert {c['name'] for c in contacts} == {'Alice', 'Bob'}
 
+    def test_refused_row_is_counted_and_named(self, client, app):
+        # A row import_contact refuses (over-long name) counts as skipped and the
+        # warning names the row, as it does for a refused vCard.
+        token = _csrf(client)
+        resp = client.post('/contacts/import/apply', data={
+            '_csrf_token': token,
+            'csv_text': 'Name\nAlice\n' + 'Z' * 201 + '\n',
+            'default_type': 'individual',
+            'map_0': 'name',
+        }, follow_redirects=True)
+        assert b'Skipped: 1' in resp.data
+        assert b'Name exceeds 200 characters' in resp.data
+        assert b'ZZZZZ' in resp.data  # the warning names the row
+        with app.app_context():
+            assert models.list_contacts(get_db())[1] == 1
+
     def test_additive_update_reported(self, client, app):
         with app.app_context():
             models.create_contact(get_db(), 'individual', 'Alice', 'a@x.com')

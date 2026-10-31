@@ -75,7 +75,7 @@
     <ul>
         <li>Created: {{ created }}</li>
         <li>Updated: {{ updated }}{% if updated_names %} — added missing details to: {{ updated_names|join(', ') }}{% endif %}</li>
-        {% if skipped %}<li>Skipped (blank rows): {{ skipped }}</li>{% endif %}
+        {% if skipped %}<li>Skipped: {{ skipped }}</li>{% endif %}
     </ul>
     {% if warnings %}
     <p class="toolbar-meta">Some rows had issues:</p>

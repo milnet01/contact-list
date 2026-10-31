@@ -10,7 +10,8 @@ from __future__ import annotations
 import csv
 import io
 import re
-from collections.abc import Iterator
+import sqlite3
+from collections.abc import Iterable, Iterator
 
 from flask import (
     Response,
@@ -115,6 +116,48 @@ def _count_vcard_blocks(text: str) -> int:
     )
 
 
+def _import_rows(
+    db: sqlite3.Connection, rows: Iterable[tuple[dict, list[tuple[str, str]]]],
+) -> dict:
+    """Run ``import_contact`` over (fields, custom_fields) rows, for both import
+    paths. A row it refuses (ValueError) counts as ``refused`` and gets a warning
+    naming it, so the summary never reads as an unqualified success.
+
+    Returns the keyword arguments the summary page takes, minus ``skipped``:
+    the caller adds the rows it dropped before this point.
+    """
+    created = updated = refused = 0
+    updated_names: list[str] = []
+    warnings: list[str] = []
+    for fields, cfs in rows:
+        try:
+            _cid, action = import_contact(db, fields, cfs)
+        except ValueError as exc:
+            refused += 1
+            name = fields['name'] or '(unnamed)'
+            warnings.append(f'{name[:40]}: {exc}')
+            continue
+        if action == 'created':
+            created += 1
+        else:
+            updated += 1
+            updated_names.append(fields['name'])
+    return {
+        'created': created, 'updated': updated, 'updated_names': updated_names,
+        'refused': refused, 'warnings': warnings,
+    }
+
+
+def _render_summary(outcome: dict, dropped: int, warnings: list[str]) -> ResponseReturnValue:
+    """The import summary page. ``dropped`` counts rows never handed to
+    ``import_contact``; ``warnings`` lists them ahead of the refusals."""
+    return render_template(
+        'import.html', stage='summary', created=outcome['created'],
+        updated=outcome['updated'], updated_names=outcome['updated_names'],
+        skipped=dropped + outcome['refused'], warnings=warnings + outcome['warnings'],
+    )
+
+
 def _import_vcard_text(text: str) -> ResponseReturnValue:
     """Import a vCard document immediately (no mapping needed) and show the
     summary. Additive import (import_contact) is non-destructive, so there is
@@ -123,21 +166,16 @@ def _import_vcard_text(text: str) -> ResponseReturnValue:
     if not cards:
         flash('No contacts found in the file.', 'error')
         return redirect(url_for('contacts.import_view'))
-    db = get_db()
-    created = updated = skipped = 0
-    warnings: list[str] = []
-    updated_names: list[str] = []
 
     # vcard.parse drops any card with no usable name, and those are skips the
-    # user is entitled to hear about. Counting them here means the summary
-    # covers both loss paths -- the ones the parser rejected and the ones
-    # import_contact refuses below.
+    # user is entitled to hear about; the cards import_contact refuses are
+    # counted by _import_rows.
     unusable = _count_vcard_blocks(text) - len(cards)
+    warnings: list[str] = []
     if unusable > 0:
-        skipped += unusable
-        warnings.append(
-            f'{unusable} card(s) had no usable name and were skipped.'
-        )
+        warnings.append(f'{unusable} card(s) had no usable name and were skipped.')
+
+    rows = []
     for card in cards:
         # Sanitise externally-supplied custom-field names and number a repeated
         # one ('Nickname 2'), as the CSV path does, so one odd label can't fail
@@ -153,25 +191,8 @@ def _import_vcard_text(text: str) -> ResponseReturnValue:
             'type': card['type'], 'name': card['name'], 'email': card['email'],
             'phone': card['phone'], 'notes': card['notes'],
         }
-        try:
-            _cid, action = import_contact(db, fields, cfs)
-        except ValueError as exc:
-            # Was `continue` with a hardcoded skipped=0 in the summary below, so
-            # a 200-card file where 150 were refused rendered as an unqualified
-            # "50 created". The CSV path a few functions down already counted
-            # and reported these; this is the same accounting.
-            skipped += 1
-            warnings.append(f'{card["name"] or "(unnamed)"}: {exc}')
-            continue
-        if action == 'created':
-            created += 1
-        else:
-            updated += 1
-            updated_names.append(card['name'])
-    return render_template(
-        'import.html', stage='summary', created=created, updated=updated,
-        updated_names=updated_names, skipped=skipped, warnings=warnings,
-    )
+        rows.append((fields, cfs))
+    return _render_summary(_import_rows(get_db(), rows), max(unusable, 0), warnings)
 
 
 @bp.route('/contacts/import', methods=['GET', 'POST'])
@@ -250,31 +271,16 @@ def import_apply() -> ResponseReturnValue:
         target = request.form.get(f'map_{i}', 'ignore')
         mapping[i] = target if target in importer.TARGETS else 'ignore'
 
-    built, skipped = importer.apply_mapping(headers, rows, mapping, default_type)
+    built, blank = importer.apply_mapping(headers, rows, mapping, default_type)
     db = get_db()
-    created = updated = 0
-    updated_names: list[str] = []
-    warnings: list[str] = []
-    for fields, cfs in built:
-        try:
-            _cid, action = import_contact(db, fields, cfs)
-        except ValueError as exc:
-            warnings.append(str(exc))
-            continue
-        if action == 'created':
-            created += 1
-        else:
-            updated += 1
-            updated_names.append(fields['name'])
+    outcome = _import_rows(db, built)
 
     save_import_profile(
         db, importer.header_signature(headers),
         [mapping[i] for i in range(len(headers))], default_type,
     )
-    return render_template(
-        'import.html', stage='summary', created=created, updated=updated,
-        updated_names=updated_names, skipped=skipped, warnings=warnings,
-    )
+    warnings = [f'{blank} row(s) had no name or email and were skipped.'] if blank else []
+    return _render_summary(outcome, blank, warnings)
 
 
 @bp.route('/contacts/export/vcard')
