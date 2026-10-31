@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime
+import json
 import logging
 import os
 import sqlite3
@@ -152,6 +153,23 @@ def _save_credentials(config: dict, creds: Any) -> None:
     write_private_text(token_path, creds.to_json())
 
 
+_REVOKE_URL = 'https://oauth2.googleapis.com/revoke'
+
+
+def _stored_token_secret(token_path: str) -> str | None:
+    """The refresh token (else the access token) in the token file, or None when
+    the file is missing or unreadable. Read from the file, not through
+    ``_load_credentials``, so a legacy read-only token or an expired one can be
+    revoked too."""
+    try:
+        with open(token_path, encoding='utf-8') as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return None
+    secret = data.get('refresh_token') or data.get('token') if isinstance(data, dict) else None
+    return secret if isinstance(secret, str) and secret else None
+
+
 def revoke_credentials(config: dict) -> None:
     """Revoke the grant at Google, then delete the local token.
 
@@ -159,26 +177,25 @@ def revoke_credentials(config: dict) -> None:
     indefinitely, so any copy of token.json -- a backup, a synced home
     directory -- still granted full read-write contacts access after the user
     had "disconnected". DESIGN.md §6.2 and §9 both call this route a revoke.
+    google-auth's Credentials has no revoke method, so the token is posted to
+    Google's revoke endpoint.
 
     Revocation is best-effort: the local token is removed whether or not Google
     could be reached, because leaving it behind after the user asked to
     disconnect is the worse failure.
     """
     token_path = config['GOOGLE_TOKEN_FILE']
-    try:
-        creds = _load_credentials(config)
-    except GoogleUnreachable:
-        log.warning('Could not reach Google to revoke the token; removing the '
-                    'local copy anyway.', exc_info=True)
-        creds = None
-    if creds is not None:
+    secret = _stored_token_secret(token_path)
+    if secret is not None:
         try:
-            # Imported locally, as every other google-library use in this module
-            # is, so importing google_sync stays cheap and import-safe.
-            from google.auth.transport.requests import Request
-
-            creds.revoke(Request())
-        except Exception:
+            request = urllib.request.Request(
+                _REVOKE_URL, data=urllib.parse.urlencode({'token': secret}).encode(),
+                headers={'Content-Type': 'application/x-www-form-urlencoded'})
+            with urllib.request.urlopen(request, timeout=10):  # noqa: S310 -- constant https URL
+                pass
+        except (OSError, ValueError):
+            # URLError and HTTPError are OSErrors; Google answers 400 for a
+            # token it has already revoked.
             log.warning(
                 'Could not revoke the token at Google; removing the local copy '
                 'anyway. The grant may still be listed in the Google account.',

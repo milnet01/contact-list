@@ -645,6 +645,50 @@ class TestOutageIsNotALostGrant:
         assert not os.path.isfile(path)
 
 
+class TestDisconnectRevokesAtGoogle:
+    """google-auth's Credentials has no revoke(); the grant is revoked by
+    posting the token to Google's revoke endpoint."""
+
+    def test_disconnect_posts_the_refresh_token_to_google(self, app, monkeypatch):
+        import urllib.request
+
+        import google_sync
+        path = app.config['GOOGLE_TOKEN_FILE']
+        _write_token(path, _WRITE)
+        seen = []
+
+        class _Resp:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+        def fake_urlopen(req, timeout=None):
+            seen.append((req.full_url, req.data))
+            return _Resp()
+
+        monkeypatch.setattr(urllib.request, 'urlopen', fake_urlopen)
+        google_sync.revoke_credentials(app.config)
+        assert seen == [('https://oauth2.googleapis.com/revoke', b'token=r')]
+        assert not os.path.isfile(path)
+
+    def test_unreachable_google_still_removes_the_token(self, app, monkeypatch):
+        import urllib.error
+        import urllib.request
+
+        import google_sync
+        path = app.config['GOOGLE_TOKEN_FILE']
+        _write_token(path, _WRITE)
+
+        def boom(req, timeout=None):
+            raise urllib.error.URLError('down')
+
+        monkeypatch.setattr(urllib.request, 'urlopen', boom)
+        google_sync.revoke_credentials(app.config)
+        assert not os.path.isfile(path)
+
+
 class TestReconsent:
     def test_no_token_neither_authenticated_nor_reconsent(self, app):
         import google_sync
