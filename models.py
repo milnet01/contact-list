@@ -866,7 +866,9 @@ def insert_custom_fields(
 # create_contact (INSERT), _write_contact (UPDATE; behind update_contact and
 # merge_contacts), _insert_imported and _fill_existing (import_contact's INSERT
 # and additive UPDATE), and google_sync._upsert_person (its own UPDATE and
-# INSERT). Each also owns its sync_lookup and _mark_edited calls.
+# INSERT). Each also owns its sync_lookup call, and its _mark_edited call
+# except google_sync._upsert_person, which must not call it: a pull is not a
+# user edit and never sets edited_at (INV-1).
 def create_contact(
     db: sqlite3.Connection,
     contact_type: str,
