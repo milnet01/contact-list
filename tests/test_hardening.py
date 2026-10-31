@@ -727,3 +727,27 @@ def test_bulk_bar_appearing_moves_no_rows():
     rule = re.search(r'(?m)^\.bulk-bar\s*\{([^}]*)\}', css)
     assert rule, 'no .bulk-bar rule'
     assert re.search(r'position:\s*fixed', rule.group(1))
+
+
+class TestMigrationsReadAsUtf8:
+    def test_init_db_on_an_ascii_locale(self, tmp_path):
+        # Some migrations hold non-ASCII text. open() without an encoding used
+        # the locale's, so startup failed under an ASCII or cp1252 locale.
+        import subprocess
+        import sys
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        code = (
+            'import sys; sys.path.insert(0, sys.argv[2])\n'
+            'from flask import Flask; import db\n'
+            'app = Flask("t"); app.config["DATABASE"] = sys.argv[1]\n'
+            'with app.app_context(): db.init_db()\n'
+        )
+        env = {
+            'PATH': os.environ.get('PATH', ''),
+            'LC_ALL': 'C', 'PYTHONUTF8': '0', 'PYTHONCOERCECLOCALE': '0',
+        }
+        result = subprocess.run(
+            [sys.executable, '-X', 'utf8=0', '-E', '-c', code, str(tmp_path / 'x.db'), root],
+            env=env, capture_output=True, text=True, cwd=str(tmp_path), check=False,
+        )
+        assert result.returncode == 0, result.stderr[-400:]

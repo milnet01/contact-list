@@ -31,11 +31,11 @@ def close_db(e: BaseException | None = None) -> None:
 def init_db() -> None:
     db = get_db()
 
-    # Track which migration files have been applied so each runs exactly once.
-    # Without this, every *.sql re-ran on every startup and only worked because
-    # each statement was IF NOT EXISTS; a future non-idempotent migration could
-    # not run safely. Existing databases (no schema_version row yet) simply
-    # re-run the current, idempotent migrations once and record them (CL-0008).
+    # Track which migration files have been applied so each runs once. This is
+    # an optimisation, not permission to write a non-idempotent migration: a
+    # crash between a migration and its schema_version row re-runs it (see the
+    # note at executescript below). Existing databases (no schema_version row
+    # yet) re-run the current migrations once and record them (CL-0008).
     db.execute(
         'CREATE TABLE IF NOT EXISTS schema_version ('
         '    filename    TEXT PRIMARY KEY,'
@@ -54,7 +54,7 @@ def init_db() -> None:
         if filename in applied:
             continue
         log.info('Running migration: %s', filename)
-        with open(os.path.join(migrations_dir, filename)) as f:
+        with open(os.path.join(migrations_dir, filename), encoding='utf-8') as f:
             # executescript() issues its own COMMIT, so the migration is durable
             # before the schema_version row below. A crash in that window re-runs
             # the file next boot — so every migration must stay idempotent
