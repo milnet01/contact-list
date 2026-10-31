@@ -7,7 +7,7 @@ from collections.abc import Callable
 
 from phonenumbers import SUPPORTED_REGIONS
 
-from config import Config
+from config import VALID_CONTACT_TYPES, Config
 
 # Format-key -> strftime pattern. Keys are the stored values; patterns are
 # applied in friendly_date. 'dmy_hm' is the default (matches the historical
@@ -56,7 +56,7 @@ _ALLOWED: dict[str, set[str]] = {
     'view': {'list', 'card'},
     'sort': {'name', 'type', 'created', 'updated'},
     'sort_dir': {'asc', 'desc'},
-    'default_type': {'individual', 'company'},
+    'default_type': set(VALID_CONTACT_TYPES),
 }
 
 

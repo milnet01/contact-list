@@ -11,6 +11,14 @@ import tempfile
 APP_VERSION = '1.2.2'
 
 _CONFIG_DIR = os.path.expanduser('~/.config/contact-list')
+
+# The contact types. Python code reads this tuple (models, importer, settings,
+# the routes); migrations/001_initial.sql's CHECK on contacts.type and the
+# <option> lists in templates/contact_form.html, contacts.html, settings.html
+# and import.html are separate copies. Add a type to all of them: a missed
+# Python site silently falls back to 'individual' or ignores the filter.
+VALID_CONTACT_TYPES = ('individual', 'company')
+
 _log = logging.getLogger(__name__)
 
 # CL-0069: the shortest SECRET_KEY env value accepted. A generated key is

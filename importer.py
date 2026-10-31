@@ -11,6 +11,7 @@ import csv
 import hashlib
 import io
 
+from config import VALID_CONTACT_TYPES
 from models import sanitize_field_name
 
 # Column-header aliases → mapping target, for the pre-filled guess on the
@@ -141,7 +142,7 @@ def apply_mapping(
             (_unique_label(label, used), val)
             for label, val in (raw_customs + email_extras + phone_extras)
         ]
-        ctype = type_val if type_val in ('individual', 'company') else default_type
+        ctype = type_val if type_val in VALID_CONTACT_TYPES else default_type
         fields = {
             'type': ctype,
             'name': name,

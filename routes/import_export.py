@@ -27,6 +27,7 @@ from flask.typing import ResponseReturnValue
 
 import importer
 import vcard
+from config import VALID_CONTACT_TYPES
 from db import get_db
 from models import (
     export_contacts,
@@ -232,7 +233,7 @@ def import_view() -> ResponseReturnValue:
 def import_apply() -> ResponseReturnValue:
     csv_text = request.form.get('csv_text', '')
     default_type = request.form.get('default_type', 'individual')
-    if default_type not in ('individual', 'company'):
+    if default_type not in VALID_CONTACT_TYPES:
         default_type = 'individual'
     try:
         headers, rows = importer.parse_csv(csv_text)

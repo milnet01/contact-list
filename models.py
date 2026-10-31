@@ -10,6 +10,7 @@ import unicodedata
 from collections.abc import Iterator
 
 import phoneutil
+from config import VALID_CONTACT_TYPES
 from settings import SETTINGS_DEFAULTS
 
 # CL-0037: tag caps. MAX_TAG_LEN bounds a single tag's length; MAX_TAGS bounds
@@ -208,7 +209,7 @@ def _build_contact_query(
         )
         params.extend([term, term, term, term, term])
 
-    if contact_type in ('individual', 'company'):
+    if contact_type in VALID_CONTACT_TYPES:
         conditions.append('type = ?')
         params.append(contact_type)
 
@@ -821,9 +822,6 @@ def _validate_field_lengths(
     ):
         if value is not None and len(value) > cap:
             raise ValueError(f'{label} exceeds {cap} characters')
-
-
-VALID_CONTACT_TYPES = ('individual', 'company')
 
 
 def _validate_contact_type(contact_type: str) -> None:

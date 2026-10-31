@@ -22,6 +22,7 @@ from werkzeug.datastructures import MultiDict
 
 import phoneutil
 import photos
+from config import VALID_CONTACT_TYPES
 from db import get_db
 from models import (
     MAX_CUSTOM_FIELDS,
@@ -113,7 +114,7 @@ def validate_core_fields(
     """
     errors: list[str] = []
 
-    if contact_type not in ('individual', 'company'):
+    if contact_type not in VALID_CONTACT_TYPES:
         errors.append('Type must be individual or company.')
     if not name:
         errors.append('Name is required.')

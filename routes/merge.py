@@ -18,6 +18,7 @@ from flask import (
 from flask.typing import ResponseReturnValue
 
 import photos
+from config import VALID_CONTACT_TYPES
 from db import get_db
 from models import (
     MAX_CUSTOM_FIELDS,
@@ -99,7 +100,7 @@ def merge_apply() -> ResponseReturnValue:
     raw_email = (request.form.get('field_email') or '').strip() or None
     raw_phone = (request.form.get('field_phone') or '').strip() or None
     fields, errors = validate_core_fields(
-        ctype if ctype in ('individual', 'company') else 'individual',
+        ctype if ctype in VALID_CONTACT_TYPES else 'individual',
         (request.form.get('field_name') or '').strip(),
         raw_email,
         raw_phone,
