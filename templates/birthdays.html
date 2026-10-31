@@ -21,8 +21,8 @@
 </div>
 {% else %}
 <p class="toolbar-meta mb-md">{{ upcoming|length }} birthday{{ 's' if upcoming|length != 1 }} in the next {{ days }} days.
-{%- if truncated %} Showing the first {{ cap }} — narrow the range to see fewer
-at a time.{% endif %}</p>
+{%- if truncated %} Showing the first {{ cap }}. Add ?days=N to the address
+(for example ?days=14) to see a shorter range.{% endif %}</p>
 
 <div class="card">
     <table>

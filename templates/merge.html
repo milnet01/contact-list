@@ -18,7 +18,8 @@
     Merging {{ contacts|length }} contacts. For each field, choose the value to
     keep as the main one. The oldest record is kept and updated; the others are
     deleted. Any email or phone you don't pick is preserved as an extra custom
-    field (e.g. "Phone 2"), so nothing is lost.
+    field (e.g. "Phone 2"), so no email or phone is lost. A name, notes or
+    custom-field value you don't pick is dropped.
 </p>
 
 <form method="post" action="{{ url_for('contacts.merge_apply') }}">

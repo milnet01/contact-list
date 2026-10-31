@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: CL=118 -->
+<!-- ants-roadmap-id-high-water: CL=120 -->
 
 # Contact List — Roadmap
 
@@ -1964,6 +1964,20 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
 - 📋 [CL-0118] **Merge preview drops custom fields past the cap silently, and extras can push the merge over the cap.**
   routes/merge.py merge_preview emits an uncapped union of custom fields (templates/merge.html) and merge_apply clamps cf_count to MAX_CUSTOM_FIELDS; _preserve_extra may add rows past models' cap, so merge_contacts refuses with 'Could not merge'. Also unchecked: merge ignores whether a loser is linked to Google; the Google copy of a deleted loser is untouched.
   **Layman:** Merging contacts with many extra fields can quietly lose some, or be refused with a short message.
+  Kind: fix.
+  Source: review-readability 2026-10-31.
+
+- ✅ [CL-0119] **Readability review 2026-10-31: close the frontend lane.**
+  Closed: frontend lane findings and leads (see
+  docs/reviews/review-readability-2026-10-31/closed-frontend.md).
+  Queued: CL-0120, CL-0109.
+  **Layman:** Tidy the web pages and their script so each rule lives in one place and the comments tell the truth.
+  Kind: review-fix.
+  Source: review-readability 2026-10-31.
+
+- 📋 [CL-0120] **Back and ref are carried inconsistently between the detail, birthdays, duplicates and merge pages.**
+  The star form on the detail page sends no ref, and toggle_favourite then redirects to the detail page without one, so Back falls to the plain list (adding ref as it stands would redirect to the list instead of the detail). Links from Birthdays and Duplicates carry no ref, and the detail route only recovers a /contacts referrer. The merge page's Cancel and breadcrumb always go to Duplicates. Needs a design choice: let toggle_favourite and the detail route distinguish a list ref from a return-to-detail. Found by the frontend lane of review-readability 2026-10-31.
+  **Layman:** After starring a contact, or coming from Birthdays or Duplicates, the Back button may not return to where you were.
   Kind: fix.
   Source: review-readability 2026-10-31.
 

@@ -17,6 +17,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The Contacts list keeps your sort order when you page, pick a letter or a tag, or search, and a bulk delete returns to the filtered list (CL-0119).**
+
+- **A contact whose name starts with an accented letter now gets the neutral avatar colour on every page (CL-0119).**
+
+- **Selecting duplicates counts each contact once in the selection bar; Enter opens a contact from the keyboard on the list; Clear and unticking reset the group tick box (CL-0119).**
+
+- **A form's error list stays on screen while you fix the form instead of vanishing after six seconds; Add Field greys out at the limit instead of opening a confirmation dialog; the Merge and Birthdays pages no longer promise more than they do (CL-0119).**
+
 - **Disconnect now revokes the Google grant.** (CL-0114)
   It called a method that does not exist, so the grant stayed live at Google while the app said it was disconnected.
 
