@@ -12,7 +12,7 @@ import hashlib
 import io
 
 from config import VALID_CONTACT_TYPES
-from models import sanitize_field_name
+from models import MAX_CF_NAME_LEN, sanitize_field_name
 
 # Column-header aliases → mapping target, for the pre-filled guess on the
 # mapping screen. Not exhaustive; the user can override every column.
@@ -73,11 +73,13 @@ def guess_mapping(headers: list[str]) -> dict[int, str]:
 def unique_label(base: str, used: set[str]) -> str:
     """Return `base`, or `base 2`/`base 3`/… so the result is unique
     (case-insensitive) within `used`; records the choice in `used`. Both import
-    paths number a repeated custom-field label with this rather than drop it."""
+    paths number a repeated custom-field label with this rather than drop it.
+    A numbered label is cut back so it still fits MAX_CF_NAME_LEN."""
     label = base
     n = 2
     while label.lower() in used:
-        label = f'{base} {n}'
+        suffix = f' {n}'
+        label = base[:MAX_CF_NAME_LEN - len(suffix)].rstrip() + suffix
         n += 1
     used.add(label.lower())
     return label

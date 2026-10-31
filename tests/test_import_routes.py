@@ -114,6 +114,21 @@ class TestImportApply:
             assert total == 2
             assert {c['name'] for c in contacts} == {'Alice', 'Bob'}
 
+    def test_csv_row_over_the_field_cap_imports_with_a_warning(self, client, app):
+        token = _csrf(client)
+        n = models.MAX_CUSTOM_FIELDS + 1
+        head = 'Name,' + ','.join(f'C{i}' for i in range(n))
+        row = 'Alice,' + ','.join(f'v{i}' for i in range(n))
+        form = {'_csrf_token': token, 'csv_text': f'{head}\n{row}\n',
+                'default_type': 'individual', 'map_0': 'name'}
+        form.update({f'map_{i + 1}': 'custom' for i in range(n)})
+        resp = client.post('/contacts/import/apply', data=form, follow_redirects=True)
+        assert b'Alice' in resp.data and b'custom field' in resp.data
+        with app.app_context():
+            db = get_db()
+            cid = models.list_contacts(db)[0][0]['id']
+            assert len(models.get_custom_fields(db, cid)) == models.MAX_CUSTOM_FIELDS
+
     def test_refused_row_is_counted_and_named(self, client, app):
         # A row import_contact refuses (over-long name) counts as skipped and the
         # warning names the row, as it does for a refused vCard.
@@ -182,6 +197,37 @@ class TestVcardImportExport:
             fields = {r['field_name']: r['field_value']
                       for r in models.get_custom_fields(db, cid)}
         assert fields == {'Nickname': 'Zee', 'Nickname 2': 'Z'}
+
+    def test_import_vcf_numbers_a_label_already_at_the_length_cap(self, client, app):
+        token = _csrf(client)
+        label = 'L' * models.MAX_CF_NAME_LEN
+        vcf = (f'BEGIN:VCARD\nVERSION:3.0\nFN:Zara\n'
+               f'X-CL;X-LABEL={label}:one\nX-CL;X-LABEL={label}:two\nEND:VCARD\n').encode()
+        data = _upload(vcf, 'contacts.vcf')
+        data['_csrf_token'] = token
+        resp = client.post('/contacts/import', data=data,
+                           content_type='multipart/form-data', follow_redirects=True)
+        assert b'Skipped: 0' in resp.data or b'Skipped' not in resp.data
+        with app.app_context():
+            db = get_db()
+            cid = models.list_contacts(db)[0][0]['id']
+            names = [r['field_name'] for r in models.get_custom_fields(db, cid)]
+        assert len(names) == 2 and all(len(n) <= models.MAX_CF_NAME_LEN for n in names)
+
+    def test_import_vcf_over_the_field_cap_drops_extras_and_warns(self, client, app):
+        token = _csrf(client)
+        n = models.MAX_CUSTOM_FIELDS + 1
+        lines = ''.join(f'X-CL;X-LABEL=F{i}:v{i}\n' for i in range(n))
+        vcf = f'BEGIN:VCARD\nVERSION:3.0\nFN:Zara\n{lines}END:VCARD\n'.encode()
+        data = _upload(vcf, 'contacts.vcf')
+        data['_csrf_token'] = token
+        resp = client.post('/contacts/import', data=data,
+                           content_type='multipart/form-data', follow_redirects=True)
+        assert b'Zara' in resp.data and b'custom field' in resp.data
+        with app.app_context():
+            db = get_db()
+            cid = models.list_contacts(db)[0][0]['id']
+            assert len(models.get_custom_fields(db, cid)) == models.MAX_CUSTOM_FIELDS
 
     def test_export_vcard(self, client, app):
         with app.app_context():

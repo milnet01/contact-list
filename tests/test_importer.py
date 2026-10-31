@@ -5,6 +5,18 @@ from __future__ import annotations
 import importer
 
 
+class TestUniqueLabel:
+    def test_a_label_at_the_cap_stays_within_it_when_numbered(self):
+        from models import MAX_CF_NAME_LEN, valid_field_name
+        base = 'L' * MAX_CF_NAME_LEN
+        used: set[str] = set()
+        first = importer.unique_label(base, used)
+        second = importer.unique_label(base, used)
+        third = importer.unique_label(base, used)
+        assert len({first.lower(), second.lower(), third.lower()}) == 3
+        assert all(valid_field_name(x) for x in (first, second, third))
+
+
 class TestHeaderSignature:
     def test_stable_and_case_insensitive(self):
         assert importer.header_signature(['Name', 'Email']) == \

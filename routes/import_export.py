@@ -31,6 +31,7 @@ import vcard
 from config import VALID_CONTACT_TYPES, Config, megabytes_text
 from db import get_db
 from models import (
+    MAX_CUSTOM_FIELDS,
     export_contacts,
     export_contacts_with_fields,
     get_import_profile,
@@ -121,7 +122,9 @@ def _import_rows(
 ) -> dict:
     """Run ``import_contact`` over (fields, custom_fields) rows, for both import
     paths. A row it refuses (ValueError) counts as ``refused`` and gets a warning
-    naming it, so the summary never reads as an unqualified success.
+    naming it, so the summary never reads as an unqualified success. A row with
+    more custom fields than ``MAX_CUSTOM_FIELDS`` is imported without the extras,
+    with a warning naming it.
 
     Returns the keyword arguments the summary page takes, minus ``skipped``:
     the caller adds the rows it dropped before this point.
@@ -130,11 +133,18 @@ def _import_rows(
     updated_names: list[str] = []
     warnings: list[str] = []
     for fields, cfs in rows:
+        name = fields['name'] or '(unnamed)'
+        if len(cfs) > MAX_CUSTOM_FIELDS:
+            # A card or row with more fields than a contact may hold still
+            # imports; only the fields past the cap are dropped.
+            warnings.append(
+                f'{name[:40]}: {len(cfs) - MAX_CUSTOM_FIELDS} custom field(s) past '
+                f'the limit of {MAX_CUSTOM_FIELDS} were dropped.')
+            cfs = cfs[:MAX_CUSTOM_FIELDS]
         try:
             _cid, action = import_contact(db, fields, cfs)
         except ValueError as exc:
             refused += 1
-            name = fields['name'] or '(unnamed)'
             warnings.append(f'{name[:40]}: {exc}')
             continue
         if action == 'created':
@@ -179,7 +189,8 @@ def _import_vcard_text(text: str) -> ResponseReturnValue:
     for card in cards:
         # Sanitise externally-supplied custom-field names and number a repeated
         # one ('Nickname 2'), as the CSV path does, so one odd label can't fail
-        # the whole contact's import and no value is dropped.
+        # the whole contact's import and numbering drops no value. Only fields
+        # past MAX_CUSTOM_FIELDS are dropped, by _import_rows, with a warning.
         used: set[str] = set()
         cfs: list[tuple[str, str]] = []
         for name, value in card['custom_fields']:
