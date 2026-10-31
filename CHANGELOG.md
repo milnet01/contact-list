@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The Windows build no longer fails at start-up when saving its secret key; the CSRF check now covers every unsafe request method.** (CL-0107)
+
 - **Ticking several contacts no longer unticks the first.** (CL-0102)
   The "selected" bar used to appear above the list on the first tick and
   push every row down, so a quick second click landed on the first box

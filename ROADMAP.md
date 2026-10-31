@@ -1875,8 +1875,12 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   Kind: ux.
   Source: in-session-2026-10-31 CL-0101 pre-check.
 
-- 🚧 [CL-0107] **Close the shell lane of the readability review.**
+- ✅ [CL-0107] **Close the shell lane of the readability review.**
   Lane file: docs/reviews/review-readability-2026-10-31/lane-03-shell.md. Ledger: closed-shell.md.
+  Closed the shell lane: comments corrected, secret-key save fixed for
+  Windows, CSRF covers all unsafe methods, version-drift check shared,
+  dead constant removed. Queued CL-0108, CL-0109, CL-0110. Ledger:
+  docs/reviews/review-readability-2026-10-31/closed-shell.md.
   **Layman:** Tidy the launcher, config and build scripts so comments match the code, and fix the small bugs found on the way.
   Kind: review-fix.
   Source: review-readability 2026-10-31.

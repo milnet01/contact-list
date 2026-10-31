@@ -20,7 +20,7 @@ JS. No ORM. Google import is in `google_sync.py` / `google_auth.py`.
 
 - **SQL:** parameterized queries only. Never f-strings/`.format()` in SQL.
 - **XSS:** rely on Jinja2 autoescaping; `| e` on any manual `Markup()`.
-- **CSRF:** signed token validated on every POST/PUT/DELETE.
+- **CSRF:** signed token validated on every method except GET/HEAD/OPTIONS/TRACE.
 - **Secrets:** Google credentials/tokens live in `~/.config/contact-list/`, never
   in the repo or database. `.gitignore` enforces this.
 - **No new dependencies** without justification. DESIGN.md §3 holds the

@@ -436,7 +436,7 @@ These are **mandatory** for all current and future code.
 |------|---------------|
 | SQL injection prevention | **Parameterized queries only.** Never use f-strings or `.format()` in SQL. |
 | XSS prevention | Jinja2 autoescaping enabled globally (`autoescape=True`, Flask default). Manual `| e` filter on any `Markup()` usage. |
-| CSRF protection | Signed token in every state-changing form. Validate on POST/PUT/DELETE. |
+| CSRF protection | Signed token in every state-changing form. Validate on every method except GET/HEAD/OPTIONS/TRACE. |
 | Input validation | Whitelist validation: `type` must be `individual` or `company`. `field_name` must match `[a-zA-Z0-9_ ]{1,64}` as a whole string (`re.fullmatch`; a `$` anchor lets a trailing newline through). Phone/email validated with regex, not sanitized. |
 | File uploads | CSV/vCard import (v1.1) and contact photos (v1.2, CL-0026). Photos are validated by magic bytes (JPEG/PNG/GIF/WebP allow-list; SVG rejected) and a 4 MiB cap, stored on disk under `PHOTOS_DIR` (never blobs in the DB), and served same-origin with `nosniff` — see `photos.py`. CL-0035 additionally decodes/re-encodes each photo via Pillow to make a 256 px thumbnail, but only **behind** that magic-byte allow-list + size cap (the allow-list stays the gatekeeper; a decode failure is non-fatal and falls back to the original) — see `docs/specs/2026-07-04-photo-thumbnails-design.md` §6. |
 
