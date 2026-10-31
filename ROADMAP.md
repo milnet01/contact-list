@@ -1802,6 +1802,9 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   A second click on delete must still ask for confirmation. The
   Duplicates card view must lay out every group. Both have automated
   tests; this is the user's browser check, run before the next release.
+  Also look at, in the same pass: the floating selection bar from
+  CL-0102, including at phone width, which nobody has checked; and the
+  new About page from CL-0103.
   **Layman:** Before the next release, click through two screens by hand to confirm they behave.
   Kind: test.
   Source: user-decision-2026-10-08 (from handoff note).
