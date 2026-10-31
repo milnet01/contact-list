@@ -7,7 +7,7 @@ import tempfile
 # Single source of truth for the app version. Shown in the footer and bumped by
 # the /bump recipe (.claude/bump.json). The git release tag (v<APP_VERSION>) and
 # the top CHANGELOG heading must match this — packaging/check-version-drift.sh
-# enforces the lockstep.
+# enforces both (release.yml runs it with the tag, and without it).
 APP_VERSION = '1.2.2'
 
 _CONFIG_DIR = os.path.expanduser('~/.config/contact-list')

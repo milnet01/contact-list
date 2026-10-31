@@ -31,15 +31,7 @@ jobs:
         run: bash packaging/check-version-drift.sh
       - name: Tag matches APP_VERSION
         if: startsWith(github.ref, 'refs/tags/v')
-        run: |
-          tag="${GITHUB_REF_NAME#v}"
-          code=$(grep -oE "APP_VERSION = '([0-9]+\.[0-9]+\.[0-9]+)'" config.py \
-                 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
-          if [ "$tag" != "$code" ]; then
-            echo "drift: tag v$tag != config.py APP_VERSION $code" >&2
-            exit 1
-          fi
-          echo "tag v$tag matches APP_VERSION $code"
+        run: bash packaging/check-version-drift.sh "$GITHUB_REF_NAME"
 
   build-linux:
     needs: version-lockstep

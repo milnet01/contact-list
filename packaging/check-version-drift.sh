@@ -3,6 +3,8 @@
 # Source of truth: APP_VERSION in config.py. The top-most CHANGELOG heading must
 # match it. The /bump recipe (.claude/bump.json) runs this as its post_check, and
 # the release tag pushed to CI must be v<that version>.
+# Usage: check-version-drift.sh [TAG]   -- with a TAG (e.g. v1.2.3), also checks
+# it equals v<APP_VERSION>.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -20,6 +22,10 @@ if [ -z "$log_ver" ]; then
 fi
 if [ "$code_ver" != "$log_ver" ]; then
   echo "drift: config.py APP_VERSION ($code_ver) != top CHANGELOG version ($log_ver)" >&2
+  exit 1
+fi
+if [ -n "${1:-}" ] && [ "$1" != "v$code_ver" ]; then
+  echo "drift: tag $1 != config.py APP_VERSION v$code_ver" >&2
   exit 1
 fi
 echo "version lockstep OK: $code_ver"
