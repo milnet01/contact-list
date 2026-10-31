@@ -3,6 +3,15 @@
 {% block title %}Contacts{% endblock %}
 
 {% block content %}
+{# The state every list link carries. sort, dir and per_page are passed only
+   when the URL gave them: without them the route falls back to the saved
+   settings. A link overrides just what it changes, by naming it in `over`.
+   Alphabet links and the search form clear `letter` on purpose, and every
+   link starts a fresh page. #}
+{% set list_state = {'q': search, 'type': contact_type, 'letter': letter, 'tag': active_tags,
+                     'sort': request.args.get('sort'), 'dir': request.args.get('dir'),
+                     'per_page': request.args.get('per_page')} %}
+{% macro list_link(over) %}{{ url_for('contacts.contact_list', **dict(list_state, **over)) }}{% endmacro %}
 {% call page_header('Contacts') %}
     <a class="btn" href="{{ url_for('contacts.new_contact') }}">+ New</a>
 {% endcall %}
@@ -20,6 +29,7 @@
         {# CL-0037: the search/type GET form isn't a url_for link, so carry the
            active tag filter through a search submit / type change via hidden fields. #}
         {% for t in active_tags %}<input type="hidden" name="tag" value="{{ t }}">{% endfor %}
+        {% for k in ('sort', 'dir', 'per_page') %}{% if request.args.get(k) %}<input type="hidden" name="{{ k }}" value="{{ request.args[k] }}">{% endif %}{% endfor %}
         <button type="submit" class="btn btn-small">Search</button>
         {% if search or contact_type or letter or active_tags %}
             <a href="{{ url_for('contacts.contact_list') }}" class="btn btn-small btn-secondary">Clear</a>
@@ -39,12 +49,12 @@
 </div>
 
 <nav class="alpha-nav" aria-label="Alphabetical navigation">
-    <a href="{{ url_for('contacts.contact_list', type=contact_type, q=search, tag=active_tags) }}"
+    <a href="{{ list_link({'letter': none}) }}"
        class="alpha-link {{ 'active' if not letter }}">All</a>
     {% for l in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' %}
         {% set count = letter_counts.get(l, 0) %}
         {% if count %}
-            <a href="{{ url_for('contacts.contact_list', letter=l, type=contact_type, q=search, tag=active_tags) }}"
+            <a href="{{ list_link({'letter': l}) }}"
                class="alpha-link {{ 'active' if letter == l }}"
                title="{{ count }} contact{{ 's' if count != 1 }}">{{ l }}</a>
         {% else %}
@@ -53,7 +63,7 @@
     {% endfor %}
     {% set other_count = letter_counts.get('#', 0) %}
     {% if other_count %}
-        <a href="{{ url_for('contacts.contact_list', letter='#', type=contact_type, q=search, tag=active_tags) }}"
+        <a href="{{ list_link({'letter': '#'}) }}"
            class="alpha-link {{ 'active' if letter == '#' }}"
            title="{{ other_count }} contact{{ 's' if other_count != 1 }}">#</a>
     {% else %}
@@ -70,7 +80,7 @@
         {% set ns = namespace(target=[]) %}
         {% for a in active_tags %}{% if a|lower != t.name|lower %}{% set ns.target = ns.target + [a] %}{% endif %}{% endfor %}
         {% if not is_active %}{% set ns.target = ns.target + [t.name] %}{% endif %}
-        <a href="{{ url_for('contacts.contact_list', tag=ns.target, q=search, type=contact_type, letter=letter) }}"
+        <a href="{{ list_link({'tag': ns.target}) }}"
            class="tag-chip {{ 'active' if is_active }}">{{ t.name }} <span class="tag-count">{{ t.cnt }}</span></a>
     {% endfor %}
 </nav>
@@ -83,16 +93,16 @@
 {% if contacts %}
 <form method="post" action="{{ url_for('contacts.bulk_delete') }}" id="bulk-form">
     <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
-    <input type="hidden" name="ref" value="/contacts">
+    <input type="hidden" name="ref" value="{{ request.full_path.rstrip('?') }}">
     {{ bulk_bar(url_for('contacts.merge_preview')) }}
 <table>
     <thead>
         <tr>
             <th class="th-check"><input type="checkbox" id="select-all" aria-label="Select all"></th>
             {% set next_dir = 'desc' if sort == 'name' and sort_dir == 'asc' else 'asc' %}
-            <th{% if sort == 'name' %} aria-sort="{{ 'ascending' if sort_dir == 'asc' else 'descending' }}"{% endif %}><a href="{{ url_for('contacts.contact_list', q=search, type=contact_type, letter=letter, tag=active_tags, sort='name', dir=next_dir) }}">Name {{ '▲' if sort == 'name' and sort_dir == 'asc' else ('▼' if sort == 'name' else '') }}</a></th>
+            <th{% if sort == 'name' %} aria-sort="{{ 'ascending' if sort_dir == 'asc' else 'descending' }}"{% endif %}><a href="{{ list_link({'sort': 'name', 'dir': next_dir}) }}">Name {{ '▲' if sort == 'name' and sort_dir == 'asc' else ('▼' if sort == 'name' else '') }}</a></th>
             {% set next_dir = 'desc' if sort == 'type' and sort_dir == 'asc' else 'asc' %}
-            <th{% if sort == 'type' %} aria-sort="{{ 'ascending' if sort_dir == 'asc' else 'descending' }}"{% endif %}><a href="{{ url_for('contacts.contact_list', q=search, type=contact_type, letter=letter, tag=active_tags, sort='type', dir=next_dir) }}">Type {{ '▲' if sort == 'type' and sort_dir == 'asc' else ('▼' if sort == 'type' else '') }}</a></th>
+            <th{% if sort == 'type' %} aria-sort="{{ 'ascending' if sort_dir == 'asc' else 'descending' }}"{% endif %}><a href="{{ list_link({'sort': 'type', 'dir': next_dir}) }}">Type {{ '▲' if sort == 'type' and sort_dir == 'asc' else ('▼' if sort == 'type' else '') }}</a></th>
             <th>Email</th>
             <th>Phone</th>
             <th class="th-icon"></th>
@@ -150,11 +160,11 @@
 {% if total_pages > 1 %}
 <nav class="pagination" aria-label="Pages">
     {% if page > 1 %}
-        <a href="{{ url_for('contacts.contact_list', page=page-1, q=search, type=contact_type, letter=letter, tag=active_tags, per_page=per_page) }}">&laquo; Prev</a>
+        <a href="{{ list_link({'page': page - 1}) }}">&laquo; Prev</a>
     {% endif %}
     <span>Page {{ page }} of {{ total_pages }}</span>
     {% if page < total_pages %}
-        <a href="{{ url_for('contacts.contact_list', page=page+1, q=search, type=contact_type, letter=letter, tag=active_tags, per_page=per_page) }}">Next &raquo;</a>
+        <a href="{{ list_link({'page': page + 1}) }}">Next &raquo;</a>
     {% endif %}
 </nav>
 {% endif %}
