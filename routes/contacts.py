@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 import re
 import sqlite3
 from urllib.parse import urlparse
@@ -57,8 +56,6 @@ from models import (
     valid_field_name,
 )
 
-log = logging.getLogger(__name__)
-
 bp = Blueprint('contacts', __name__)
 
 _EMAIL_RE = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
@@ -102,6 +99,14 @@ def _submitted_custom_fields(form: MultiDict[str, str]) -> list[dict[str, str]]:
         for cn, cv in zip(form.getlist('cf_name'), form.getlist('cf_value'), strict=False)
         if cn.strip() and cv.strip()
     ]
+
+
+def selected_ids(raw: list[str]) -> list[int]:
+    """Contact ids from a form's repeated ``selected`` field, in order, without
+    repeats. Anything that is not a plain decimal number is ignored:
+    ``isdecimal``, not ``isdigit``, because '²' is a digit that ``int`` refuses,
+    and ``int`` alone would accept '-1' and '1_000'."""
+    return list(dict.fromkeys(int(v) for v in raw if v.isdecimal()))
 
 
 def validate_core_fields(
@@ -188,8 +193,9 @@ def contact_list() -> ResponseReturnValue:
         db, page, per_page, search or None, contact_type or None, letter or None,
         sort=sort, sort_dir=sort_dir, tags=tags or None,
     )
-    # list_contacts already computed the total and clamped the page internally;
-    # reuse both here instead of issuing a second COUNT (CL-0017).
+    # list_contacts returns only the rows and the total; the total saves a second
+    # COUNT (CL-0017). Derive total_pages and clamp the page here exactly as
+    # list_contacts does, or the page number shown would disagree with the rows.
     total_pages = max((total + per_page - 1) // per_page, 1)
     # When the list is unfiltered, `total` is the full contact count — seed the
     # nav-badge cache so the context processor skips its own COUNT (CL-0031). An
@@ -224,10 +230,9 @@ def contact_list() -> ResponseReturnValue:
 def duplicates() -> ResponseReturnValue:
     """Scan all contacts and show duplicate names, emails, and phone numbers."""
     db = get_db()
-    # CL-0066: ask for one group more than we will show, per category, so a
-    # full page is distinguishable from a truncated one. The phone region is no
-    # longer passed -- each contact's E.164 key is stored and re-derived when
-    # that setting changes, so the scan reads it rather than recomputing it.
+    # Ask for one group more than we show, per category, so a full page is
+    # distinguishable from a truncated one. The scan reads each contact's stored
+    # E.164 key (re-derived when the phone region changes), so it takes no region.
     cap = MAX_DUPLICATE_GROUPS
     dupes = find_all_duplicates(db, limit=cap + 1)
     truncated = any(len(groups) > cap for groups in dupes.values())
@@ -312,11 +317,8 @@ def _apply_photo(db: sqlite3.Connection, contact_id: int) -> None:
         except ValueError:
             flash(f'Photo must be a JPEG, PNG, GIF or WebP under {megabytes_text(photos.MAX_PHOTO_BYTES)}.', 'error')
         except OSError:
-            # save_photo writes the original with a bare open(), so a full disk
-            # or an unwritable PHOTOS_DIR raised straight out of this handler as
-            # a 500 -- AFTER the contact had already been written. The user saw
-            # an error page and could not tell the contact was saved, which is
-            # the opposite of what this function's docstring promises (CL-0079).
+            # A full disk or an unwritable PHOTOS_DIR must not become a 500 after
+            # the contact is written: tell the user the contact was saved.
             current_app.logger.exception('Could not store photo for contact %s', contact_id)
             flash('Contact saved, but the photo could not be stored.', 'error')
         else:
@@ -373,9 +375,8 @@ def create() -> ResponseReturnValue:
         ), 400
 
     db = get_db()
-    # CL-0066: no region argument -- find_duplicates reads the stored setting,
-    # which is where g.settings['phone_region'] came from, and is the region the
-    # stored phone keys were derived under.
+    # find_duplicates takes no region: it reads the stored setting, the region
+    # the stored phone keys were derived under.
     for warning in find_duplicates(db, fields['name'], fields['phone']):
         flash(f'Note: {warning}', 'error')
 
@@ -471,8 +472,7 @@ def bulk_delete() -> ResponseReturnValue:
     if not ids:
         flash('No contacts selected.', 'error')
         return redirect(redirect_to)
-    # isdecimal, not isdigit: '²' is a digit that int() refuses.
-    int_ids = [int(cid) for cid in ids if cid.isdecimal()]
+    int_ids = selected_ids(ids)
     try:
         deleted = delete_contacts(get_db(), int_ids)
     except ValueError as exc:

@@ -29,18 +29,39 @@ from models import (
     get_custom_fields,
     merge_contacts,
 )
-from routes.contacts import _safe_ref, bp, validate_core_fields
+from routes.contacts import _safe_ref, bp, selected_ids, validate_core_fields
+
+
+def _preserve_extra(
+    involved: list, key: str, kind: str, chosen: str | None,
+    customs: list[tuple[str, str]], used: set[str],
+) -> None:
+    """Keep every distinct ``key`` value of the merged contacts that was not
+    chosen, as a numbered custom field ('Email 2', ...), so a merge never drops
+    a unique email or phone (the import's "extras become custom fields" rule).
+
+    Appends to ``customs`` and adds each new label to ``used`` (lower-case names
+    already taken). Run it before merge_contacts deletes the losers, while
+    ``involved`` still holds their values.
+    """
+    kept = {chosen.strip().lower()} if chosen else set()
+    for c in involved:
+        value = (c[key] or '').strip()
+        if not value or value.lower() in kept:
+            continue
+        kept.add(value.lower())
+        n = 2
+        label = f'{kind} {n}'
+        while label.lower() in used:
+            n += 1
+            label = f'{kind} {n}'
+        used.add(label.lower())
+        customs.append((label, value))
 
 
 @bp.route('/contacts/merge', methods=['POST'])
 def merge_preview() -> ResponseReturnValue:
-    ids: list[int] = []
-    for s in request.form.getlist('selected'):
-        try:
-            ids.append(int(s))
-        except ValueError:
-            continue
-    ids = list(dict.fromkeys(ids))
+    ids = selected_ids(request.form.getlist('selected'))
 
     back = _safe_ref(request.form.get('ref', '')) or url_for('contacts.contact_list')
     db = get_db()
@@ -49,6 +70,8 @@ def merge_preview() -> ResponseReturnValue:
         flash('Select at least two contacts to merge.', 'error')
         return redirect(back)
 
+    # The lowest id (the oldest contact) survives and keeps its own photo. The
+    # choice ignores Google links: merge_contacts takes any survivor.
     survivor_id = min(c['id'] for c in contacts)
     loser_ids = [c['id'] for c in contacts if c['id'] != survivor_id]
 
@@ -96,6 +119,8 @@ def merge_apply() -> ResponseReturnValue:
         flash('Invalid merge request.', 'error')
         return redirect(url_for('contacts.duplicates'))
 
+    # An unknown type falls back to individual rather than failing the merge:
+    # the field is a <select>, so only a tampered request sends anything else.
     ctype = request.form.get('field_type')
     raw_email = (request.form.get('field_email') or '').strip() or None
     raw_phone = (request.form.get('field_phone') or '').strip() or None
@@ -128,31 +153,14 @@ def merge_apply() -> ResponseReturnValue:
             seen.add(name.lower())
             customs.append((name, value))
 
-    # Preserve non-chosen single-value fields as numbered custom fields so a
-    # merge never silently drops a unique email/phone (matches import's "extras
-    # become custom fields" rule). Gather before merge_contacts deletes losers.
+    # Gather the values to preserve before merge_contacts deletes the losers.
     involved = [c for c in (get_contact(db, i) for i in [survivor_id, *loser_ids]) if c]
     used = {n.lower() for n, _ in customs}
 
-    def _preserve_extra(key: str, kind: str, chosen: str | None) -> None:
-        kept = {chosen.strip().lower()} if chosen else set()
-        for c in involved:
-            value = (c[key] or '').strip()
-            if not value or value.lower() in kept:
-                continue
-            kept.add(value.lower())
-            n = 2
-            label = f'{kind} {n}'
-            while label.lower() in used:
-                n += 1
-                label = f'{kind} {n}'
-            used.add(label.lower())
-            customs.append((label, value))
-
     # Compare against the values as submitted: the chosen phone is now in
     # international form, and the other contacts still hold the raw one.
-    _preserve_extra('email', 'Email', raw_email)
-    _preserve_extra('phone', 'Phone', raw_phone)
+    _preserve_extra(involved, 'email', 'Email', raw_email, customs, used)
+    _preserve_extra(involved, 'phone', 'Phone', raw_phone, customs, used)
 
     # Read loser photo exts before the merge deletes their rows, so we can
     # unlink the orphaned files afterwards (the survivor keeps its own photo).
