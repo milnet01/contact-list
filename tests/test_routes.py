@@ -648,6 +648,18 @@ class TestContactPhotos:
         assert b'No Photo' in resp.data           # contact still saved
         assert b'Photo must be' in resp.data      # friendly flash shown
 
+    def test_photo_rejection_names_the_current_size_limit(self, client, monkeypatch):
+        import photos
+        monkeypatch.setattr(photos, 'MAX_PHOTO_BYTES', 2 * 1024 * 1024)
+        token = _get_csrf(client)
+        data = {
+            '_csrf_token': token, 'type': 'individual', 'name': 'No Photo',
+            'photo': (io.BytesIO(b'this is not an image'), 'x.png'),
+        }
+        resp = client.post('/contacts', data=data,
+                           content_type='multipart/form-data', follow_redirects=True)
+        assert b'under 2 MB' in resp.data
+
     def test_remove_photo(self, client):
         token = _get_csrf(client)
         cid = _create_contact(client, token, photo=_PNG)

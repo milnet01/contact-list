@@ -27,7 +27,7 @@ from flask.typing import ResponseReturnValue
 
 import importer
 import vcard
-from config import VALID_CONTACT_TYPES
+from config import VALID_CONTACT_TYPES, Config, megabytes_text
 from db import get_db
 from models import (
     export_contacts,
@@ -185,8 +185,9 @@ def import_view() -> ResponseReturnValue:
         return redirect(url_for('contacts.import_view'))
 
     raw = file.read()
-    if len(raw) > current_app.config.get('MAX_IMPORT_BYTES', 1024 * 1024):
-        flash('That file is too large to import (limit 1 MB).', 'error')
+    limit = current_app.config.get('MAX_IMPORT_BYTES', Config.MAX_IMPORT_BYTES)
+    if len(raw) > limit:
+        flash(f'That file is too large to import (limit {megabytes_text(limit)}).', 'error')
         return redirect(url_for('contacts.import_view'))
     try:
         text = raw.decode('utf-8-sig')

@@ -81,7 +81,7 @@
             {% endif %}
             <input id="photo" name="photo" type="file"
                    accept="image/jpeg,image/png,image/gif,image/webp">
-            <small class="form-hint">JPEG, PNG, GIF or WebP, up to 4 MB.</small>
+            <small class="form-hint">JPEG, PNG, GIF or WebP, up to {{ photo_limit }}.</small>
         </div>
 
         <div class="form-group">

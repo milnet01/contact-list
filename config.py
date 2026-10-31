@@ -44,6 +44,11 @@ def ensure_private_dir(path: str) -> None:
         _log.warning('Could not tighten permissions on %s to 0700', path)
 
 
+def megabytes_text(size: int) -> str:
+    """A byte limit as the user reads it in a message: ``4 MB``."""
+    return f'{size / (1024 * 1024):g} MB'
+
+
 def write_private_text(path: str, text: str) -> None:
     """Write ``text`` to ``path`` readable by this user only (0600), replacing
     any content. Created 0600 from the start so a secret is never briefly

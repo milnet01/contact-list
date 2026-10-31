@@ -87,6 +87,17 @@ class TestImportUpload:
         assert b'too large' in resp.data.lower()
 
 
+    def test_oversize_message_names_the_configured_limit(self, client, app):
+        app.config['MAX_IMPORT_BYTES'] = 2 * 1024 * 1024
+        token = _csrf(client)
+        data = _upload(b'Name\n' + b'x' * (2 * 1024 * 1024 + 10))
+        data['_csrf_token'] = token
+        resp = client.post('/contacts/import', data=data,
+                           content_type='multipart/form-data',
+                           follow_redirects=True)
+        assert b'limit 2 MB' in resp.data
+
+
 class TestImportApply:
     def test_applies_and_creates(self, client, app):
         token = _csrf(client)

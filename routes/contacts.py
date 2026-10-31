@@ -22,7 +22,7 @@ from werkzeug.datastructures import MultiDict
 
 import phoneutil
 import photos
-from config import VALID_CONTACT_TYPES, Config
+from config import VALID_CONTACT_TYPES, Config, megabytes_text
 from db import get_db
 from models import (
     MAX_CUSTOM_FIELDS,
@@ -310,7 +310,7 @@ def _apply_photo(db: sqlite3.Connection, contact_id: int) -> None:
                 current_app.config, contact_id, data, old_ext=old_ext
             )
         except ValueError:
-            flash('Photo must be a JPEG, PNG, GIF or WebP under 4 MB.', 'error')
+            flash(f'Photo must be a JPEG, PNG, GIF or WebP under {megabytes_text(photos.MAX_PHOTO_BYTES)}.', 'error')
         except OSError:
             # save_photo writes the original with a bare open(), so a full disk
             # or an unwritable PHOTOS_DIR raised straight out of this handler as
