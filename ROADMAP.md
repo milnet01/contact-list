@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: CL=121 -->
+<!-- ants-roadmap-id-high-water: CL=122 -->
 
 # Contact List — Roadmap
 
@@ -1994,6 +1994,26 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   **Layman:** A failed Google push can cause one repeated false conflict message next sync; a per-contact marker would fix it.
   Kind: fix.
   Source: cold review of review-readability fixes 2026-10-31.
+
+- 📋 [CL-0122] **Running from source on Windows has no time-zone data, and four tests assume Linux file permissions.**
+  Measured on the Windows 10 test machine, Python 3.13, from tracked source.
+  requirements.txt does not install `tzdata`, so five tests in
+  tests/test_settings.py fail there; with `tzdata` installed they pass. Likely
+  fix: a `tzdata; sys_platform == "win32"` line in requirements.txt, justified
+  under DESIGN.md section 3. release.yml already installs it for the build.
+
+  Four more fail by test design, since Windows does not apply these modes:
+  TestConfigDirIsPrivate::test_create_app_locks_the_credentials_dir,
+  TestEnsurePrivateDir::test_creates_dir_0700,
+  TestEnsurePrivateDir::test_tightens_existing_loose_dir,
+  TestWritePrivateText::test_writes_0600_and_tightens_an_existing_file.
+  Decide whether to skip them on Windows. Open question for that work: on
+  Windows these 0600/0700 calls do not restrict other accounts, so the secret
+  key and Google token rely on the user folder's own permissions. Not fixed now:
+  no Windows leg runs in CI, and the question needs a decision.
+  **Layman:** On Windows, a copy run from source rejects time zones such as Europe/London until an extra package is installed; the released Windows app is built with it.
+  Kind: fix.
+  Source: Windows test run 2026-10-31, after the review-readability fixes.
 
 ## Efficiency & Refactoring
 

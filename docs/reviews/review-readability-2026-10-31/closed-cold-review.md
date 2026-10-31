@@ -11,3 +11,11 @@ Roadmap item CL-0114 (corrected), queued follow-up CL-0121.
 | routes/contacts.py `selected_ids` | fixed | 4300+ digits passed `isdecimal` and `int()` raised ValueError (500) -> ignored, as the docstring says, along with anything past SQLite's largest integer. `bulk_delete` and `merge_preview` both call it. Red: helper and POST test raised ValueError. |
 | models.py comment "Each also owns its sync_lookup and _mark_edited calls" | fixed | false for `google_sync._upsert_person` (INV-1) -> comment says so. |
 | other files | unchanged | `routes/contacts.py` changed only in `selected_ids`; `routes/import_export.py` only in `_import_rows` and one comment; nothing else was touched. |
+
+## Windows check, at commit 5feaff6
+
+Windows 10 test machine, Python 3.13, tracked source only, removed afterwards.
+
+- Fresh install: the secret key was created, then reused on a second start. The list, new-contact, settings and About pages returned 200.
+- Test suite: 552 passed and 9 failed; with `tzdata` installed, 557 passed and 4 failed. All nine are filed as CL-0122.
+- Not run on Windows: Python 3.12, the packaged build, the tray icon, a real browser.
