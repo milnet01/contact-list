@@ -250,13 +250,12 @@ def _label(params: list[str], default: str) -> str:
     return label if label and valid_field_name(label) else default
 
 
-def parse(text: str) -> list[dict]:
-    """Parse a vCard 3.0/4.0 document into contact dicts. Cards with no usable
-    name are skipped."""
+def _unfold(text: str) -> list[str]:
+    """Split a vCard document into logical content lines. A line starting with
+    space/tab continues the previous line, and a quoted-printable line ending
+    in '=' (a soft break) continues onto the next line, which has no leading
+    space."""
     normalised = text.replace('\r\n', '\n').replace('\r', '\n').split('\n')
-    # Unfold: a line starting with space/tab continues the previous line, and
-    # a quoted-printable line ending in '=' (a soft break) continues onto the
-    # next line, which has no leading space.
     lines: list[str] = []
     for raw in normalised:
         if lines and lines[-1].endswith('=') and _is_quoted_printable(_head_params(lines[-1])):
@@ -265,6 +264,30 @@ def parse(text: str) -> list[dict]:
             lines[-1] += raw[1:]
         else:
             lines.append(raw)
+    return lines
+
+
+def parse(text: str) -> list[dict]:
+    """Parse a vCard 3.0/4.0 document into contact dicts. Cards with no usable
+    name are skipped.
+
+    While a card is read it is a dict of raw properties, which _finalize turns
+    into the contact. Its keys:
+      fn, n_raw     FN text, unescaped; the raw N value (re-split by _finalize).
+      n_given,
+      n_family      the N parts, unescaped; decide company vs. person.
+      org           ORG text, unescaped; org_label is its custom-field name.
+      kind          KIND, lower-cased.
+      notes         NOTE text, unescaped.
+      bday          (label, unescaped value); _finalize normalises the value.
+      adr           (label, RAW value); _finalize splits and unescapes it.
+      emails,
+      phones        unescaped values in file order.
+      custom        (label, unescaped value) per X-CL line.
+    A single-valued property keeps its first occurrence for ORG, BDAY and ADR
+    and its last for FN, N, KIND and NOTE; a line is read once and not compared.
+    """
+    lines = _unfold(text)
 
     cards: list[dict] = []
     card: dict | None = None
@@ -330,10 +353,8 @@ def parse(text: str) -> list[dict]:
         elif prop == 'NOTE':
             card['notes'] = _unescape(value)
         elif prop == 'X-CL':
-            label = None
-            for p in params:
-                if p.upper().startswith('X-LABEL='):
-                    label = p[len('X-LABEL='):]
+            # Not _label: the route sanitises a name from another app.
+            label = _param_value(params, 'X-LABEL')
             if label:
                 card['custom'].append((label, _unescape(value)))
 
