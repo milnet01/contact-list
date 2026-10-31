@@ -23,8 +23,7 @@ log = logging.getLogger(__name__)
 
 bp = Blueprint('sync', __name__)
 
-# Absolute path to the standalone auth script, used from source. Module-level so
-# both authorize() and _auth_command reference the same value.
+# Absolute path to the standalone auth script, used from source by _auth_command.
 auth_script = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'google_auth.py')
 
 

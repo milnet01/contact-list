@@ -19,6 +19,10 @@ import photos
 
 log = logging.getLogger(__name__)
 
+# Citations in this module: a bare "INV-n" or "§n" is in the two-way sync spec,
+# docs/specs/2026-07-02-two-way-google-sync.md. Rules from the photo spec,
+# docs/specs/2026-07-01-contact-photos-design.md, are cited as "photos spec INV-n".
+
 
 @dataclass
 class SyncResult:
@@ -61,6 +65,9 @@ _API_RETRIES = 6
 # ---------------------------------------------------------------------------
 
 def has_credentials(config: dict) -> bool:
+    """True when the app's OAuth client secret (``GOOGLE_CREDENTIALS_FILE``) is
+    present. This is not the user's login: that is the token file, which
+    ``_load_credentials`` reads and ``revoke_credentials`` removes."""
     return os.path.isfile(config['GOOGLE_CREDENTIALS_FILE'])
 
 
@@ -102,8 +109,10 @@ def _load_credentials(config: dict) -> Any:
     """Load and refresh stored OAuth credentials. Returns None if unavailable.
 
     Raises GoogleUnreachable when the refresh failed for a network or temporary
-    reason; only a refusal Google calls permanent (``invalid_grant``) returns
-    None, because that is the case where reconnecting is the fix (CL-0070)."""
+    reason. A refusal Google calls permanent (``invalid_grant``) returns None,
+    because reconnecting is the fix there (CL-0070). So does any other failure
+    of the refresh or of saving the refreshed token (a full disk, say), which
+    is logged and reads to the caller as "not authenticated"."""
     token_path = config['GOOGLE_TOKEN_FILE']
     if not os.path.isfile(token_path):
         return None
@@ -189,25 +198,29 @@ def revoke_credentials(config: dict) -> None:
 # Contact sync
 # ---------------------------------------------------------------------------
 
+def _api_error_parts(exc: Exception) -> tuple[int | None, str]:
+    """HTTP status and body text of a People API error, read by duck-typing so
+    googleapiclient need not be imported at module load. Status is None when
+    ``exc`` carries none; the body is "" when it carries none."""
+    status = getattr(getattr(exc, 'resp', None), 'status', None)
+    if status is None:
+        status = getattr(exc, 'status_code', None)
+    content = getattr(exc, 'content', b'') or b''
+    if isinstance(content, bytes):
+        content = content.decode('utf-8', 'replace')
+    return status, content
+
+
 def _is_expired_sync_token(exc: Exception) -> bool:
     """True if ``exc`` is the People API's expired-sync-token error.
 
     The People API returns HTTP 400 with the machine-readable reason
     ``EXPIRED_SYNC_TOKEN`` when a stored delta token is too old. Matching on the
     status + reason (not a substring of the human message) keeps self-healing
-    working even if Google rewords the message (CL-0009). Uses duck-typing so it
-    doesn't need googleapiclient imported at module load.
+    working even if Google rewords the message (CL-0009).
     """
-    resp = getattr(exc, 'resp', None)
-    status = getattr(resp, 'status', None)
-    if status is None:
-        status = getattr(exc, 'status_code', None)
-    if status != 400:
-        return False
-    content = getattr(exc, 'content', b'') or b''
-    if isinstance(content, bytes):
-        content = content.decode('utf-8', 'replace')
-    return 'EXPIRED_SYNC_TOKEN' in content
+    status, content = _api_error_parts(exc)
+    return status == 400 and 'EXPIRED_SYNC_TOKEN' in content
 
 
 def sync_contacts(config: dict, db: sqlite3.Connection, region: str) -> SyncResult:
@@ -244,6 +257,9 @@ def sync_contacts(config: dict, db: sqlite3.Connection, region: str) -> SyncResu
 
     log.info('Starting Google Contacts sync')
 
+    # --- Step 1: pull. Pages are committed one at a time (a later API error keeps
+    # the earlier pages), each contact in its own savepoint, and photos are
+    # fetched only after their page commits.
     synced = 0
     next_page_token: str | None = None
     new_sync_token: str | None = None
@@ -252,10 +268,7 @@ def sync_contacts(config: dict, db: sqlite3.Connection, region: str) -> SyncResu
         kwargs: dict = {
             'resourceName': 'people/me',
             'pageSize': 1000,
-            'personFields': (
-                'names,emailAddresses,phoneNumbers,'
-                'organizations,biographies,birthdays,addresses,photos'
-            ),
+            'personFields': _PULL_FIELDS,
             'requestSyncToken': True,
         }
         if sync_token:
@@ -269,22 +282,18 @@ def sync_contacts(config: dict, db: sqlite3.Connection, region: str) -> SyncResu
         except HttpError as exc:
             if sync_token and synced == 0 and _is_expired_sync_token(exc):
                 # Expired sync token: restart a clean full resync from page 1.
-                # Reset the page cursor and count too, or the retry would reuse
-                # a stale pageToken from the delta attempt and miscount. The
-                # `synced == 0` guard enforces in code what the People API
-                # guarantees (the token is validated on the first request): the
-                # reset can only run before any page has been committed, so it
-                # can never discard already-imported pages.
+                # Drop the page cursor too, or the retry would reuse a stale
+                # pageToken from the delta attempt. The People API validates the
+                # token on the first request, so it fails before any page of
+                # this run has been imported; `synced == 0` checks that in code,
+                # so the restart can never discard an imported page.
                 sync_token = None
                 next_page_token = None
-                synced = 0
-                # Clear the TOKEN only. A DELETE took last_synced_at with it,
-                # and spec §5 Step 3 decouples the two precisely so that value
-                # never goes stale: if the restarted full pull then fails on a
-                # later page, Step 3 never runs, last_synced_at stays NULL, and
-                # the next sync computes an empty dirty set -- so the pull's
-                # deferral is disabled and every locally-edited contact is
-                # overwritten by Google's copy without ever having been pushed.
+                # Clear the TOKEN only, never the sync_state row. last_synced_at
+                # is the dirty-set baseline (spec §5 Step 3): if the restarted
+                # full pull fails on a later page, Step 3 never runs, and a
+                # NULL baseline would make the next sync's dirty set empty, so
+                # Google's copy would overwrite every local edit unpushed.
                 db.execute('UPDATE sync_state SET sync_token = NULL WHERE id = 1')
                 db.commit()
                 continue
@@ -377,11 +386,15 @@ def sync_contacts(config: dict, db: sqlite3.Connection, region: str) -> SyncResu
 # Push phase (local -> Google)
 # ---------------------------------------------------------------------------
 
-# The only fields the app reads or writes; updatePersonFields never lists anything
+# The fields the app imports and pushes. updatePersonFields never lists anything
 # outside this set, so Google-side data we don't manage is untouched (INV-2).
 _MANAGED_FIELDS = (
     'names,emailAddresses,phoneNumbers,biographies,birthdays,addresses,organizations'
 )
+
+# The pull reads the managed fields plus photos, which it downloads but never
+# pushes (photos spec).
+_PULL_FIELDS = f'{_MANAGED_FIELDS},photos'
 
 
 def _parse_dt(value: str | None) -> datetime.datetime | None:
@@ -497,10 +510,8 @@ def _person_body_for_push(
     cf = {r['field_name'].lower(): r['field_value'] for r in custom_fields}
     date = _birthday_to_google_date(cf['birthday']) if cf.get('birthday') else None
     if date:
-        # Was a wholesale replacement, which made birthdays the one managed
-        # field not going through _merge_primary -- so a contact with a second
-        # birthday entry, or a `text` field alongside the date on entry 0, lost
-        # it on every push. That is exactly what INV-2 forbids.
+        # Via _merge_primary like every managed field, so a second birthday
+        # entry, or a `text` field beside the date on entry 0, survives (INV-2).
         body['birthdays'] = _merge_primary(
             existing.get('birthdays'), date, 'date')
         fields.append('birthdays')
@@ -567,13 +578,8 @@ def _is_write_scope_denied(exc: Exception) -> bool:
     library retries it, and one that outlasts the retries must not tell the
     user to reconnect (CL-0070).
     """
-    status = getattr(getattr(exc, 'resp', None), 'status', None)
-    if status != 403:
-        return False
-    content = getattr(exc, 'content', b'') or b''
-    if isinstance(content, str):
-        content = content.encode('utf-8', 'replace')
-    return b'ratelimitexceeded' not in content.lower()
+    status, content = _api_error_parts(exc)
+    return status == 403 and 'ratelimitexceeded' not in content.lower()
 
 
 def _push_local_changes(
@@ -662,7 +668,7 @@ def _push_local_changes(
 
 
 def _is_allowed_photo_url(url: str) -> bool:
-    """True for an https URL on Google's photo CDN (SSRF guard, INV-6)."""
+    """True for an https URL on Google's photo CDN (SSRF guard, photos spec INV-6)."""
     parsed = urllib.parse.urlparse(url)
     host = parsed.hostname or ''
     return parsed.scheme == 'https' and (
@@ -719,8 +725,8 @@ def _store_person_photo(config: Mapping[str, Any], db: sqlite3.Connection, conta
     """Download and store the first real (non-default) Google photo, if any.
 
     Non-fatal: any network/validation error is logged and swallowed so it never
-    aborts the contact import (INV-5). Only https ``*.googleusercontent.com``
-    URLs are fetched (SSRF guard, INV-6), on every redirect hop too. Call it with
+    aborts the contact import (photos spec INV-5). Only https ``*.googleusercontent.com``
+    URLs are fetched (SSRF guard, photos spec INV-6), on every redirect hop too. Call it with
     no transaction open: the download must not hold the write lock (CL-0070)."""
     for entry in person.get('photos', []):
         if entry.get('default'):
@@ -738,7 +744,7 @@ def _store_person_photo(config: Mapping[str, Any], db: sqlite3.Connection, conta
             data = _fetch_photo_bytes(url)
             old_ext = models.get_contact_photo_ext(db, contact_id)
             ext = photos.save_photo(config, contact_id, data, old_ext=old_ext)
-        except Exception:  # noqa: BLE001 -- a photo never aborts the import (INV-5); logged
+        except Exception:  # noqa: BLE001 -- a photo never aborts the import (photos spec INV-5); logged
             log.warning('Skipping photo for contact %s (download/validation failed)', contact_id)
             return
         models.set_contact_photo(db, contact_id, ext)

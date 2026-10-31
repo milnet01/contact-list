@@ -266,7 +266,7 @@ def _get_ref() -> str:
 
 
 def _safe_ref(ref: str) -> str:
-    """Only allow local paths as return targets.
+    """Only allow local paths as return targets. Also used by routes/merge.py.
 
     Rejects protocol-relative URLs (``//host``) and the backslash variant
     (``/\\host``) that browsers normalise to ``//host`` — both would otherwise

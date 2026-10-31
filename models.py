@@ -553,6 +553,8 @@ def set_contact_etag(db: sqlite3.Connection, contact_id: int, etag: str | None) 
 # year-less 'MM-DD' (see google_sync._upsert_person and DESIGN.md § data model).
 # Despite the underscore, vcard.py and google_sync.py import this: changing it
 # changes what vCard exports as BDAY (otherwise X-CL) and what Google pushes.
+# Shared with google_sync and vcard despite the underscore; the import-export
+# spec cites this name, so it is not renamed.
 _BIRTHDAY_RE = re.compile(r'^(?:(\d{4})-)?(\d{2})-(\d{2})$')
 
 
@@ -711,6 +713,8 @@ def is_favourite(db: sqlite3.Connection, contact_id: int) -> bool:
 
 def _normalize_tags(raw: str) -> list[str]:
     """Parse a comma-separated tag field into a clean, de-duplicated list (CL-0037).
+    Imported by routes/contacts.py and routes/merge.py despite the underscore;
+    the tags spec cites this name, so it is not renamed.
 
     The single choke-point for what becomes a tag, so create/update/merge apply
     identical rules. Splits on commas; for each piece strips surrounding
@@ -819,7 +823,8 @@ def _validate_field_lengths(
 ) -> None:
     """Bound the core contact fields, for every caller of this module including
     the importers. google_sync._upsert_person writes contacts directly and does
-    NOT call this, so a Google-pulled name or note can exceed these caps.
+    NOT call this, so a Google-pulled name or note can exceed these caps; a
+    later edit of that contact is then refused until the long value is shortened.
 
     Paired with _validate_contact_type at each write site, so the import paths
     get the same limits the contact form does (CL-0067).
