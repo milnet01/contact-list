@@ -94,6 +94,37 @@ class TestSecretKeyRaceSafety:
         assert isinstance(key, str) and key
 
 
+class TestSecretKeyPersistenceEdges:
+    """The write path must survive platforms and files the read path already
+    tolerates (review-readability 2026-10-31)."""
+
+    def test_persists_where_os_has_no_fchmod(
+        self, tmp_path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Python 3.12 on Windows has no os.fchmod; the AttributeError was not
+        # an OSError, so it escaped at import.
+        cfg_dir = tmp_path / 'contact-list'
+        monkeypatch.setattr(config, '_CONFIG_DIR', str(cfg_dir))
+        monkeypatch.delattr(os, 'fchmod', raising=False)
+
+        key = config._load_or_create_secret_key()
+
+        assert (cfg_dir / 'secret_key').read_text(encoding='utf-8') == key
+
+    def test_undecodable_key_file_is_replaced_not_raised(
+        self, tmp_path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        cfg_dir = tmp_path / 'contact-list'
+        cfg_dir.mkdir()
+        monkeypatch.setattr(config, '_CONFIG_DIR', str(cfg_dir))
+        (cfg_dir / 'secret_key').write_bytes(b'\xff\xfe\xfa')
+
+        key = config._load_or_create_secret_key()
+
+        assert (cfg_dir / 'secret_key').read_text(encoding='utf-8') == key
+        assert [f for f in os.listdir(cfg_dir) if f.endswith('.tmp')] == []
+
+
 class TestSecretKeyFloor:
     """CL-0069: SECRET_KEY from the environment had no length floor, so
     SECRET_KEY=x signed every session and CSRF token with a one-byte key."""
