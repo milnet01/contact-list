@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import page_header %}
+{% from "_macros.html" import page_header, type_options %}
 {% block title %}Import Contacts — Contacts{% endblock %}
 
 {% block breadcrumb %}
@@ -59,8 +59,7 @@
             <label>
                 Default type for rows without one:
                 <select name="default_type">
-                    <option value="individual" {{ 'selected' if default_type == 'individual' }}>Individual</option>
-                    <option value="company" {{ 'selected' if default_type == 'company' }}>Company</option>
+                    {{ type_options(contact_types, default_type) }}
                 </select>
             </label>
         </p>

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import icon, page_header %}
+{% from "_macros.html" import icon, page_header, bulk_bar, dup_group %}
 {% block title %}Duplicate Contacts — Contacts{% endblock %}
 
 {% block breadcrumb %}
@@ -24,15 +24,7 @@
     <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="ref" value="/contacts/duplicates">
 
-    {# Outside the bar, which is hidden until the first selection: a live
-       region must exist before it changes to be announced (CL-0084). #}
-    <span id="bulk-status" class="visually-hidden" role="status"></span>
-    <div class="bulk-bar" id="bulk-bar" hidden>
-        <span id="bulk-count">0</span> selected
-        <button type="submit" class="btn btn-small" formaction="{{ url_for('contacts.merge_preview') }}">Merge selected</button>
-        <button type="button" class="btn btn-small btn-danger" id="bulk-delete-btn">Delete selected</button>
-        <button type="button" class="btn btn-small btn-secondary" id="bulk-clear">Clear</button>
-    </div>
+    {{ bulk_bar(url_for('contacts.merge_preview')) }}
 
     <p class="toolbar-meta mb-md">Found {{ total }} duplicate group{{ 's' if total != 1 }}.
     {%- if truncated %} Showing the first {{ cap }} per category — merge some and
@@ -45,35 +37,7 @@
         Duplicate Names
     </h2>
     {% for group in dupes.name %}
-    <table class="mb-md">
-        <thead>
-            <tr>
-                <th class="th-check"><input type="checkbox" class="group-select" aria-label="Select group"></th>
-                <th>Name</th>
-                <th>Type</th>
-                <th>Email</th>
-                <th>Phone</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for c in group %}
-            {% set initial = c.name[0]|upper if c.name else '?' %}
-            {% set avatar_class = 'avatar-' ~ initial if initial.isalpha() else 'avatar-other' %}
-            <tr>
-                <td data-label="" class="td-check"><input type="checkbox" name="selected" value="{{ c.id }}" class="row-select" aria-label="Select {{ c.name }}"></td>
-                <td data-label="Name">
-                    <div class="name-cell">
-                        <span class="avatar {{ avatar_class }}">{{ initial }}</span>
-                        <a href="{{ url_for('contacts.detail', contact_id=c.id) }}">{{ c.name }}</a>
-                    </div>
-                </td>
-                <td data-label="Type"><span class="badge badge-{{ c.type }}">{{ c.type }}</span></td>
-                <td data-label="Email">{{ c.email or '' }}</td>
-                <td data-label="Phone">{{ c.phone or '' }}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+    {{ dup_group(group) }}
     {% endfor %}
 </div>
 {% endif %}
@@ -85,35 +49,7 @@
         Duplicate Emails
     </h2>
     {% for group in dupes.email %}
-    <table class="mb-md">
-        <thead>
-            <tr>
-                <th class="th-check"><input type="checkbox" class="group-select" aria-label="Select group"></th>
-                <th>Name</th>
-                <th>Type</th>
-                <th>Email</th>
-                <th>Phone</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for c in group %}
-            {% set initial = c.name[0]|upper if c.name else '?' %}
-            {% set avatar_class = 'avatar-' ~ initial if initial.isalpha() else 'avatar-other' %}
-            <tr>
-                <td data-label="" class="td-check"><input type="checkbox" name="selected" value="{{ c.id }}" class="row-select" aria-label="Select {{ c.name }}"></td>
-                <td data-label="Name">
-                    <div class="name-cell">
-                        <span class="avatar {{ avatar_class }}">{{ initial }}</span>
-                        <a href="{{ url_for('contacts.detail', contact_id=c.id) }}">{{ c.name }}</a>
-                    </div>
-                </td>
-                <td data-label="Type"><span class="badge badge-{{ c.type }}">{{ c.type }}</span></td>
-                <td data-label="Email"><strong>{{ c.email }}</strong></td>
-                <td data-label="Phone">{{ c.phone or '' }}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+    {{ dup_group(group, 'email') }}
     {% endfor %}
 </div>
 {% endif %}
@@ -125,35 +61,7 @@
         Duplicate Phone Numbers
     </h2>
     {% for group in dupes.phone %}
-    <table class="mb-md">
-        <thead>
-            <tr>
-                <th class="th-check"><input type="checkbox" class="group-select" aria-label="Select group"></th>
-                <th>Name</th>
-                <th>Type</th>
-                <th>Email</th>
-                <th>Phone</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for c in group %}
-            {% set initial = c.name[0]|upper if c.name else '?' %}
-            {% set avatar_class = 'avatar-' ~ initial if initial.isalpha() else 'avatar-other' %}
-            <tr>
-                <td data-label="" class="td-check"><input type="checkbox" name="selected" value="{{ c.id }}" class="row-select" aria-label="Select {{ c.name }}"></td>
-                <td data-label="Name">
-                    <div class="name-cell">
-                        <span class="avatar {{ avatar_class }}">{{ initial }}</span>
-                        <a href="{{ url_for('contacts.detail', contact_id=c.id) }}">{{ c.name }}</a>
-                    </div>
-                </td>
-                <td data-label="Type"><span class="badge badge-{{ c.type }}">{{ c.type }}</span></td>
-                <td data-label="Email">{{ c.email or '' }}</td>
-                <td data-label="Phone"><strong>{{ c.phone }}</strong></td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+    {{ dup_group(group, 'phone') }}
     {% endfor %}
 </div>
 {% endif %}

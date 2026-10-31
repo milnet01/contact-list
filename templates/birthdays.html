@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import page_header %}
+{% from "_macros.html" import page_header, name_cell %}
 {% block title %}Upcoming Birthdays — Contacts{% endblock %}
 
 {% block breadcrumb %}
@@ -35,15 +35,8 @@ at a time.{% endif %}</p>
         </thead>
         <tbody>
             {% for r in upcoming %}
-            {% set initial = r.name[0]|upper if r.name else '?' %}
-            {% set avatar_class = 'avatar-' ~ initial if initial.isalpha() else 'avatar-other' %}
             <tr>
-                <td data-label="Name">
-                    <div class="name-cell">
-                        <span class="avatar {{ avatar_class }}">{{ initial }}</span>
-                        <a href="{{ url_for('contacts.detail', contact_id=r.id) }}">{{ r.name }}</a>
-                    </div>
-                </td>
+                <td data-label="Name">{{ name_cell(r, url_for('contacts.detail', contact_id=r.id)) }}</td>
                 <td data-label="Birthday">
                     {{ r.next_date|day_month }}{% if r.age is not none %} <small>(turns {{ r.age }})</small>{% endif %}
                 </td>

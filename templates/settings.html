@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import page_header %}
+{% from "_macros.html" import page_header, type_options %}
 {% block title %}Settings{% endblock %}
 
 {% block content %}
@@ -109,8 +109,7 @@
                 <div class="form-group">
                     <label for="default_type">Default new-contact type</label>
                     <select id="default_type" name="default_type">
-                        <option value="individual" {{ 'selected' if settings.default_type == 'individual' }}>Individual</option>
-                        <option value="company" {{ 'selected' if settings.default_type == 'company' }}>Company</option>
+                        {{ type_options(contact_types, settings.default_type) }}
                     </select>
                 </div>
             </fieldset>

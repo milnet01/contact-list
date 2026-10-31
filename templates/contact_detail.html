@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import icon %}
+{% from "_macros.html" import icon, avatar %}
 {% block title %}{{ contact.name }} — Contacts{% endblock %}
 
 {% block breadcrumb %}
@@ -11,14 +11,12 @@
 {% endblock %}
 
 {% block content %}
-{% set initial = contact.name[0]|upper if contact.name else '?' %}
-{% set avatar_class = 'avatar-' ~ initial if initial.isalpha() else 'avatar-other' %}
 
 <div class="detail-header">
     {% if photo_ext %}
     <img class="avatar avatar-lg" src="{{ url_for('contacts.photo', contact_id=contact.id) }}" alt="Photo of {{ contact.name }}">
     {% else %}
-    <span class="avatar avatar-lg {{ avatar_class }}">{{ initial }}</span>
+    {{ avatar(contact.name, 'avatar-lg') }}
     {% endif %}
     <div>
         <h1>{{ contact.name }}</h1>

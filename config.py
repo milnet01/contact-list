@@ -13,10 +13,11 @@ APP_VERSION = '1.2.2'
 _CONFIG_DIR = os.path.expanduser('~/.config/contact-list')
 
 # The contact types. Python code reads this tuple (models, importer, settings,
-# the routes); migrations/001_initial.sql's CHECK on contacts.type and the
-# <option> lists in templates/contact_form.html, contacts.html, settings.html
-# and import.html are separate copies. Add a type to all of them: a missed
-# Python site silently falls back to 'individual' or ignores the filter.
+# the routes) and the templates loop over it as `contact_types` (app.py's
+# context processor; the label is the capitalised name). Only
+# migrations/001_initial.sql's CHECK on contacts.type is a separate copy: add
+# a type there too, or an insert of it fails. A badge colour is a CSS rule
+# (.badge-<type> in static/style.css).
 VALID_CONTACT_TYPES = ('individual', 'company')
 
 _log = logging.getLogger(__name__)

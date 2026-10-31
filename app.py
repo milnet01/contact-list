@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from flask import Flask, Response, abort, g, render_template, request, session
 from flask.typing import ResponseReturnValue
 
+import config as config_mod
 import photos
 import settings as settings_mod
 from config import APP_VERSION, Config, ensure_private_dir, megabytes_text
@@ -160,6 +161,7 @@ def create_app(test_config: dict | None = None) -> Flask:
             'last_synced': last_synced(),
             'settings': current_settings(),
             'photo_limit': megabytes_text(photos.MAX_PHOTO_BYTES),
+            'contact_types': config_mod.VALID_CONTACT_TYPES,
         }
 
     @app.template_filter('friendly_date')

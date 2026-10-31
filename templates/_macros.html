@@ -30,3 +30,77 @@
 {%- elif name == 'sync' %}<path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd"/>
 {%- endif %}</svg>
 {%- endmacro %}
+
+{# <option>s for the contact types. The caller passes the types
+   (config.VALID_CONTACT_TYPES, as `contact_types`) and the selected one, so a
+   new type needs no template edit. #}
+{% macro type_options(types, selected) -%}
+{% for t in types %}<option value="{{ t }}" {{ 'selected' if selected == t }}>{{ t|capitalize }}</option>
+{% endfor %}
+{%- endmacro %}
+
+{# A contact's avatar when it has no photo: the first letter on a colour.
+   One rule for every page; static/app.js repeats it for "Recently viewed".
+   Only A-Z have a colour in style.css, so any other first character (a digit,
+   an accented letter) takes `avatar-other`. `extra` adds a size class. #}
+{% macro avatar(name, extra='') -%}
+{% set initial = name[0]|upper if name else '?' -%}
+<span class="avatar{{ ' ' ~ extra if extra }} {{ 'avatar-' ~ initial if initial in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'|list else 'avatar-other' }}">{{ initial }}</span>
+{%- endmacro %}
+
+{# The Name cell of a contact row: avatar (or photo) and link to the detail
+   page, plus the star and the "edited" hint where the page has them. The
+   Birthdays and Duplicates queries do not select has_photo, so those pages
+   pass no photo_url and show the letter avatar. #}
+{% macro name_cell(c, href, photo_url=none, star_form=none, edited='') -%}
+<div class="name-cell">
+    {% if star_form %}<button form="{{ star_form }}" type="submit" class="fav-toggle" aria-label="{{ 'Remove from favourites' if c.is_favourite else 'Add to favourites' }}">{{ '★' if c.is_favourite else '☆' }}</button>
+    {% endif %}
+    {% if photo_url %}<img class="avatar" src="{{ photo_url }}" alt="" loading="lazy">
+    {% else %}{{ avatar(c.name) }}
+    {% endif %}
+    <a href="{{ href }}">{{ c.name }}</a>
+    {% if edited %}<span class="edited-hint">edited {{ edited }}</span>{% endif %}
+</div>
+{%- endmacro %}
+
+{# The bulk-action bar and its live region, shared by the Contacts and
+   Duplicates pages. static/app.js drives the ids. The live region sits outside
+   the bar, which is hidden until the first selection: a live region must exist
+   before it changes to be announced (CL-0084). Call inside #bulk-form. #}
+{% macro bulk_bar(merge_url) -%}
+<span id="bulk-status" class="visually-hidden" role="status"></span>
+<div class="bulk-bar" id="bulk-bar" hidden>
+    <span id="bulk-count">0</span> selected
+    <button type="submit" class="btn btn-small" formaction="{{ merge_url }}">Merge selected</button>
+    <button type="button" class="btn btn-small btn-danger" id="bulk-delete-btn">Delete selected</button>
+    <button type="button" class="btn btn-small btn-secondary" id="bulk-clear">Clear</button>
+</div>
+{%- endmacro %}
+
+{# One duplicates group: a table of its contacts. `bold` names the column the
+   group matched on (email or phone, empty for the name group). #}
+{% macro dup_group(group, bold='') -%}
+<table class="mb-md">
+    <thead>
+        <tr>
+            <th class="th-check"><input type="checkbox" class="group-select" aria-label="Select group"></th>
+            <th>Name</th>
+            <th>Type</th>
+            <th>Email</th>
+            <th>Phone</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for c in group %}
+        <tr>
+            <td data-label="" class="td-check"><input type="checkbox" name="selected" value="{{ c.id }}" class="row-select" aria-label="Select {{ c.name }}"></td>
+            <td data-label="Name">{{ name_cell(c, url_for('contacts.detail', contact_id=c.id)) }}</td>
+            <td data-label="Type"><span class="badge badge-{{ c.type }}">{{ c.type }}</span></td>
+            <td data-label="Email">{% if bold == 'email' %}<strong>{{ c.email }}</strong>{% else %}{{ c.email or '' }}{% endif %}</td>
+            <td data-label="Phone">{% if bold == 'phone' %}<strong>{{ c.phone }}</strong>{% else %}{{ c.phone or '' }}{% endif %}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{%- endmacro %}

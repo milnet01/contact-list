@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import icon, page_header %}
+{% from "_macros.html" import icon, page_header, type_options, name_cell, bulk_bar %}
 {% block title %}Contacts{% endblock %}
 
 {% block content %}
@@ -15,8 +15,7 @@
         </div>
         <select name="type" aria-label="Filter by type">
             <option value="">All types</option>
-            <option value="individual" {{ 'selected' if contact_type == 'individual' }}>Individual</option>
-            <option value="company" {{ 'selected' if contact_type == 'company' }}>Company</option>
+            {{ type_options(contact_types, contact_type) }}
         </select>
         {# CL-0037: the search/type GET form isn't a url_for link, so carry the
            active tag filter through a search submit / type change via hidden fields. #}
@@ -30,8 +29,7 @@
         {{ total }} contact{{ 's' if total != 1 }}
         {% if type_counts %}
             <span class="stats-breakdown">
-                {% if type_counts.get('individual') %}<span class="badge badge-individual">{{ type_counts['individual'] }} individual</span>{% endif %}
-                {% if type_counts.get('company') %}<span class="badge badge-company">{{ type_counts['company'] }} company</span>{% endif %}
+                {% for t in contact_types %}{% if type_counts.get(t) %}<span class="badge badge-{{ t }}">{{ type_counts[t] }} {{ t }}</span>{% endif %}{% endfor %}
             </span>
         {% endif %}
         {% if total > 0 %}
@@ -86,15 +84,7 @@
 <form method="post" action="{{ url_for('contacts.bulk_delete') }}" id="bulk-form">
     <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="ref" value="/contacts">
-    {# Outside the bar, which is hidden until the first selection: a live
-       region must exist before it changes to be announced (CL-0084). #}
-    <span id="bulk-status" class="visually-hidden" role="status"></span>
-    <div class="bulk-bar" id="bulk-bar" hidden>
-        <span id="bulk-count">0</span> selected
-        <button type="submit" class="btn btn-small" formaction="{{ url_for('contacts.merge_preview') }}">Merge selected</button>
-        <button type="button" class="btn btn-small btn-danger" id="bulk-delete-btn">Delete selected</button>
-        <button type="button" class="btn btn-small btn-secondary" id="bulk-clear">Clear</button>
-    </div>
+    {{ bulk_bar(url_for('contacts.merge_preview')) }}
 <table>
     <thead>
         <tr>
@@ -110,21 +100,13 @@
     </thead>
     <tbody>
         {% for c in contacts %}
-        {% set initial = c.name[0]|upper if c.name else '?' %}
-        {% set avatar_class = 'avatar-' ~ initial if initial.isalpha() else 'avatar-other' %}
         <tr>
             <td data-label="" class="td-check"><input type="checkbox" name="selected" value="{{ c.id }}" class="row-select" aria-label="Select {{ c.name }}"></td>
             <td data-label="Name">
-                <div class="name-cell">
-                    <button form="fav-{{ c.id }}" type="submit" class="fav-toggle" aria-label="{{ 'Remove from favourites' if c.is_favourite else 'Add to favourites' }}">{{ '★' if c.is_favourite else '☆' }}</button>
-                    {% if c.has_photo %}
-                    <img class="avatar" src="{{ url_for('contacts.photo', contact_id=c.id) }}" alt="" loading="lazy">
-                    {% else %}
-                    <span class="avatar {{ avatar_class }}">{{ initial }}</span>
-                    {% endif %}
-                    <a href="{{ url_for('contacts.detail', contact_id=c.id, ref=request.full_path.rstrip('?')) }}">{{ c.name }}</a>
-                    {% if c.edited_at %}<span class="edited-hint">edited {{ c.edited_at|friendly_date }}</span>{% endif %}
-                </div>
+                {{ name_cell(c, url_for('contacts.detail', contact_id=c.id, ref=request.full_path.rstrip('?')),
+                             photo_url=url_for('contacts.photo', contact_id=c.id) if c.has_photo,
+                             star_form='fav-' ~ c.id,
+                             edited=c.edited_at|friendly_date if c.edited_at) }}
             </td>
             <td data-label="Type"><span class="badge badge-{{ c.type }}">{{ c.type }}</span></td>
             <td data-label="Email">
