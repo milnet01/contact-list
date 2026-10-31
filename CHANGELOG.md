@@ -22,6 +22,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   push every row down, so a quick second click landed on the first box
   again. The bar now floats at the bottom of the window, and ticking a
   box moves nothing.
+- **The back-to-top button stays hidden until you scroll down.** (CL-0104)
+  It used to show on every page, even at the very top.
+- **Dropdown menus now show their arrow.** (CL-0105)
+  The app's own security settings blocked the arrow image, so dropdowns
+  looked like plain text boxes.
 
 ## [1.2.2] - 2026-10-02
 

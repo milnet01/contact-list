@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: CL=104 -->
+<!-- ants-roadmap-id-high-water: CL=106 -->
 
 # Contact List — Roadmap
 
@@ -1805,6 +1805,12 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   Also look at, in the same pass: the floating selection bar from
   CL-0102, including at phone width, which nobody has checked; and the
   new About page from CL-0103.
+  Pre-check (2026-10-31, Claude in Firefox, scripted clicks, throwaway
+  data): delete asked again on the second and third clicks; Duplicates
+  card view laid out both groups; the selection bar moved no row and
+  fitted at 500 px; About page read correctly. Not checked: real phone
+  width, as this Firefox window would not go below 500 px; and the
+  second delete click by a real mouse. Still the user's check.
   **Layman:** Before the next release, click through two screens by hand to confirm they behave.
   Kind: test.
   Source: user-decision-2026-10-08 (from handoff note).
@@ -1836,15 +1842,38 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   Kind: chore.
   Source: user-decision-2026-10-31; ants-projects-hub-website request 2026-10-16.
 
-- 📋 [CL-0104] **The back-to-top button shows on every page, even unscrolled.**
+- ✅ [CL-0104] **The back-to-top button shows on every page, even unscrolled.**
   app.js sets backToTop.hidden while scrollY is under 400, but
   .back-to-top has display: flex in style.css, which beats the browser's
   [hidden] rule. Seen 2026-10-31 at scroll 0 on /about and /sync in
   Firefox. Same fault as CL-0090: add .back-to-top[hidden] beside
   .bulk-bar[hidden], and extend test_stylesheet_scopes_nav_and_honours_hidden.
+  Resolved (2026-10-31): added .back-to-top[hidden] { display: none; }.
+  Firefox: hidden at scroll 0, shown at 1000, hidden again after the
+  click; test_stylesheet_scopes_nav_and_honours_hidden extended.
   **Layman:** The round arrow button in the corner should only appear after you scroll down, but it is always there.
   Kind: fix.
   Source: in-session-2026-10-31 About page visual check.
+
+- ✅ [CL-0105] **Dropdowns show no arrow, because the security policy blocks the arrow image.**
+  style.css drew the select arrow from a data: URL with appearance: none.
+  The CSP's default-src 'self' blocks data: images, so Firefox logged an
+  error and drew nothing. Present since the first public release.
+  Resolved (2026-10-31): the arrow is now static/select-arrow.svg, and
+  the CSP is unchanged. Firefox shows the arrow with no console error;
+  test test_stylesheet_images_load_under_the_csp.
+  **Layman:** Dropdown menus had no little arrow, so they looked like plain text boxes.
+  Kind: fix.
+  Source: in-session-2026-10-31 CL-0101 pre-check.
+
+- 💭 [CL-0106] **In card view, a card's left edge has no visible border line.**
+  body.view-card tbody tr sets border-left: 3px solid transparent, which
+  keeps room for the hover accent, so the other three sides have a line
+  and the left has none. Seen on /contacts/duplicates in Firefox. Purely
+  cosmetic. Could use the border colour at rest and the accent on hover.
+  **Layman:** Contact cards have an outline on three sides, and the left side looks slightly unfinished until you hover.
+  Kind: ux.
+  Source: in-session-2026-10-31 CL-0101 pre-check.
 
 ## Efficiency & Refactoring
 

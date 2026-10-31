@@ -373,6 +373,9 @@ h2 { font-size: 1.2rem; font-weight: 600; margin-bottom: 0.75rem; }
 .back-to-top:hover { background: var(--primary-hover); }
 .back-to-top:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 .back-to-top svg { width: 1.25rem; height: 1.25rem; }
+/* display:flex above beat the hidden attribute, so the button showed on every
+   page, even unscrolled (CL-0104; same fault as CL-0090). */
+.back-to-top[hidden] { display: none; }
 
 /* === Toolbar (search/filter bar) === */
 .toolbar {
@@ -735,7 +738,8 @@ textarea {
 }
 select {
     appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%236b7280' viewBox='0 0 20 20'%3E%3Cpath d='M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z'/%3E%3C/svg%3E");
+    /* A file, not a data: URL: the CSP blocks data: images (CL-0105). */
+    background-image: url("select-arrow.svg");
     background-repeat: no-repeat;
     background-position: right 0.6rem center;
     padding-right: 2rem;

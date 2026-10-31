@@ -407,6 +407,7 @@ Contact_List/
 │   └── contact_form.html
 ├── static/
 │   ├── style.css
+│   ├── select-arrow.svg   # Dropdown arrow; a file because the CSP blocks data: images
 │   └── app.js             # Minimal JS for search/filter/custom fields
 ├── migrations/
 │   ├── 001_initial.sql

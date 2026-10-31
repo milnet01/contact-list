@@ -695,11 +695,26 @@ def test_stylesheet_scopes_nav_and_honours_hidden():
     # breadcrumb (spread across the page) and the list page's navs.
     # CL-0090: .bulk-bar's display:flex beat the hidden attribute, so the
     # "0 selected" bar showed with nothing selected.
+    # CL-0104: same fault on .back-to-top, which showed on every page unscrolled.
     import re
     with open(os.path.join(os.path.dirname(__file__), '..', 'static', 'style.css')) as fh:
         css = fh.read()
     assert not re.search(r'(?m)^\s*nav\s*\{', css)
     assert '.bulk-bar[hidden] { display: none; }' in css
+    assert '.back-to-top[hidden] { display: none; }' in css
+
+
+def test_stylesheet_images_load_under_the_csp():
+    # CL-0105: default-src 'self' blocks data: images, so a data: URL here never
+    # draws. The select arrow was one, leaving dropdowns with no arrow at all.
+    import re
+    static = os.path.join(os.path.dirname(__file__), '..', 'static')
+    with open(os.path.join(static, 'style.css')) as fh:
+        css = fh.read()
+    assert not re.search(r'''url\(["']?data:''', css)
+    arrow = re.search(r'''(?s)(?m)^select \{.*?background-image: url\(["']?([^"')]+)''', css)
+    assert arrow, 'no select arrow image'
+    assert os.path.isfile(os.path.join(static, arrow.group(1)))
 
 
 def test_bulk_bar_appearing_moves_no_rows():
