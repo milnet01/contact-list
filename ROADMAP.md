@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: CL=120 -->
+<!-- ants-roadmap-id-high-water: CL=121 -->
 
 # Contact List — Roadmap
 
@@ -1980,6 +1980,12 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   **Layman:** After starring a contact, or coming from Birthdays or Duplicates, the Back button may not return to where you were.
   Kind: fix.
   Source: review-readability 2026-10-31.
+
+- 📋 [CL-0121] **Replace the global sync-baseline hold with a per-contact pending-push marker.**
+  While the baseline is held (a linked-contact update failed), contacts already pushed that run stay dirty, so the next sync may report a false "conflict (kept Google)" and re-apply Google's copy; a contact deleted on Google that run is unlinked and re-created. Also push_no_time (google_sync.py): an edit Google gave no timestamp for is not pushed and does not hold the baseline, so it is not retried. Likely remedy: a per-contact pending-push marker, which needs a migration and an amendment to two-way spec section 9, so it is not fixed now. Named in the Step 3 comment of google_sync.py.
+  **Layman:** A failed Google push can cause one repeated false conflict message next sync; a per-contact marker would fix it.
+  Kind: fix.
+  Source: cold review of review-readability fixes 2026-10-31.
 
 ## Efficiency & Refactoring
 

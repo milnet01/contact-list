@@ -368,24 +368,29 @@ def sync_contacts(config: dict, db: sqlite3.Connection, region: str) -> SyncResu
     result.pulled = synced
 
     # --- Step 2: push local changes back to Google (per-contact commits inside).
-    _push_local_changes(service, db, region, dirty_linked, local_only,
-                        prev_sync, result)
+    hold_baseline = _push_local_changes(
+        service, db, region, dirty_linked, local_only, prev_sync, result)
 
     # --- Step 3: finalise. The pull has committed, so its sync token is saved
-    # whatever the push did. last_synced_at advances only when the push finished
-    # clean (no scope refusal, no skipped contact): it is the dirty-set baseline,
-    # and advancing past an unpushed edit would hide it from every later sync
-    # (spec 2026-07-02-two-way-google-sync.md, partial run). The cost is that
-    # a contact that fails every time holds the baseline back, so each sync
-    # re-examines every edit made since the last clean one.
-    clean_push = result.error is None and result.skipped == 0
+    # whatever the push did. last_synced_at is the dirty-set baseline, and
+    # advancing past an unpushed edit would hide it from every later sync (spec
+    # 2026-07-02-two-way-google-sync.md, partial run). So it is held only when an
+    # edit to a LINKED contact is left unpushed: an update failed, or a scope
+    # refusal stopped the push while linked updates were still waiting. A
+    # local-only create that fails never holds it (those are recomputed and
+    # retried every sync whatever the baseline), and neither does a pull skip.
+    # A first sync has no dirty linked contacts, so a NULL baseline always gets
+    # set. Known cost, queued as CL-0121: while the baseline is held, contacts
+    # already pushed that run stay dirty, so the next sync can report a false
+    # "conflict (kept Google)" or re-create a contact deleted on Google; and an
+    # edit Google gave no timestamp for (push_no_time) is not retried.
     db.execute(
         """INSERT INTO sync_state (id, sync_token, last_synced_at)
            VALUES (1, ?, CASE WHEN ? THEN strftime('%Y-%m-%dT%H:%M:%SZ', 'now') END)
            ON CONFLICT(id) DO UPDATE SET
                sync_token = COALESCE(excluded.sync_token, sync_state.sync_token),
                last_synced_at = COALESCE(excluded.last_synced_at, sync_state.last_synced_at)""",
-        [new_sync_token, clean_push],
+        [new_sync_token, not hold_baseline],
     )
     db.commit()
     log.info('Sync complete: pulled=%d created=%d updated=%d',
@@ -597,7 +602,7 @@ def _push_local_changes(
     service: Any, db: sqlite3.Connection, region: str,
     dirty_linked: list[sqlite3.Row], local_only: list[int],
     prev_sync: str | None, result: SyncResult,
-) -> None:
+) -> bool:
     """Step 2: create local-only contacts on Google, and push locally-edited
     linked contacts with per-contact conflict resolution (§7). Each push is its own
     committed unit, isolated so one failure is logged + skipped, never fatal.
@@ -605,7 +610,11 @@ def _push_local_changes(
     The one exception is a 403 on write (§9): a token that has lost the write
     scope fails identically on every contact, so reporting it as N per-contact
     skips tells the user nothing about the cause. It is recorded once on the
-    result and the push stops."""
+    result and the push stops.
+
+    Returns True when an edit to a linked contact was left unpushed (an update
+    failed, or a scope refusal came while linked updates were still waiting):
+    the caller then holds the sync baseline back. Failed creates never do."""
     prev_dt = _parse_dt(prev_sync)
 
     # §5 Step 2: a dirty contact the pull just unlinked (a tombstone, INV-9) is
@@ -639,10 +648,11 @@ def _push_local_changes(
             if _is_write_scope_denied(exc):
                 result.error = _SCOPE_DENIED_MESSAGE
                 log.error('Google refused the write (403); token lacks the write scope')
-                return
+                return bool(updates)
             log.exception('Failed to create Google contact for %s', contact_id)
             result.skipped += 1
 
+    hold = False
     for row in updates:
         contact_id, google_id = row['id'], row['google_id']
         try:
@@ -673,9 +683,11 @@ def _push_local_changes(
             if _is_write_scope_denied(exc):
                 result.error = _SCOPE_DENIED_MESSAGE
                 log.error('Google refused the write (403); token lacks the write scope')
-                return
+                return True
             log.exception('Failed to push contact %s', contact_id)
             result.skipped += 1
+            hold = True
+    return hold
 
 
 def _is_allowed_photo_url(url: str) -> bool:

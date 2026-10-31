@@ -599,3 +599,80 @@ class TestBaselineOnlyAdvancesOnACleanPush:
         service = _FakeService(get_responses=self._failing_update_service().get_responses)
         result = _run_sync(app, db, service, monkeypatch)
         assert result.updated == 1 and len(service.updated) == 1
+
+
+class _Denied(Exception):
+    """Looks like a 403 write-scope refusal to google_sync's duck-typing."""
+    status_code = 403
+    content = b'insufficient authentication scopes'
+
+
+def _baseline(db):
+    row = db.execute('SELECT last_synced_at FROM sync_state WHERE id=1').fetchone()
+    return row[0] if row else None
+
+
+class TestBaselineHeldOnlyForUnpushedLinkedEdits:
+    """The baseline is held only when an edit to a linked contact is left unpushed.
+    Local-only creates are recomputed every sync, so they never hold it."""
+
+    @staticmethod
+    def _create_refusing_service(exc):
+        class _S(_FakeService):
+            def createContact(self, body=None):
+                def run():
+                    raise exc
+                return _Exec(run, self.retries_seen)
+        return _S()
+
+    def test_first_sync_with_a_refused_create_sets_the_baseline(
+            self, app, db, monkeypatch):
+        models.create_contact(db, 'individual', 'Local', 'l@x.com')
+        service = self._create_refusing_service(RuntimeError('refused'))
+        result = _run_sync(app, db, service, monkeypatch)
+        assert result.skipped == 1
+        assert _baseline(db) is not None
+
+    def test_refused_create_with_an_existing_baseline_advances(
+            self, app, db, monkeypatch):
+        models.create_contact(db, 'individual', 'Local', 'l@x.com')
+        _set_prev_sync(db, '2020-01-01T00:00:00Z')
+        service = self._create_refusing_service(RuntimeError('refused'))
+        result = _run_sync(app, db, service, monkeypatch)
+        assert result.skipped == 1
+        assert _baseline(db) != '2020-01-01T00:00:00Z'
+
+    def test_scope_refusal_during_creates_with_dirty_linked_holds(
+            self, app, db, monkeypatch):
+        models.create_contact(db, 'individual', 'Local', 'l@x.com')
+        cid = models.create_contact(db, 'individual', 'Lee', 'lee@x.com')
+        _link(db, cid, 'people/lee')
+        _set_prev_sync(db, '2020-01-01T00:00:00Z')
+        _make_dirty_edit(db, cid, '2021-01-01T00:00:00Z')
+        service = self._create_refusing_service(_Denied())
+        result = _run_sync(app, db, service, monkeypatch)
+        assert result.error is not None
+        assert _baseline(db) == '2020-01-01T00:00:00Z'
+
+    def test_scope_refusal_with_nothing_dirty_linked_advances(
+            self, app, db, monkeypatch):
+        models.create_contact(db, 'individual', 'Local', 'l@x.com')
+        _set_prev_sync(db, '2020-01-01T00:00:00Z')
+        service = self._create_refusing_service(_Denied())
+        result = _run_sync(app, db, service, monkeypatch)
+        assert result.error is not None
+        assert _baseline(db) != '2020-01-01T00:00:00Z'
+
+    def test_a_clean_run_advances(self, app, db, monkeypatch):
+        cid = models.create_contact(db, 'individual', 'Lee', 'lee@x.com')
+        _link(db, cid, 'people/lee')
+        _set_prev_sync(db, '2020-01-01T00:00:00Z')
+        _make_dirty_edit(db, cid, '2021-01-01T00:00:00Z')
+        service = _FakeService(get_responses={'people/lee': {
+            'resourceName': 'people/lee', 'etag': 'e',
+            'metadata': {'sources': [{'type': 'CONTACT',
+                                      'updateTime': '2019-06-01T00:00:00Z'}]},
+        }})
+        result = _run_sync(app, db, service, monkeypatch)
+        assert result.updated == 1
+        assert _baseline(db) != '2020-01-01T00:00:00Z'

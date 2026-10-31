@@ -28,8 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Disconnect now revokes the Google grant.** (CL-0114)
   It called a method that does not exist, so the grant stayed live at Google while the app said it was disconnected.
 
-- **A failed Google push is retried on the next sync.** (CL-0114)
-  The sync baseline moved forward even when a contact failed to push, hiding the edit from later syncs.
+- **A failed Google push of an edited contact is retried on the next sync.** (CL-0114)
+  The sync baseline moved forward even when an edited, already-linked contact failed to push, hiding the edit from later syncs. It is now held back only for that case; a new contact Google refuses to create no longer holds it, and a first sync always sets it.
 
 - **A Google pull no longer skips a contact that has a local field named Birthday, Address or Organization in other letter case.** (CL-0113)
 
