@@ -226,7 +226,6 @@ class Config:
     # The CONTACT_LIST_PORT → 5002 fallback. PORT overrides it at the bind site
     # via resolve_port(); it does not replace it (CL-0056).
     PORT = _contact_list_port()
-    CONTACTS_PER_PAGE = 50
     MAX_CONTACTS_PER_PAGE = 200
     # Hard ceiling on any request body (Flask returns 413 past it). Bounds both
     # an uploaded import file and the carried-CSV re-post on the mapping screen
