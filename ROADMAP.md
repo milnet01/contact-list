@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: CL=113 -->
+<!-- ants-roadmap-id-high-water: CL=114 -->
 
 # Contact List — Roadmap
 
@@ -1924,6 +1924,12 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   google_sync._upsert_person deletes the old birthday/address/organization custom fields with a case-sensitive IN list, but idx_cf_unique is NOCASE, so inserting 'birthday' next to a local 'Birthday' violates it. Not reproduced here (needs a two-way-sync fixture). Fix is LOWER(field_name) IN (...), but that also deletes the user's own differently-cased field on sync; decide that first. Lane: routes-sync owns google_sync.py.
   **Layman:** A Google sync could hit a database error for a contact that has a hand-typed field such as "Birthday" with a capital letter.
   Kind: fix.
+  Source: review-readability 2026-10-31.
+
+- 🚧 [CL-0114] **Readability review 2026-10-31: close the routes-sync lane.**
+  Lane file docs/reviews/review-readability-2026-10-31/lane-02-routes-sync.md; ledger closed-routes-sync.md.
+  **Layman:** Tidy the web routes and Google sync code, and fix the sync bugs found on the way.
+  Kind: review-fix.
   Source: review-readability 2026-10-31.
 
 ## Efficiency & Refactoring

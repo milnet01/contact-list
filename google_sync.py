@@ -351,17 +351,21 @@ def sync_contacts(config: dict, db: sqlite3.Connection, region: str) -> SyncResu
     _push_local_changes(service, db, region, dirty_linked, local_only,
                         prev_sync, result)
 
-    # --- Step 3: finalise. last_synced_at advances UNCONDITIONALLY on a clean
-    # finish (decoupled from the sync-token write), or the next run's prev_sync is
-    # stale and re-pushes edits it already pushed. sync_token updates only when a
-    # new one was returned.
+    # --- Step 3: finalise. The pull has committed, so its sync token is saved
+    # whatever the push did. last_synced_at advances only when the push finished
+    # clean (no scope refusal, no skipped contact): it is the dirty-set baseline,
+    # and advancing past an unpushed edit would hide it from every later sync
+    # (spec 2026-07-02-two-way-google-sync.md, partial run). The cost is that
+    # a contact that fails every time holds the baseline back, so each sync
+    # re-examines every edit made since the last clean one.
+    clean_push = result.error is None and result.skipped == 0
     db.execute(
         """INSERT INTO sync_state (id, sync_token, last_synced_at)
-           VALUES (1, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+           VALUES (1, ?, CASE WHEN ? THEN strftime('%Y-%m-%dT%H:%M:%SZ', 'now') END)
            ON CONFLICT(id) DO UPDATE SET
                sync_token = COALESCE(excluded.sync_token, sync_state.sync_token),
-               last_synced_at = excluded.last_synced_at""",
-        [new_sync_token],
+               last_synced_at = COALESCE(excluded.last_synced_at, sync_state.last_synced_at)""",
+        [new_sync_token, clean_push],
     )
     db.commit()
     log.info('Sync complete: pulled=%d created=%d updated=%d',
@@ -811,7 +815,7 @@ def _upsert_person(
         )
         db.execute(
             "DELETE FROM custom_fields WHERE contact_id = ? "
-            "AND field_name IN ('birthday', 'address', 'organization')",
+            "AND LOWER(field_name) IN ('birthday', 'address', 'organization')",
             [contact_id],
         )
     else:

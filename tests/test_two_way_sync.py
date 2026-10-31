@@ -540,3 +540,62 @@ class TestFieldClear:
         _res, fields, body = service.updated[0]
         assert 'birthdays' not in fields
         assert 'birthdays' not in body
+
+
+class TestPullReplacesDifferentlyCasedLocalFields:
+    """The pull owns the birthday, address and organization custom fields, and
+    the push already reads them case-insensitively (CL-0113)."""
+
+    def test_pull_replaces_a_capitalised_birthday_field(self, app, db, monkeypatch):
+        cid = models.create_contact(
+            db, 'individual', 'Bea', custom_fields=[('Birthday', '1980-01-01')])
+        _link(db, cid, 'people/bea')
+        pull = [{'connections': [{
+            'resourceName': 'people/bea',
+            'names': [{'displayName': 'Bea'}],
+            'birthdays': [{'date': {'year': 1990, 'month': 2, 'day': 3}}],
+        }], 'nextSyncToken': 'TOK'}]
+        result = _run_sync(app, db, _FakeService(pull_pages=pull), monkeypatch)
+        assert result.pulled == 1
+        rows = [(r['field_name'].lower(), r['field_value'])
+                for r in models.get_custom_fields(db, cid)]
+        assert rows == [('birthday', '1990-02-03')]
+
+
+class TestBaselineOnlyAdvancesOnACleanPush:
+    """Spec 2026-07-02-two-way-google-sync.md, partial run: last_synced_at moves
+    only on a clean finish, so a failed push is retried next sync."""
+
+    def _failing_update_service(self):
+        class _Failing(_FakeService):
+            def updateContact(self, resourceName=None, updatePersonFields=None, body=None):
+                def run():
+                    raise RuntimeError('boom')
+                return _Exec(run, self.retries_seen)
+        return _Failing(get_responses={'people/lee': {
+            'resourceName': 'people/lee', 'etag': 'e',
+            'metadata': {'sources': [{'type': 'CONTACT',
+                                      'updateTime': '2019-06-01T00:00:00Z'}]},
+        }})
+
+    def test_a_skipped_push_keeps_the_old_baseline(self, app, db, monkeypatch):
+        cid = models.create_contact(db, 'individual', 'Lee', 'lee@x.com')
+        _link(db, cid, 'people/lee')
+        _set_prev_sync(db, '2020-01-01T00:00:00Z')
+        _make_dirty_edit(db, cid, '2021-01-01T00:00:00Z')
+        result = _run_sync(app, db, self._failing_update_service(), monkeypatch)
+        assert result.skipped == 1
+        ts, token = db.execute(
+            'SELECT last_synced_at, sync_token FROM sync_state WHERE id=1').fetchone()
+        assert ts == '2020-01-01T00:00:00Z'
+        assert token == 'TOK'  # the pull committed, so its token still moves
+
+    def test_the_retry_pushes_the_edit_once_it_works(self, app, db, monkeypatch):
+        cid = models.create_contact(db, 'individual', 'Lee', 'lee@x.com')
+        _link(db, cid, 'people/lee')
+        _set_prev_sync(db, '2020-01-01T00:00:00Z')
+        _make_dirty_edit(db, cid, '2021-01-01T00:00:00Z')
+        _run_sync(app, db, self._failing_update_service(), monkeypatch)
+        service = _FakeService(get_responses=self._failing_update_service().get_responses)
+        result = _run_sync(app, db, service, monkeypatch)
+        assert result.updated == 1 and len(service.updated) == 1
