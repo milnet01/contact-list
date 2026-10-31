@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: CL=106 -->
+<!-- ants-roadmap-id-high-water: CL=110 -->
 
 # Contact List — Roadmap
 
@@ -1874,6 +1874,30 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   **Layman:** Contact cards have an outline on three sides, and the left side looks slightly unfinished until you hover.
   Kind: ux.
   Source: in-session-2026-10-31 CL-0101 pre-check.
+
+- 🚧 [CL-0107] **Close the shell lane of the readability review.**
+  Lane file: docs/reviews/review-readability-2026-10-31/lane-03-shell.md. Ledger: closed-shell.md.
+  **Layman:** Tidy the launcher, config and build scripts so comments match the code, and fix the small bugs found on the way.
+  Kind: review-fix.
+  Source: review-readability 2026-10-31.
+
+- 📋 [CL-0108] **Stop the tray when the server stops (signal or crash).**
+  launcher.py: _stop (SIGINT/SIGTERM) calls server.shutdown() but not the pystray icon.stop(), so icon.run() may keep the process alive; a crashed serve_forever thread (_serve) likewise leaves the icon up. Needs tray.run_tray to expose the icon or a stop hook, and a test with a fake tray. Not testable by hand here (no display). Hazard: icon.stop() from a signal handler must run on a thread pystray allows.
+  **Layman:** If the server dies or is told to quit from outside, the tray icon can stay up in front of nothing.
+  Kind: fix.
+  Source: review-readability 2026-10-31.
+
+- 📋 [CL-0109] **Derive the settings choices once instead of keeping three hand copies.**
+  settings.py _ALLOWED, models.py allowed_sorts and templates/settings.html each list the sort keys (density, view, direction and default type are hand-copied into settings.html). Pass the choices to the template and derive or check the model's keys against settings._ALLOWED. Touches models and templates, which belong to the data and frontend lanes of this review.
+  **Layman:** The allowed sort, density and view choices are typed out in three places, so adding one can silently half-work.
+  Kind: refactor.
+  Source: review-readability 2026-10-31.
+
+- 📋 [CL-0110] **Harden three shell-script edge cases found by the readability review.**
+  (1) .githooks/pre-push: the break at the tag, no-base and diff-failure cases stops collecting pushed refs, so later refs in the same push skip the is-it-HEAD check. (2) local-ci.sh: the tree is hashed after the checks finish, so a file edited during the run is recorded as passed; hash before the run and record that. (3) packaging/build-linux.sh and wine-setup.sh: a corrupt cached download fails sha256 on every run and is never re-fetched; the failure should tell the user to delete the file. Shell scripts, no test harness here; each needs a manual repro.
+  **Layman:** Three small gaps in the push hook and build scripts that only bite in unusual runs.
+  Kind: fix.
+  Source: review-readability 2026-10-31.
 
 ## Efficiency & Refactoring
 

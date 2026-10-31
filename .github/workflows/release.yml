@@ -18,12 +18,9 @@ jobs:
     uses: ./.github/workflows/ci.yml
 
   # config.py names packaging/check-version-drift.sh as the thing that enforces
-  # version lockstep, and until now NOTHING committed invoked it -- its only
-  # caller was .claude/bump.json, which .gitignore excludes, so the script was
-  # absent from every clone and the enforcement existed on one machine. Running
-  # it here, ahead of the builds, is what makes the claim true: a v* tag whose
-  # APP_VERSION disagrees with the top CHANGELOG heading now fails before any
-  # binary is produced, instead of publishing a mislabelled release.
+  # version lockstep. Running it here, ahead of the builds, makes a v* tag whose
+  # APP_VERSION disagrees with the top CHANGELOG heading fail before any binary
+  # is produced, instead of publishing a mislabelled release.
   version-lockstep:
     needs: ci
     runs-on: ubuntu-latest

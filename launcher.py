@@ -60,8 +60,9 @@ def _install_file_logging() -> None:
     handler exists)."""
     from config import _CONFIG_DIR, ensure_private_dir
     ensure_private_dir(_CONFIG_DIR)
-    # Rotating so a long-lived desktop install's log (Werkzeug logs every request
-    # at INFO) can't grow without bound: 1 MB x 3 files.
+    # Rotating so a long-lived desktop install's log can't grow without bound:
+    # the live file plus 3 backups, 1 MB each. Werkzeug's request lines are not
+    # in it (app.py raises that logger to WARNING).
     handler = logging.handlers.RotatingFileHandler(
         os.path.join(_CONFIG_DIR, 'contact-list.log'),
         maxBytes=1_000_000, backupCount=3,
@@ -106,7 +107,8 @@ def main() -> int:
             # PORT named this port and something else already holds it. The
             # caller asked for a specific port and did not get it — that is a
             # failure, not a hand-off, so no browser and a non-zero exit
-            # (spec INV-4). The INV-4 hand-off below is for a hand launch only.
+            # (INV-4 of docs/specs/2026-07-10-standalone-launchers-design.md).
+            # The hand-off below is for a hand launch only.
             _emit(
                 f'error: PORT={port} is already in use by another process',
                 err=True,
@@ -119,7 +121,7 @@ def main() -> int:
         _install_file_logging()
 
     # On Linux ONLY, pin pystray to the appindicator backend (SNI over DBus)
-    # BEFORE tray.py imports pystray (spec §4.2). setdefault honours an explicit
+    # BEFORE tray.py imports pystray (docs/specs/2026-07-12-system-tray-icon.md §4.2). setdefault honours an explicit
     # user PYSTRAY_BACKEND override.
     #
     # The platform guard is load-bearing, not tidiness. pystray honours this
@@ -141,7 +143,7 @@ def main() -> int:
         # The tray must own the main thread, so the server moves to a dedicated
         # non-daemon thread via a stoppable handle. threaded=True preserves
         # app.run()'s default concurrency (make_server defaults threaded=False;
-        # spec §5). The constructor binds the socket, so a bind failure (port in
+        # docs/specs/2026-07-12-system-tray-icon.md §5). The constructor binds the socket, so a bind failure (port in
         # use) is caught here and returns 1, like create_app().
         server = make_server('127.0.0.1', port, app, threaded=True)
     except Exception:
@@ -153,24 +155,21 @@ def main() -> int:
     _emit(f'Listening on http://127.0.0.1:{port}')
 
     def _serve() -> None:
-        # Nothing else observes this thread. Without the guard a crash inside
-        # serve_forever ends the thread silently — threading.excepthook writes to
-        # a sys.stderr that is None on a frozen windowed build — leaving a live
-        # tray icon in front of a dead server.
+        # Nothing else observes this thread. The guard only records the crash in
+        # the log: threading.excepthook writes to a sys.stderr that is None on a
+        # frozen windowed build. It does not stop the tray, so a live icon can
+        # still sit in front of a dead server (CL-0108).
         try:
             server.serve_forever()
         except Exception:
-            log.exception('server thread died; shutting down')
+            log.exception('server thread died')
 
     server_thread = threading.Thread(target=_serve)
     server_thread.start()
 
-    # The thread is non-daemon and only the tray's Quit calls server.shutdown(),
-    # so on every other exit path a Ctrl-C unwinds the main thread into
-    # server_thread.join() while serve_forever is still running -- and the
-    # interpreter then joins that same non-daemon thread at shutdown. The
-    # process hangs, still serving, with no way out but kill. Handling the
-    # signals gives serve_forever the shutdown it is waiting for.
+    # SIGINT and SIGTERM call server.shutdown(), as the tray's Quit does. The
+    # thread is non-daemon, so without this a Ctrl-C leaves serve_forever running
+    # and the interpreter hangs joining the thread, still serving.
     def _stop(_signum: int, _frame: object) -> None:
         server.shutdown()
 
@@ -183,7 +182,8 @@ def main() -> int:
             pass
 
     if os.environ.get('LWSM_MANAGED') == '1':
-        # Presentation hint only: a managed run shows no tray icon and serves
+        # A process manager that launches this app sets LWSM_MANAGED=1 (README,
+        # environment table). Presentation hint only: a managed run shows no tray icon and serves
         # headless, logging as normal (CL-0056). Taken BEFORE the try so the
         # fallback below keeps logging the truth — nothing here failed. Nothing
         # else is conditioned on this variable: it is unauthenticated and
@@ -204,8 +204,8 @@ def main() -> int:
         )
         # No icon means no way in, so open the page after all rather than leave a
         # running server the user cannot reach — on a frozen windowed build the
-        # "Listening on" line above may go nowhere (stdout is None). This is the ONLY
-        # start-path open that survives CL-0060, and it is deliberately inside the
+        # "Listening on" line above may go nowhere (stdout is None). This is the only
+        # open on a path that binds the port (CL-0060), and it is deliberately inside the
         # except: a working tray opens nothing. make_server already bound the socket,
         # so no readiness poll is needed. A managed run returned above and never
         # reaches here.

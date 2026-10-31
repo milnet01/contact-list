@@ -58,8 +58,8 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     esac
     branches="$branches ${remote_ref#refs/heads/}"
     if [ "$remote_sha" = "$Z40" ]; then
-        # New branch: diff against origin/HEAD's tip if we know it, else the
-        # commit's own parent. Falls back to running CI when neither resolves.
+        # New branch: diff against its merge-base with origin/main. If that does
+        # not resolve, run CI.
         base=$(git merge-base "$local_sha" origin/main 2>/dev/null) || base=""
     else
         base="$remote_sha"

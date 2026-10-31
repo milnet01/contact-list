@@ -18,7 +18,10 @@ import webbrowser
 
 def _system_env() -> dict[str, str]:
     """A copy of the environment with the PyInstaller bundle removed from the
-    dynamic-linker path, so a spawned SYSTEM program loads the host's libraries."""
+    dynamic-linker path, so a spawned SYSTEM program loads the host's libraries.
+
+    Not only for xdg-open: server_control.py builds the restart child's
+    environment from it too, so a change here changes restarts."""
     env = dict(os.environ)
     orig = env.pop('LD_LIBRARY_PATH_ORIG', None)
     if orig is None:
