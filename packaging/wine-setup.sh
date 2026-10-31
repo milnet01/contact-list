@@ -32,5 +32,6 @@ echo "${INST_SHA256}  $TOOLS/$INST" | sha256sum -c -
 # python.exe on PATH via PrependPath — verified sufficient for `wine python`.
 wine "$TOOLS/$INST" /quiet InstallAllUsers=0 PrependPath=1 Include_test=0
 wine python -m pip install --upgrade pip
-wine python -m pip install -r requirements.txt pyinstaller
+# tzdata mirrors release.yml's Windows job; contact-list.spec collects it on win32.
+wine python -m pip install -r requirements.txt pyinstaller tzdata
 echo "wine python + deps ready"
