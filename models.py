@@ -395,6 +395,12 @@ def find_duplicates(
     return warnings
 
 
+# The columns each duplicate group row carries; templates/duplicates.html reads
+# these. Unqualified so the phone query's JOIN (contact_lookup has none of them)
+# and the single-table queries share one list.
+_DUPLICATE_COLUMNS = 'id, type, name, email, phone'
+
+
 def find_all_duplicates(
     db: sqlite3.Connection,
     limit: int = MAX_DUPLICATE_GROUPS,
@@ -411,6 +417,7 @@ def find_all_duplicates(
     """
     limit = max(1, limit)
     result: dict[str, list[list[sqlite3.Row]]] = {'name': [], 'email': [], 'phone': []}
+    cols = _DUPLICATE_COLUMNS
 
     # Duplicate names (case-insensitive)
     name_groups = db.execute(
@@ -420,8 +427,8 @@ def find_all_duplicates(
     ).fetchall()
     for row in name_groups:
         contacts = db.execute(
-            "SELECT id, type, name, email, phone FROM contacts "
-            "WHERE name = ? COLLATE NOCASE ORDER BY name",
+            f"SELECT {cols} FROM contacts "
+            "WHERE name = ? COLLATE NOCASE ORDER BY name COLLATE NOCASE",
             [row['norm_name']],
         ).fetchall()
         result['name'].append(contacts)
@@ -435,7 +442,7 @@ def find_all_duplicates(
     ).fetchall()
     for row in email_groups:
         contacts = db.execute(
-            "SELECT id, type, name, email, phone FROM contacts "
+            f"SELECT {cols} FROM contacts "
             "WHERE LOWER(email) = ? ORDER BY name COLLATE NOCASE",
             [row['norm_email']],
         ).fetchall()
@@ -456,9 +463,9 @@ def find_all_duplicates(
     ).fetchall()
     for row in phone_groups:
         contacts = db.execute(
-            'SELECT c.id, c.type, c.name, c.email, c.phone FROM contacts c '
-            'JOIN contact_lookup l ON l.contact_id = c.id '
-            'WHERE l.phone_key = ? ORDER BY c.name COLLATE NOCASE',
+            f'SELECT {cols} FROM contacts '
+            'JOIN contact_lookup l ON l.contact_id = contacts.id '
+            'WHERE l.phone_key = ? ORDER BY name COLLATE NOCASE',
             [row['phone_key']],
         ).fetchall()
         result['phone'].append(contacts)
@@ -831,6 +838,25 @@ def _validate_contact_type(contact_type: str) -> None:
         raise ValueError(f'Invalid contact type: {contact_type!r}')
 
 
+def insert_custom_fields(
+    db: sqlite3.Connection, contact_id: int, custom_fields: list[tuple[str, str]]
+) -> None:
+    """Insert (name, value) custom-field rows for one contact. Validates nothing
+    and opens no transaction: callers run _validate_custom_field_names first
+    (google_sync does not, see _validate_field_lengths) and compose this into
+    their own atomic block."""
+    db.executemany(
+        'INSERT INTO custom_fields (contact_id, field_name, field_value) VALUES (?, ?, ?)',
+        [(contact_id, fn, fv) for fn, fv in custom_fields],
+    )
+
+
+# The core fields (type, name, email, phone, notes) are written in these places,
+# and a new core field must reach every one or those contacts silently lose it:
+# create_contact (INSERT), _write_contact (UPDATE; behind update_contact and
+# merge_contacts), _insert_imported and _fill_existing (import_contact's INSERT
+# and additive UPDATE), and google_sync._upsert_person (its own UPDATE and
+# INSERT). Each also owns its sync_lookup and _mark_edited calls.
 def create_contact(
     db: sqlite3.Connection,
     contact_type: str,
@@ -857,10 +883,7 @@ def create_contact(
         if contact_id is None:  # an INSERT always sets it; an assert vanishes under -O
             raise RuntimeError('INSERT into contacts returned no row id')
         if custom_fields:
-            db.executemany(
-                'INSERT INTO custom_fields (contact_id, field_name, field_value) VALUES (?, ?, ?)',
-                [(contact_id, fn, fv) for fn, fv in custom_fields],
-            )
+            insert_custom_fields(db, contact_id, custom_fields)
         # create_contact has its own INSERT path (not via _write_contact), so it
         # makes its own tag write inside this transaction (CL-0037).
         set_contact_tags(db, contact_id, tags or [])
@@ -898,10 +921,7 @@ def _write_contact(
     )
     db.execute('DELETE FROM custom_fields WHERE contact_id = ?', [contact_id])
     if custom_fields:
-        db.executemany(
-            'INSERT INTO custom_fields (contact_id, field_name, field_value) VALUES (?, ?, ?)',
-            [(contact_id, fn, fv) for fn, fv in custom_fields],
-        )
+        insert_custom_fields(db, contact_id, custom_fields)
     set_contact_tags(db, contact_id, tags or [])  # CL-0037
     sync_lookup(db, contact_id, name, phone)  # CL-0066
     # _write_contact backs update_contact AND merge_contacts (survivor); both are
@@ -1003,7 +1023,21 @@ def import_contact(
     _validate_field_lengths(name, email, phone, notes)
     _validate_custom_field_names(custom_fields)
 
-    match_id: int | None = None
+    match_id = _find_import_match(db, email, name)
+    with db:
+        if match_id is None:
+            return _insert_imported(
+                db, contact_type, name, email, phone, notes, custom_fields
+            ), 'created'
+        _fill_existing(db, match_id, email, phone, notes, custom_fields)
+        return match_id, 'updated'
+
+
+def _find_import_match(
+    db: sqlite3.Connection, email: str | None, name: str
+) -> int | None:
+    """The id import_contact merges into: the first contact with this email
+    (case-insensitive), else the first with this name, else None."""
     if email:
         row = db.execute(
             "SELECT id FROM contacts "
@@ -1012,78 +1046,89 @@ def import_contact(
             [email],
         ).fetchone()
         if row:
-            match_id = row['id']
-    if match_id is None and name:
+            return row['id']
+    if name:
         row = db.execute(
             'SELECT id FROM contacts WHERE name = ? COLLATE NOCASE ORDER BY id LIMIT 1',
             [name],
         ).fetchone()
         if row:
-            match_id = row['id']
+            return row['id']
+    return None
 
-    with db:
-        if match_id is None:
-            cursor = db.execute(
-                'INSERT INTO contacts (type, name, email, phone, notes) VALUES (?, ?, ?, ?, ?)',
-                [contact_type, name, email, phone, notes],
-            )
-            new_id = cursor.lastrowid
-            if new_id is None:  # as in create_contact
-                raise RuntimeError('INSERT into contacts returned no row id')
-            if custom_fields:
-                db.executemany(
-                    'INSERT INTO custom_fields (contact_id, field_name, field_value) '
-                    'VALUES (?, ?, ?)',
-                    [(new_id, fn, fv) for fn, fv in custom_fields],
-                )
-            sync_lookup(db, new_id, name, phone)  # CL-0066
-            _mark_edited(db, new_id)
-            return new_id, 'created'
 
-        # Additive update: fill a core field only when the existing value is
-        # blank; keep the existing value otherwise (never overwrite).
-        existing = db.execute(
-            'SELECT name, email, phone, notes FROM contacts WHERE id = ?', [match_id]
-        ).fetchone()
-        def _fill(new: str | None, old: str | None) -> str | None:
-            return new if (new and not (old or '').strip()) else old
+def _insert_imported(
+    db: sqlite3.Connection,
+    contact_type: str,
+    name: str,
+    email: str | None,
+    phone: str | None,
+    notes: str | None,
+    custom_fields: list[tuple[str, str]],
+) -> int:
+    """INSERT a new contact from an import row. Runs inside import_contact's
+    transaction. Writes no tags (an import carries none)."""
+    cursor = db.execute(
+        'INSERT INTO contacts (type, name, email, phone, notes) VALUES (?, ?, ?, ?, ?)',
+        [contact_type, name, email, phone, notes],
+    )
+    new_id = cursor.lastrowid
+    if new_id is None:  # as in create_contact
+        raise RuntimeError('INSERT into contacts returned no row id')
+    if custom_fields:
+        insert_custom_fields(db, new_id, custom_fields)
+    sync_lookup(db, new_id, name, phone)  # CL-0066
+    _mark_edited(db, new_id)
+    return new_id
 
-        new_email = _fill(email, existing['email'])
-        new_phone = _fill(phone, existing['phone'])
-        new_notes = _fill(notes, existing['notes'])
-        current = (existing['email'], existing['phone'], existing['notes'])
-        core_changed = (new_email, new_phone, new_notes) != current
-        if core_changed:
-            db.execute(
-                "UPDATE contacts SET email=?, phone=?, notes=?, "
-                "updated_at=strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id=?",
-                [new_email, new_phone, new_notes, match_id],
-            )
-            # CL-0066: this path never changes the name, but it can fill a blank
-            # phone, which re-keys the contact for duplicate detection.
-            sync_lookup(db, match_id, existing['name'], new_phone)
-        # Add only custom-field names the contact doesn't already have
-        # (case-insensitive, matching idx_cf_unique).
-        existing_names = {
-            r['field_name'].lower()
-            for r in db.execute(
-                'SELECT field_name FROM custom_fields WHERE contact_id = ?', [match_id]
-            )
-        }
-        to_add = [
-            (match_id, fn, fv) for fn, fv in custom_fields if fn.lower() not in existing_names
-        ]
-        if to_add:
-            db.executemany(
-                'INSERT INTO custom_fields (contact_id, field_name, field_value) '
-                'VALUES (?, ?, ?)',
-                to_add,
-            )
-        # Mark edited only when the import actually changed data — a pure no-op
-        # match must not move edited_at (CL-0033).
-        if core_changed or to_add:
-            _mark_edited(db, match_id)
-        return match_id, 'updated'
+
+def _fill_existing(
+    db: sqlite3.Connection,
+    match_id: int,
+    email: str | None,
+    phone: str | None,
+    notes: str | None,
+    custom_fields: list[tuple[str, str]],
+) -> None:
+    """Additively update the matched contact: fill a core field only when the
+    existing value is blank (never overwrite), add only custom-field names it
+    lacks. Runs inside import_contact's transaction."""
+    existing = db.execute(
+        'SELECT name, email, phone, notes FROM contacts WHERE id = ?', [match_id]
+    ).fetchone()
+
+    def _fill(new: str | None, old: str | None) -> str | None:
+        return new if (new and not (old or '').strip()) else old
+
+    new_email = _fill(email, existing['email'])
+    new_phone = _fill(phone, existing['phone'])
+    new_notes = _fill(notes, existing['notes'])
+    current = (existing['email'], existing['phone'], existing['notes'])
+    core_changed = (new_email, new_phone, new_notes) != current
+    if core_changed:
+        db.execute(
+            "UPDATE contacts SET email=?, phone=?, notes=?, "
+            "updated_at=strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id=?",
+            [new_email, new_phone, new_notes, match_id],
+        )
+        # CL-0066: this path never changes the name, but it can fill a blank
+        # phone, which re-keys the contact for duplicate detection.
+        sync_lookup(db, match_id, existing['name'], new_phone)
+    # Add only custom-field names the contact doesn't already have
+    # (case-insensitive, matching idx_cf_unique).
+    existing_names = {
+        r['field_name'].lower()
+        for r in db.execute(
+            'SELECT field_name FROM custom_fields WHERE contact_id = ?', [match_id]
+        )
+    }
+    to_add = [(fn, fv) for fn, fv in custom_fields if fn.lower() not in existing_names]
+    if to_add:
+        insert_custom_fields(db, match_id, to_add)
+    # Mark edited only when the import actually changed data -- a pure no-op
+    # match must not move edited_at (CL-0033).
+    if core_changed or to_add:
+        _mark_edited(db, match_id)
 
 
 def merge_contacts(

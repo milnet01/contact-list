@@ -830,7 +830,7 @@ def _upsert_person(
     models.sync_lookup(db, contact_id, name, phone)
 
     # Custom fields from Google data
-    cf: list[tuple[int, str, str]] = []
+    cf: list[tuple[str, str]] = []
 
     birthdays = person.get('birthdays', [])
     if birthdays:
@@ -842,24 +842,20 @@ def _upsert_person(
         if month and day:
             year = bday.get('year')
             value = f'{year:04d}-{month:02d}-{day:02d}' if year else f'{month:02d}-{day:02d}'
-            cf.append((contact_id, 'birthday', value))
+            cf.append(('birthday', value))
 
     addresses = person.get('addresses', [])
     if addresses:
         addr = addresses[0].get('formattedValue', '')
         if addr:
-            cf.append((contact_id, 'address', addr))
+            cf.append(('address', addr))
 
     if orgs:
         org_name = orgs[0].get('name', '')
         if org_name:
-            cf.append((contact_id, 'organization', org_name))
+            cf.append(('organization', org_name))
 
     if cf:
-        db.executemany(
-            'INSERT INTO custom_fields (contact_id, field_name, field_value) '
-            'VALUES (?, ?, ?)',
-            cf,
-        )
+        models.insert_custom_fields(db, contact_id, cf)
 
     return contact_id
