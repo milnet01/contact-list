@@ -139,16 +139,16 @@ def _import_vcard_text(text: str) -> ResponseReturnValue:
             f'{unusable} card(s) had no usable name and were skipped.'
         )
     for card in cards:
-        # Sanitise externally-supplied custom-field names and drop within-card
-        # duplicates so one odd label can't fail the whole contact's import.
-        seen: set[str] = set()
+        # Sanitise externally-supplied custom-field names and number a repeated
+        # one ('Nickname 2'), as the CSV path does, so one odd label can't fail
+        # the whole contact's import and no value is dropped.
+        used: set[str] = set()
         cfs: list[tuple[str, str]] = []
         for name, value in card['custom_fields']:
             clean = sanitize_field_name(name)
-            if not clean or not value or clean.lower() in seen:
+            if not clean or not value:
                 continue
-            seen.add(clean.lower())
-            cfs.append((clean, value))
+            cfs.append((importer.unique_label(clean, used), value))
         fields = {
             'type': card['type'], 'name': card['name'], 'email': card['email'],
             'phone': card['phone'], 'notes': card['notes'],

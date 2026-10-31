@@ -70,9 +70,10 @@ def guess_mapping(headers: list[str]) -> dict[int, str]:
     return {i: guess_target(h) for i, h in enumerate(headers)}
 
 
-def _unique_label(base: str, used: set[str]) -> str:
+def unique_label(base: str, used: set[str]) -> str:
     """Return `base`, or `base 2`/`base 3`/… so the result is unique
-    (case-insensitive) within `used`; records the choice in `used`."""
+    (case-insensitive) within `used`; records the choice in `used`. Both import
+    paths number a repeated custom-field label with this rather than drop it."""
     label = base
     n = 2
     while label.lower() in used:
@@ -94,12 +95,13 @@ def apply_mapping(
     into numbered custom fields with row-unique labels (never a dup that would
     trip idx_cf_unique)."""
     n = len(headers)
+    # A mapping entry for a column the file does not have is ignored.
+    mapping = {i: target for i, target in mapping.items() if i < n}
     # Base custom-field label per custom-mapped column (sanitised header).
     base_labels: dict[int, str] = {}
     for i, target in mapping.items():
         if target == 'custom':
-            base = sanitize_field_name(headers[i]) if i < n else ''
-            base_labels[i] = base or f'Field {i + 1}'
+            base_labels[i] = sanitize_field_name(headers[i]) or f'Field {i + 1}'
 
     built: list[tuple[dict, list[tuple[str, str]]]] = []
     skipped = 0
@@ -133,13 +135,17 @@ def apply_mapping(
         name = ' '.join(names).strip()
         email, email_extras = split_multivalue('Email', emails)
         phone, phone_extras = split_multivalue('Phone', phones)
+        # Only a row with neither name nor email is skipped. A row with an email
+        # and no name is kept and stored with an empty name, unlike the contact
+        # form, the vCard parser and Google sync, which refuse a nameless
+        # contact (queued: CL-0112).
         if not name and not email:
             skipped += 1
             continue
 
         used: set[str] = set()
         customs = [
-            (_unique_label(label, used), val)
+            (unique_label(label, used), val)
             for label, val in (raw_customs + email_extras + phone_extras)
         ]
         ctype = type_val if type_val in VALID_CONTACT_TYPES else default_type

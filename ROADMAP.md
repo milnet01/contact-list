@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: CL=111 -->
+<!-- ants-roadmap-id-high-water: CL=112 -->
 
 # Contact List — Roadmap
 
@@ -1907,6 +1907,12 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   Lane file docs/reviews/review-readability-2026-10-31/lane-01-data.md; ledger closed-data.md.
   **Layman:** Tidy the code that stores contacts, photos and imports so the next person can follow it, and fix a photo bug found on the way.
   Kind: review-fix.
+  Source: review-readability 2026-10-31.
+
+- 📋 [CL-0112] **CSV import keeps a row with an email and no name, storing an empty name.**
+  importer.apply_mapping skips only rows with neither name nor email. The form (validate_core_fields), vcard.parse and Google sync all refuse a nameless contact. Needs a design decision, not made now: skip the row (loses email-only lists), or use the email as the name. Either changes what a user's CSV import produces; no spec covers it. Hazard: tests/test_importer.py and the import summary count rows as skipped.
+  **Layman:** A CSV row that has an email but no name creates a contact with a blank name, unlike every other way of adding a contact.
+  Kind: fix.
   Source: review-readability 2026-10-31.
 
 ## Efficiency & Refactoring

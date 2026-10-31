@@ -139,6 +139,23 @@ class TestVcardImportExport:
             contacts, total = models.list_contacts(get_db())
             assert total == 1 and contacts[0]['name'] == 'Zara'
 
+    def test_import_vcf_keeps_a_repeated_label_as_a_numbered_field(self, client, app):
+        # The CSV path renumbers a repeated label ('Nickname 2'); the vCard path
+        # must keep the later value too rather than drop it silently.
+        token = _csrf(client)
+        vcf = (b'BEGIN:VCARD\nVERSION:3.0\nFN:Zara\n'
+               b'X-CL;X-LABEL=Nickname:Zee\nX-CL;X-LABEL=Nickname:Z\nEND:VCARD\n')
+        data = _upload(vcf, 'contacts.vcf')
+        data['_csrf_token'] = token
+        client.post('/contacts/import', data=data,
+                    content_type='multipart/form-data', follow_redirects=True)
+        with app.app_context():
+            db = get_db()
+            cid = models.list_contacts(db)[0][0]['id']
+            fields = {r['field_name']: r['field_value']
+                      for r in models.get_custom_fields(db, cid)}
+        assert fields == {'Nickname': 'Zee', 'Nickname 2': 'Z'}
+
     def test_export_vcard(self, client, app):
         with app.app_context():
             models.create_contact(get_db(), 'individual', 'Alice', 'a@x.com',

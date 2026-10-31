@@ -108,6 +108,14 @@ class TestApplyMapping:
         )
         assert built[0][0]['type'] == 'company'
 
+    def test_mapping_past_the_headers_is_ignored(self):
+        built, skipped = self._apply(
+            ['Name'], [['Alice']], {0: 'name', 3: 'email'}
+        )
+        assert skipped == 0
+        assert built[0][0]['name'] == 'Alice'
+        assert built[0][0]['email'] is None
+
     def test_blank_row_skipped(self):
         built, skipped = self._apply(
             ['Name', 'Email'], [['', ''], ['Bob', '']], {0: 'name', 1: 'email'}
