@@ -9,15 +9,16 @@ from __future__ import annotations
 import os
 import sys
 
-# Single source of truth for the OAuth scope (CL-0033, INV-5) — importing it here
+# Single source of truth for the OAuth scope (CL-0033, INV-5): importing it here
 # means this standalone auth script can never request a different scope than the
-# app's sync code. google_sync imports only stdlib + local pure modules at import
-# time, so this is cheap for the subprocess.
+# app's sync code. google_sync pulls in the app's own modules and libraries
+# (phonenumbers, Pillow) at import, so this script needs the same environment as
+# the app.
+from config import Config, ensure_private_dir, write_private_text
 from google_sync import SCOPES
 
-CREDS_DIR = os.path.expanduser('~/.config/contact-list')
-CREDS_FILE = os.path.join(CREDS_DIR, 'credentials.json')
-TOKEN_FILE = os.path.join(CREDS_DIR, 'token.json')
+CREDS_FILE = Config.GOOGLE_CREDENTIALS_FILE
+TOKEN_FILE = Config.GOOGLE_TOKEN_FILE
 
 
 def main() -> int:
@@ -31,19 +32,8 @@ def main() -> int:
     flow = InstalledAppFlow.from_client_secrets_file(CREDS_FILE, SCOPES)
     creds = flow.run_local_server(port=0, open_browser=True)
 
-    # Lock the config dir to 0700 (defence-in-depth for the token; CL-0011).
-    # Inlined rather than importing config, to keep this auth script standalone.
-    os.makedirs(CREDS_DIR, exist_ok=True)
-    try:
-        os.chmod(CREDS_DIR, 0o700)
-    except OSError:
-        pass
-    # Create with 0600 from the start so the token is never briefly
-    # world-readable between write and chmod.
-    fd = os.open(TOKEN_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, 'w') as f:
-        f.write(creds.to_json())
-    os.chmod(TOKEN_FILE, 0o600)
+    ensure_private_dir(os.path.dirname(TOKEN_FILE))
+    write_private_text(TOKEN_FILE, creds.to_json())
 
     print('Authenticated successfully. You can close this window.')
     return 0

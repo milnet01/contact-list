@@ -145,17 +145,11 @@ def _load_credentials(config: dict) -> Any:
 
 
 def _save_credentials(config: dict, creds: Any) -> None:
-    from config import ensure_private_dir
+    from config import ensure_private_dir, write_private_text
 
     token_path = config['GOOGLE_TOKEN_FILE']
     ensure_private_dir(os.path.dirname(token_path))
-    # Create with 0600 from the start so the token is never briefly
-    # world-readable between write and chmod (the chmod still covers the
-    # case where the file already existed with looser permissions).
-    fd = os.open(token_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, 'w') as f:
-        f.write(creds.to_json())
-    os.chmod(token_path, 0o600)
+    write_private_text(token_path, creds.to_json())
 
 
 def revoke_credentials(config: dict) -> None:

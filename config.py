@@ -44,6 +44,16 @@ def ensure_private_dir(path: str) -> None:
         _log.warning('Could not tighten permissions on %s to 0700', path)
 
 
+def write_private_text(path: str, text: str) -> None:
+    """Write ``text`` to ``path`` readable by this user only (0600), replacing
+    any content. Created 0600 from the start so a secret is never briefly
+    world-readable; the chmod covers a file that already existed looser."""
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, 'w') as f:
+        f.write(text)
+    os.chmod(path, 0o600)
+
+
 def _load_or_create_secret_key() -> str:
     """Return a stable Flask secret key.
 

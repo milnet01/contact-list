@@ -272,6 +272,17 @@ class TestEnsurePrivateDir:
         assert mode == 0o700, f'expected 0700, got {oct(mode)}'
 
 
+class TestWritePrivateText:
+    def test_writes_0600_and_tightens_an_existing_file(self, tmp_path):
+        import config
+        target = tmp_path / 'secret'
+        target.write_text('old, much longer content')
+        target.chmod(0o644)
+        config.write_private_text(str(target), 'new')
+        assert target.read_text() == 'new'
+        assert stat.S_IMODE(os.stat(target).st_mode) == 0o600
+
+
 class TestSyncPhotos:
     """Google-sync photo download + storage (CL-0026)."""
 
