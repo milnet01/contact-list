@@ -102,12 +102,20 @@ def _submitted_custom_fields(form: MultiDict[str, str]) -> list[dict[str, str]]:
     ]
 
 
+_MAX_ID = 2 ** 63 - 1  # SQLite's largest integer
+_MAX_ID_DIGITS = len(str(_MAX_ID))  # checked before int(), which refuses 4300+ digits
+
+
 def selected_ids(raw: list[str]) -> list[int]:
     """Contact ids from a form's repeated ``selected`` field, in order, without
     repeats. Anything that is not a plain decimal number is ignored:
     ``isdecimal``, not ``isdigit``, because '²' is a digit that ``int`` refuses,
-    and ``int`` alone would accept '-1' and '1_000'."""
-    return list(dict.fromkeys(int(v) for v in raw if v.isdecimal()))
+    and ``int`` alone would accept '-1' and '1_000'. A number past SQLite's
+    largest integer is ignored too: no row has that id, and a very long one
+    makes ``int`` raise."""
+    return list(dict.fromkeys(
+        int(v) for v in raw
+        if v.isdecimal() and len(v.lstrip('0')) <= _MAX_ID_DIGITS and int(v) <= _MAX_ID))
 
 
 def validate_core_fields(

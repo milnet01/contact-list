@@ -388,6 +388,24 @@ class TestBulkDelete:
         assert b'Alice' not in resp.data
         assert b'Charlie' in resp.data
 
+    def test_selected_ids_ignores_a_value_too_large_for_int(self):
+        from routes.contacts import selected_ids
+        assert selected_ids(['7', '9' * 5000, '99999999999999999999', '8']) == [7, 8]
+
+    def test_bulk_delete_and_merge_ignore_a_huge_selected_value(self, client):
+        token = _get_csrf(client)
+        client.post('/contacts', data={
+            '_csrf_token': token, 'type': 'individual', 'name': 'Alice',
+        })
+        huge = '9' * 5000
+        resp = client.post('/contacts/bulk-delete', data={
+            '_csrf_token': token, 'selected': ['1', huge]}, follow_redirects=True)
+        assert resp.status_code == 200
+        assert b'Deleted 1 contact' in resp.data
+        resp = client.post('/contacts/merge', data={
+            '_csrf_token': token, 'selected': [huge]}, follow_redirects=True)
+        assert resp.status_code == 200
+
     def test_bulk_delete_empty(self, client):
         token = _get_csrf(client)
         resp = client.post('/contacts/bulk-delete', data={
