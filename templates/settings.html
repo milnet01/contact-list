@@ -89,7 +89,7 @@
                 </div>
                 <div class="form-group">
                     <label for="per_page">Contacts per page</label>
-                    <input id="per_page" type="number" name="per_page" min="1" max="200" value="{{ settings.per_page }}">
+                    <input id="per_page" type="number" name="per_page" min="1" max="{{ max_per_page }}" value="{{ settings.per_page }}">
                 </div>
                 <div class="form-group">
                     <label for="sort">Default sort</label>

@@ -22,7 +22,7 @@ from werkzeug.datastructures import MultiDict
 
 import phoneutil
 import photos
-from config import VALID_CONTACT_TYPES
+from config import VALID_CONTACT_TYPES, Config
 from db import get_db
 from models import (
     MAX_CUSTOM_FIELDS,
@@ -171,7 +171,7 @@ def contact_list() -> ResponseReturnValue:
 
     per_page_arg = request.args.get('per_page', type=int)
     per_page = per_page_arg if per_page_arg is not None else int(s['per_page'])
-    per_page = max(1, min(per_page, 200))
+    per_page = max(1, min(per_page, Config.MAX_CONTACTS_PER_PAGE))
 
     search = request.args.get('q', '').strip()
     contact_type = request.args.get('type', '').strip()

@@ -127,6 +127,21 @@ class TestListContacts:
         assert len(page99) == 1  # last page (4 of 4) holds the 10th contact
 
 
+class TestPerPageCeiling:
+    """The ceiling is Config.MAX_CONTACTS_PER_PAGE everywhere it is applied."""
+
+    def test_list_contacts_and_the_route_follow_the_constant(self, app, db, monkeypatch):
+        import config
+        monkeypatch.setattr(config.Config, 'MAX_CONTACTS_PER_PAGE', 3)
+        for i in range(5):
+            models.create_contact(db, 'individual', f'Person {i}')
+        rows, _total = models.list_contacts(db, per_page=50)
+        assert len(rows) == 3
+        html = app.test_client().get('/contacts?per_page=50').data
+        assert b'Person 2' in html and b'Person 3' not in html
+        assert b'max="3"' in app.test_client().get('/settings').data
+
+
 class TestUpdateContact:
     def test_update_fields(self, db):
         cid = models.create_contact(db, 'individual', 'Alice')

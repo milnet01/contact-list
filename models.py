@@ -10,7 +10,7 @@ import unicodedata
 from collections.abc import Iterator
 
 import phoneutil
-from config import VALID_CONTACT_TYPES
+from config import VALID_CONTACT_TYPES, Config
 from settings import SETTINGS_DEFAULTS
 
 # CL-0037: tag caps. MAX_TAG_LEN bounds a single tag's length; MAX_TAGS bounds
@@ -256,9 +256,9 @@ def list_contacts(
     sort_dir: str = 'asc',
     tags: list[str] | None = None,
 ) -> tuple[list[sqlite3.Row], int]:
-    # Clamp pagination at the data layer too, so the "max 200 per page" contract
-    # holds for every caller (tests, future API), not just the web route.
-    per_page = max(1, min(per_page, 200))
+    # Clamp pagination at the data layer too, so the page-size ceiling holds for
+    # every caller (tests, future API), not just the web route.
+    per_page = max(1, min(per_page, Config.MAX_CONTACTS_PER_PAGE))
     page = max(1, page)
 
     query, params = _build_contact_query(search, contact_type, letter, tags)

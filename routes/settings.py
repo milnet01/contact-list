@@ -15,6 +15,7 @@ from flask.typing import ResponseReturnValue
 
 import server_control
 import settings as settings_mod
+from config import Config
 from db import get_db
 
 bp = Blueprint('settings', __name__)
@@ -30,6 +31,7 @@ def _choices() -> dict:
         'date_formats': settings_mod.DATE_FORMATS,
         'themes': list(settings_mod.THEMES),
         'regions': sorted(phonenumbers.SUPPORTED_REGIONS),
+        'max_per_page': Config.MAX_CONTACTS_PER_PAGE,
     }
 
 
