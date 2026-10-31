@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: CL=110 -->
+<!-- ants-roadmap-id-high-water: CL=111 -->
 
 # Contact List — Roadmap
 
@@ -1901,6 +1901,12 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   (1) .githooks/pre-push: the break at the tag, no-base and diff-failure cases stops collecting pushed refs, so later refs in the same push skip the is-it-HEAD check. (2) local-ci.sh: the tree is hashed after the checks finish, so a file edited during the run is recorded as passed; hash before the run and record that. (3) packaging/build-linux.sh and wine-setup.sh: a corrupt cached download fails sha256 on every run and is never re-fetched; the failure should tell the user to delete the file. Shell scripts, no test harness here; each needs a manual repro.
   **Layman:** Three small gaps in the push hook and build scripts that only bite in unusual runs.
   Kind: fix.
+  Source: review-readability 2026-10-31.
+
+- 🚧 [CL-0111] **Readability review 2026-10-31: close the data lane.**
+  Lane file docs/reviews/review-readability-2026-10-31/lane-01-data.md; ledger closed-data.md.
+  **Layman:** Tidy the code that stores contacts, photos and imports so the next person can follow it, and fix a photo bug found on the way.
+  Kind: review-fix.
   Source: review-readability 2026-10-31.
 
 ## Efficiency & Refactoring

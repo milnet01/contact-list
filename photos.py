@@ -35,6 +35,9 @@ MAX_PHOTO_BYTES = 4 * 1024 * 1024
 # headroom while turning a multi-MB upload into a ~20-40 KB avatar payload.
 THUMBNAIL_MAX_PX = 256
 
+# The supported formats are listed three times: detect_image_ext (magic bytes),
+# _MIME and _PIL_FORMAT. Add a format to all three; a format missing from _MIME
+# is served as application/octet-stream.
 _MIME = {
     'jpg': 'image/jpeg',
     'png': 'image/png',
@@ -125,42 +128,63 @@ def _thumb_path(config: Mapping[str, Any], contact_id: int, ext: str) -> str:
     return os.path.join(config['PHOTOS_DIR'], f'{int(contact_id)}_thumb.{ext}')
 
 
+def _remove_quietly(path: str) -> None:
+    """Remove ``path`` if present; a file that is already gone is not an error."""
+    try:
+        os.remove(path)
+    except FileNotFoundError:
+        pass
+
+
+def _atomic_write(directory: str, prefix: str, final: str, data: bytes) -> None:
+    """Write ``data`` to ``final`` through a temp file, so a reader never sees a
+    torn file. Raises ``OSError`` on failure, leaving no temp file behind.
+
+    A per-PROCESS temp name was not unique enough: the server serves on a
+    long-lived background thread, so two concurrent GETs for the same missing
+    avatar both lazily regenerate it and shared one path -- one truncating while
+    the other sat between write and replace, promoting a half-written file that
+    then persisted, because the existence check never regenerates (CL-0071).
+    mkstemp gives each writer its own name, in the same directory so the replace
+    stays atomic. The thumbnail writer swallows the error; save_photo raises it.
+    """
+    fd, tmp = tempfile.mkstemp(dir=directory, prefix=prefix, suffix='.tmp')
+    try:
+        with os.fdopen(fd, 'wb') as fh:
+            fh.write(data)
+        os.replace(tmp, final)
+    except OSError:
+        _remove_quietly(tmp)
+        raise
+
+
 def _write_thumbnail(config: Mapping[str, Any], contact_id: int, ext: str, data: bytes) -> bool:
     """Generate + atomically write a contact's thumbnail. Return success.
 
     Returns ``True`` when a thumbnail was written, ``False`` on any swallowed
-    failure — both an undecodable body (``generate_thumbnail`` raising
-    ``ValueError``) and a filesystem write error (``OSError``: disk full,
-    permission, cross-device ``os.replace``). Either way no thumbnail is left and
-    the caller falls back to the full-size original. Swallowing the write
-    ``OSError`` is what keeps the lazy serve path (which writes on a GET) from
-    ever 500-ing where the old read-only route could not.
+    failure -- an undecodable body (``generate_thumbnail`` raising
+    ``ValueError``) or a filesystem error (``OSError``: disk full, permission,
+    an unmakeable folder, cross-device ``os.replace``). On a decode failure any
+    existing thumbnail is removed, since it belongs to the photo being replaced;
+    on a write failure the previous thumbnail is left as it was. The caller
+    falls back to the full-size original. Swallowing every ``OSError`` is what
+    keeps the lazy serve path (which writes on a GET) from ever 500-ing where
+    the old read-only route could not.
     """
+    final = _thumb_path(config, contact_id, ext)
     try:
         thumb_bytes = generate_thumbnail(data, ext)
     except ValueError:
+        try:
+            _remove_quietly(final)
+        except OSError:
+            pass
         return False
-    ensure_private_dir(config['PHOTOS_DIR'])
-    final = _thumb_path(config, contact_id, ext)
-    # A per-PROCESS temp name was not unique enough: the server serves on a
-    # long-lived background thread, so two concurrent GETs for the same missing
-    # avatar both lazily regenerate it and shared one path -- one truncating
-    # while the other sat between write and replace, promoting a half-written
-    # file that then persisted, because the existence check never regenerates
-    # (CL-0071). mkstemp gives each writer its own (same directory, so the
-    # replace stays atomic).
-    fd, tmp = tempfile.mkstemp(
-        dir=config['PHOTOS_DIR'], prefix=f'{contact_id}_thumb.', suffix='.tmp')
     try:
-        with os.fdopen(fd, 'wb') as fh:
-            fh.write(thumb_bytes)
-        os.replace(tmp, final)           # atomic: a concurrent GET never sees a torn file
+        ensure_private_dir(config['PHOTOS_DIR'])
+        _atomic_write(config['PHOTOS_DIR'], f'{contact_id}_thumb.', final, thumb_bytes)
         return True
     except OSError:
-        try:
-            os.remove(tmp)
-        except FileNotFoundError:
-            pass
         return False
 
 
@@ -186,18 +210,7 @@ def save_photo(config: Mapping[str, Any], contact_id: int, data: bytes, *, old_e
 
     ensure_private_dir(config['PHOTOS_DIR'])
     final = _photo_path(config, contact_id, ext)
-    fd, tmp = tempfile.mkstemp(
-        dir=config['PHOTOS_DIR'], prefix=f'{contact_id}.', suffix='.tmp')
-    try:
-        with os.fdopen(fd, 'wb') as fh:
-            fh.write(data)
-        os.replace(tmp, final)
-    except OSError:
-        try:
-            os.remove(tmp)
-        except FileNotFoundError:
-            pass
-        raise
+    _atomic_write(config['PHOTOS_DIR'], f'{contact_id}.', final, data)
 
     if old_ext and old_ext != ext:
         delete_photo(config, contact_id, old_ext)

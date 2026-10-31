@@ -218,6 +218,29 @@ class TestAvatarFilename:
         assert photos.avatar_filename(config, 9, 'png') == '9.png'
         assert not os.path.exists(os.path.join(config['PHOTOS_DIR'], '9_thumb.png'))
 
+    def test_unwritable_photos_dir_serves_original(self, config, monkeypatch):
+        # A thumbnail that cannot be written (the folder cannot be made, or no
+        # temp file can be created) must not turn the GET into a 500.
+        os.makedirs(config['PHOTOS_DIR'], exist_ok=True)
+        with open(os.path.join(config['PHOTOS_DIR'], '8.png'), 'wb') as fh:
+            fh.write(_real_png(512, 512))
+
+        def _boom(*args, **kwargs):
+            raise OSError('read-only file system')
+
+        monkeypatch.setattr(photos, 'ensure_private_dir', _boom)
+        assert photos.avatar_filename(config, 8, 'png') == '8.png'
+
+    def test_failed_replacement_leaves_no_stale_thumb(self, config):
+        # An undecodable same-extension replacement must not leave the OLD
+        # thumbnail to be served in place of the new photo.
+        photos.save_photo(config, 12, _real_png(512, 512))
+        thumb = os.path.join(config['PHOTOS_DIR'], '12_thumb.png')
+        assert os.path.exists(thumb)
+        photos.save_photo(config, 12, PNG, old_ext='png')  # magic-valid, undecodable
+        assert not os.path.exists(thumb)
+        assert photos.avatar_filename(config, 12, 'png') == '12.png'
+
     def test_falls_back_when_original_missing(self, config):
         os.makedirs(config['PHOTOS_DIR'], exist_ok=True)
         # No files at all: return the original basename (send_from_directory 404s).
