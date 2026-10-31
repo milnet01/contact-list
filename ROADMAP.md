@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: CL=114 -->
+<!-- ants-roadmap-id-high-water: CL=118 -->
 
 # Contact List — Roadmap
 
@@ -1920,16 +1920,51 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   Kind: fix.
   Source: review-readability 2026-10-31.
 
-- 📋 [CL-0113] **Google pull may fail on a linked contact that has a local field named Birthday, Address or Organization in other letter case.**
+- ✅ [CL-0113] **Google pull may fail on a linked contact that has a local field named Birthday, Address or Organization in other letter case.**
   google_sync._upsert_person deletes the old birthday/address/organization custom fields with a case-sensitive IN list, but idx_cf_unique is NOCASE, so inserting 'birthday' next to a local 'Birthday' violates it. Not reproduced here (needs a two-way-sync fixture). Fix is LOWER(field_name) IN (...), but that also deletes the user's own differently-cased field on sync; decide that first. Lane: routes-sync owns google_sync.py.
+  Reproduced with a local 'Birthday' field (IntegrityError, contact
+  skipped on pull); fixed by LOWER(field_name) in the pull's delete.
+  Deleting a differently-cased field matches the push, which already
+  reads these fields case-insensitively. Closed under CL-0114.
   **Layman:** A Google sync could hit a database error for a contact that has a hand-typed field such as "Birthday" with a capital letter.
   Kind: fix.
   Source: review-readability 2026-10-31.
 
-- 🚧 [CL-0114] **Readability review 2026-10-31: close the routes-sync lane.**
+- ✅ [CL-0114] **Readability review 2026-10-31: close the routes-sync lane.**
   Lane file docs/reviews/review-readability-2026-10-31/lane-02-routes-sync.md; ledger closed-routes-sync.md.
+  Closed: Disconnect now really revokes (creds.revoke did not exist);
+  sync baseline advances only on a clean push; case-insensitive pull
+  delete (CL-0113); one import loop with counted refusals; page-size and
+  size-limit messages follow their constants; google_auth takes paths
+  from config; one selected-ids parser; merge helper lifted; comment
+  fixes. Queued CL-0115 to CL-0118. Ledger:
+  docs/reviews/review-readability-2026-10-31/closed-routes-sync.md.
   **Layman:** Tidy the web routes and Google sync code, and fix the sync bugs found on the way.
   Kind: review-fix.
+  Source: review-readability 2026-10-31.
+
+- 📋 [CL-0115] **A Google-pulled contact can exceed the field length caps, and a later edit is refused until it is shortened.**
+  google_sync._upsert_person writes name, email, phone and notes with no length check. Measured: models.update_contact then raises 'Name exceeds 200 characters'. Truncating on pull would lose data; refusing the pull would drop the contact. Needs a decision. models._validate_field_lengths now says so.
+  **Layman:** A very long name or note from Google can be saved, but editing that contact is refused until the long value is trimmed.
+  Kind: fix.
+  Source: review-readability 2026-10-31.
+
+- 📋 [CL-0116] **Sync error page shows no counts although the sync returns what it committed.**
+  routes/sync.py start_sync flashes only 'Sync failed: ...' when SyncResult.error is set, though google_sync returns pulled/created counts for the work done before the error. Show them.
+  **Layman:** When a sync stops part-way the message does not say how many contacts were already imported.
+  Kind: ux.
+  Source: review-readability 2026-10-31.
+
+- 📋 [CL-0117] **Any non-rate-limit 403 from the People API tells the user to reconnect.**
+  google_sync._is_write_scope_denied treats a daily-quota refusal or a 403 on the read in the update path the same as a lost write scope. Check the error reason (insufficientPermissions / ACCESS_TOKEN_SCOPE_INSUFFICIENT) instead of excluding one reason.
+  **Layman:** Some Google refusals that have nothing to do with permissions are reported as 'reconnect'.
+  Kind: fix.
+  Source: review-readability 2026-10-31.
+
+- 📋 [CL-0118] **Merge preview drops custom fields past the cap silently, and extras can push the merge over the cap.**
+  routes/merge.py merge_preview emits an uncapped union of custom fields (templates/merge.html) and merge_apply clamps cf_count to MAX_CUSTOM_FIELDS; _preserve_extra may add rows past models' cap, so merge_contacts refuses with 'Could not merge'. Also unchecked: merge ignores whether a loser is linked to Google; the Google copy of a deleted loser is untouched.
+  **Layman:** Merging contacts with many extra fields can quietly lose some, or be refused with a short message.
+  Kind: fix.
   Source: review-readability 2026-10-31.
 
 ## Efficiency & Refactoring

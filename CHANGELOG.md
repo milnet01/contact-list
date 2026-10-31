@@ -17,6 +17,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Disconnect now revokes the Google grant.** (CL-0114)
+  It called a method that does not exist, so the grant stayed live at Google while the app said it was disconnected.
+
+- **A failed Google push is retried on the next sync.** (CL-0114)
+  The sync baseline moved forward even when a contact failed to push, hiding the edit from later syncs.
+
+- **A Google pull no longer skips a contact that has a local field named Birthday, Address or Organization in other letter case.** (CL-0113)
+
+- **The import summary counts every refused row, in CSV as in vCard, and names it.** (CL-0114)
+  The count is now labelled Skipped.
+
 - **A photo that cannot be resized no longer breaks the page.** (CL-0111)
   A full disk or read-only photo folder, or a replacement photo that cannot be read, no longer shows an error page or an old picture: the full-size photo is shown instead.
 
