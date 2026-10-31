@@ -1939,6 +1939,14 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   from config; one selected-ids parser; merge helper lifted; comment
   fixes. Queued CL-0115 to CL-0118. Ledger:
   docs/reviews/review-readability-2026-10-31/closed-routes-sync.md.
+  Correction 2026-10-31 (cold review): "sync baseline advances only on a
+  clean push" was too broad. The baseline is now held only when an edit
+  to a linked contact is left unpushed; refused creates and pull skips
+  never hold it. Also: revoke survives a bad proxy reply, numbered
+  import labels fit the 64-character cap, a vCard/CSV row over the field
+  cap imports with a warning, huge selected ids are ignored. Residual
+  cost queued as CL-0121. Ledger:
+  docs/reviews/review-readability-2026-10-31/closed-cold-review.md.
   **Layman:** Tidy the web routes and Google sync code, and fix the sync bugs found on the way.
   Kind: review-fix.
   Source: review-readability 2026-10-31.
