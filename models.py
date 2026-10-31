@@ -28,10 +28,12 @@ MAX_TAGS = 50
 # lengths existed only as browser maxlength attributes, which a direct POST
 # ignores, so a single request could store a multi-megabyte name that then
 # rendered into every list page, the duplicates scan and the CSV export.
-# The name, email, phone, notes and custom-field value caps mirror
-# templates/contact_form.html's maxlength values; change both together.
-# MAX_CUSTOM_FIELDS has no maxlength: its browser copy is in static/app.js.
+# The core-field caps mirror templates/contact_form.html's maxlength values;
+# change both together. The custom-field caps (count, name and value length)
+# reach the form and static/app.js through app.py's `cf_limits`, so they are
+# changed here only.
 MAX_CUSTOM_FIELDS = 50
+MAX_CF_NAME_LEN = 64
 MAX_NAME_LEN = 200
 MAX_EMAIL_LEN = 254
 MAX_PHONE_LEN = 30
@@ -993,7 +995,7 @@ def delete_contacts(
     return found
 
 
-_FIELD_NAME_RE = re.compile(r'[a-zA-Z0-9_ ]{1,64}')
+_FIELD_NAME_RE = re.compile(rf'[a-zA-Z0-9_ ]{{1,{MAX_CF_NAME_LEN}}}')
 _FIELD_NAME_STRIP_RE = re.compile(r'[^a-zA-Z0-9_ ]+')
 
 
@@ -1004,10 +1006,10 @@ def valid_field_name(name: str) -> bool:
 def sanitize_field_name(raw: str) -> str:
     """Coerce an arbitrary label (a CSV header, a vCard TYPE) into a name that
     passes `valid_field_name`: drop any char outside [a-zA-Z0-9_ ], collapse
-    whitespace, trim, cap at 64. Returns '' if nothing survives — the caller
+    whitespace, trim, cap at MAX_CF_NAME_LEN. Returns '' if nothing survives — the caller
     then falls back to a generated name (e.g. 'Field 2')."""
     cleaned = _FIELD_NAME_STRIP_RE.sub(' ', raw)
-    return ' '.join(cleaned.split())[:64]
+    return ' '.join(cleaned.split())[:MAX_CF_NAME_LEN]
 
 
 def import_contact(

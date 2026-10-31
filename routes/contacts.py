@@ -24,6 +24,7 @@ import photos
 from config import VALID_CONTACT_TYPES, Config, megabytes_text
 from db import get_db
 from models import (
+    MAX_CF_NAME_LEN,
     MAX_CUSTOM_FIELDS,
     MAX_DUPLICATE_GROUPS,
     MAX_EMAIL_LEN,
@@ -76,7 +77,7 @@ def _validate_custom_fields(form: MultiDict[str, str]) -> tuple[list[tuple[str, 
         if not valid_field_name(cn):
             errors.append(
                 f'Invalid field name: "{cn}" (letters, numbers, spaces, '
-                'underscores only, max 64 chars).'
+                f'underscores only, max {MAX_CF_NAME_LEN} chars).'
             )
         elif cn.lower() in seen:
             errors.append(f'Duplicate field name: "{cn}".')

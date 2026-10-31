@@ -82,3 +82,14 @@ class TestContactTypeLists:
             page = client.get(url).get_data(as_text=True)
             assert '<option value="trust"' in page, url
             assert '>Trust</option>' in page, url
+
+
+class TestCustomFieldCaps:
+    def test_form_carries_the_model_caps_for_the_script(self, client):
+        import models
+        page = client.get('/contacts/new').get_data(as_text=True)
+        assert f'data-max-fields="{models.MAX_CUSTOM_FIELDS}"' in page
+        template = page[page.index('<template id="custom-field-template">'):]
+        template = template[:template.index('</template>')]
+        assert f'maxlength="{models.MAX_CF_NAME_LEN}"' in template
+        assert f'maxlength="{models.MAX_CF_VALUE_LEN}"' in template

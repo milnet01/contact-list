@@ -16,6 +16,7 @@ import photos
 import settings as settings_mod
 from config import APP_VERSION, Config, ensure_private_dir, megabytes_text
 from db import close_db, get_db, init_db
+from models import MAX_CF_NAME_LEN, MAX_CF_VALUE_LEN, MAX_CUSTOM_FIELDS
 from resources import resource_path
 
 
@@ -162,6 +163,11 @@ def create_app(test_config: dict | None = None) -> Flask:
             'settings': current_settings(),
             'photo_limit': megabytes_text(photos.MAX_PHOTO_BYTES),
             'contact_types': config_mod.VALID_CONTACT_TYPES,
+            'cf_limits': {
+                'count': MAX_CUSTOM_FIELDS,
+                'name': MAX_CF_NAME_LEN,
+                'value': MAX_CF_VALUE_LEN,
+            },
         }
 
     @app.template_filter('friendly_date')

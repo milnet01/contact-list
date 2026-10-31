@@ -90,6 +90,7 @@
 
         <div class="form-group">
             <label for="tags">Tags</label>
+            {# 2600: a deliberate over-bound of MAX_TAGS x MAX_TAG_LEN plus separators (models.py); the server enforces the real caps. #}
             <input id="tags" name="tags" type="text" maxlength="2600"
                    value="{{ tags_str }}">
             <small class="form-hint">Separate tags with commas.</small>
@@ -99,20 +100,26 @@
     <fieldset id="custom-fields-section">
         <legend>Custom Fields</legend>
 
-        <div id="custom-fields">
-            {% for cf in custom_fields %}
+        {# One row's markup, used for the saved rows and, as a <template>, for
+           the rows "+ Add Field" adds. static/app.js adds the drag handle and
+           move buttons to both kinds. The caps are data attributes, which
+           app.js reads. #}
+        {% macro cf_row(name, value) %}
             <div class="custom-field-row">
-                <input name="cf_name" type="text" placeholder="Field name" maxlength="64"
+                <input name="cf_name" type="text" placeholder="Field name" maxlength="{{ cf_limits.name }}"
                        aria-label="Field name"
-                       value="{{ cf.field_name }}" required>
-                <input name="cf_value" type="text" placeholder="Value" maxlength="500"
+                       value="{{ name }}" required>
+                <input name="cf_value" type="text" placeholder="Value" maxlength="{{ cf_limits.value }}"
                        aria-label="Field value"
-                       value="{{ cf.field_value }}" required>
+                       value="{{ value }}" required>
                 <button type="button" class="btn btn-small btn-danger remove-field"
                         aria-label="Remove this custom field">Remove</button>
             </div>
-            {% endfor %}
+        {% endmacro %}
+        <div id="custom-fields" data-max-fields="{{ cf_limits.count }}">
+            {% for cf in custom_fields %}{{ cf_row(cf.field_name, cf.field_value) }}{% endfor %}
         </div>
+        <template id="custom-field-template">{{ cf_row('', '') }}</template>
         <button type="button" id="add-field" class="btn btn-small btn-secondary">+ Add Field</button>
     </fieldset>
 

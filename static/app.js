@@ -1,4 +1,8 @@
-// Progressive enhancement — all handlers degrade gracefully without JS
+// Progressive enhancement: the pages work as plain forms and links without this
+// file, except for what needs it: bulk select and its Merge/Delete bar, the
+// confirmation on [data-confirm] buttons (they submit without it), the
+// custom-field Add/Remove/move controls, card-view layout, Recently viewed,
+// keyboard shortcuts and the Settings tabs.
 (function () {
     'use strict';
 
@@ -10,7 +14,10 @@
         if (btn) {
             btn.addEventListener('click', function () { flash.remove(); });
         }
-        // Auto-dismiss after 6 seconds
+        // Auto-dismiss after 6 seconds, but only a message the user can also
+        // dismiss. A form's error list has no dismiss button and must stay
+        // while the user corrects the form.
+        if (!btn) return;
         setTimeout(function () {
             flash.style.transition = 'opacity 0.4s ease';
             flash.style.opacity = '0';
@@ -42,7 +49,7 @@
         if (resolve) resolve(answer);
     }
 
-    function showModal(message) {
+    function askConfirm(message) {
         return new Promise(function (resolve) {
             if (!modal || !modalMsg || !message) {
                 resolve(confirm(message || 'Are you sure?')); // fallback
@@ -93,7 +100,7 @@
             if (!msg) return;  // before preventDefault, or an empty message makes the control inert
             e.preventDefault();
             var self = this;
-            showModal(msg).then(function (confirmed) {
+            askConfirm(msg).then(function (confirmed) {
                 if (!confirmed) return;
                 // For buttons inside forms, submit the form directly
                 if (self.type === 'submit' && self.form) {
@@ -173,9 +180,20 @@
     var rowSelects = document.querySelectorAll('.row-select');
     var lastCount = 0;
 
+    // Count DISTINCT contact ids, not checkboxes. /contacts/duplicates renders
+    // three independent bucketings (name, email, phone), so a contact
+    // duplicated by two of them appears as two checkboxes with the same value.
+    function selectedCount() {
+        var ids = {};
+        document.querySelectorAll('.row-select:checked').forEach(function (cb) {
+            ids[cb.value] = true;
+        });
+        return Object.keys(ids).length;
+    }
+
     function updateBulkBar() {
         if (!bulkBar) return;
-        var count = document.querySelectorAll('.row-select:checked').length;
+        var count = selectedCount();
         if (count > 0) {
             bulkBar.hidden = false;
             bulkCount.textContent = count;
@@ -197,7 +215,12 @@
     }
     rowSelects.forEach(function (cb) {
         cb.addEventListener('change', function () {
-            if (!cb.checked && selectAll) selectAll.checked = false;
+            if (!cb.checked) {
+                if (selectAll) selectAll.checked = false;
+                var group = cb.closest('table');
+                var groupBox = group && group.querySelector('.group-select');
+                if (groupBox) groupBox.checked = false;
+            }
             updateBulkBar();
         });
     });
@@ -217,33 +240,28 @@
         bulkClear.addEventListener('click', function () {
             if (selectAll) selectAll.checked = false;
             rowSelects.forEach(function (cb) { cb.checked = false; });
+            document.querySelectorAll('.group-select').forEach(function (gs) {
+                gs.checked = false;
+            });
             updateBulkBar();
         });
     }
     var bulkDeleteBtn = document.getElementById('bulk-delete-btn');
     var bulkForm = document.getElementById('bulk-form');
-    // Prevent accidental Enter-key submission
+    // Enter in a checkbox would submit the form (merge); only the buttons do
+    // that. Enter on a link or button must still activate it.
     if (bulkForm) {
         bulkForm.addEventListener('keydown', function (e) {
-            if (e.key === 'Enter') e.preventDefault();
+            if (e.key === 'Enter' && e.target.tagName === 'INPUT') e.preventDefault();
         });
     }
     if (bulkDeleteBtn && bulkForm) {
         bulkDeleteBtn.addEventListener('click', function () {
-            // Count DISTINCT contact ids, not checkboxes. /contacts/duplicates
-            // renders three independent bucketings (name, email, phone), so a
-            // contact duplicated by two of them appears as two checkboxes with
-            // the same value -- and the confirmation then overstated what the
-            // delete would do ("Delete 5" preceding a delete of 3).
-            var selected = document.querySelectorAll('.row-select:checked');
-            var ids = {};
-            Array.prototype.forEach.call(selected, function (cb) { ids[cb.value] = true; });
-            var count = Object.keys(ids).length;
+            var count = selectedCount();
             if (count === 0) return;
-            showModal('Delete ' + count + ' selected contact' + (count !== 1 ? 's' : '') + '?').then(function (confirmed) {
+            askConfirm('Delete ' + count + ' selected contact' + (count !== 1 ? 's' : '') + '?').then(function (confirmed) {
                 if (confirmed) {
-                    // Use HTMLFormElement.prototype.submit to bypass the keydown preventDefault
-                    HTMLFormElement.prototype.submit.call(bulkForm);
+                    bulkForm.submit();
                 }
             });
         });
@@ -307,8 +325,9 @@
             listEl.className = 'recently-viewed-list';
 
             shown.forEach(function (r) {
-                var initial = r.name.charAt(0).toUpperCase();
-                var cls = /[A-Z]/.test(initial) ? 'avatar-' + initial : 'avatar-other';
+                // Same rule as the avatar macro in templates/_macros.html.
+                var initial = r.name.charAt(0).toUpperCase() || '?';
+                var cls = /^[A-Z]$/.test(initial) ? 'avatar-' + initial : 'avatar-other';
                 var link = document.createElement('a');
                 link.setAttribute('href', r.href);
                 link.className = 'recently-viewed-item';
@@ -330,10 +349,10 @@
     // -----------------------------------------------------------------
     // Deal each card into column (i % columns) so cards read left-to-right
     // and wrap to the next row, then stack each at its column's running
-    // bottom (via CSS-grid 1px row tracks + a per-card row-span) so columns
+    // bottom (absolutely positioned: left, top and width set per card) so columns
     // still pack tightly. Because each card's (row, column) is known, tint a
     // true checkerboard that stays consistent at any column count. Degrades
-    // to the plain aligned grid in base.css when JS is absent.
+    // to the plain aligned grid in style.css when JS is absent.
     // =================================================================
     var cardMasonryTimer = null;
 
@@ -397,17 +416,37 @@
         window.addEventListener('resize', scheduleCardMasonry);
         layoutCardMasonry();
     }
+})();
 
-    // =================================================================
-    // Dynamic custom field rows (with drag-and-drop)
-    // =================================================================
+// =====================================================================
+// Dynamic custom field rows (with drag-and-drop) — its OWN IIFE, and it
+// returns early on every page without #custom-fields (only the contact
+// form has it). Keep every page-wide feature out of this block; the two
+// blocks below are separate for that reason.
+// =====================================================================
+(function () {
+    'use strict';
     var container = document.getElementById('custom-fields');
     var addBtn = document.getElementById('add-field');
-    if (!container || !addBtn) {
+    var rowTemplate = document.getElementById('custom-field-template');
+    if (!container || !addBtn || !rowTemplate) {
         return;
     }
-    var MAX_CUSTOM_FIELDS = 50;
+    // The cap comes from the server (models.MAX_CUSTOM_FIELDS); the rows'
+    // input lengths are already in the markup the template carries.
+    var MAX_CUSTOM_FIELDS = parseInt(container.getAttribute('data-max-fields'), 10);
     var dragSrcRow = null;
+
+    function rowCount() {
+        return container.querySelectorAll('.custom-field-row').length;
+    }
+
+    // At the cap the button is disabled rather than answering with a message.
+    function syncAddButton() {
+        var full = rowCount() >= MAX_CUSTOM_FIELDS;
+        addBtn.disabled = full;
+        addBtn.title = full ? 'Maximum ' + MAX_CUSTOM_FIELDS + ' custom fields allowed.' : '';
+    }
 
     function makeDraggable(row) {
         row.setAttribute('draggable', 'true');
@@ -449,103 +488,48 @@
         });
     }
 
-    function createRow(name, value) {
-        var row = document.createElement('div');
-        row.className = 'custom-field-row';
-
-        var handle = document.createElement('span');
-        handle.className = 'drag-handle';
-        handle.textContent = '\u2817';
-        // Mouse-only; the Move up/down buttons are the keyboard and screen-reader
-        // route, so the handle is hidden from assistive tech (CL-0092).
-        handle.setAttribute('aria-hidden', 'true');
-        handle.title = 'Drag to reorder';
-
-        var nameInput = document.createElement('input');
-        nameInput.name = 'cf_name';
-        nameInput.type = 'text';
-        nameInput.placeholder = 'Field name';
-        nameInput.setAttribute('aria-label', 'Field name');
-        nameInput.maxLength = 64;
-        nameInput.required = true;
-        nameInput.value = name || '';
-
-        var valInput = document.createElement('input');
-        valInput.name = 'cf_value';
-        valInput.type = 'text';
-        valInput.placeholder = 'Value';
-        valInput.setAttribute('aria-label', 'Field value');
-        valInput.maxLength = 500;
-        valInput.required = true;
-        valInput.value = value || '';
-
-        var upBtn = document.createElement('button');
-        upBtn.type = 'button';
-        upBtn.className = 'btn btn-small btn-secondary move-up';
-        upBtn.textContent = '\u25B2';
-        upBtn.setAttribute('aria-label', 'Move field up');
-
-        var downBtn = document.createElement('button');
-        downBtn.type = 'button';
-        downBtn.className = 'btn btn-small btn-secondary move-down';
-        downBtn.textContent = '\u25BC';
-        downBtn.setAttribute('aria-label', 'Move field down');
-
-        var removeBtn = document.createElement('button');
-        removeBtn.type = 'button';
-        removeBtn.className = 'btn btn-small btn-danger remove-field';
-        removeBtn.textContent = 'Remove';
-        removeBtn.setAttribute('aria-label', 'Remove this custom field');
-
-        row.appendChild(handle);
-        row.appendChild(nameInput);
-        row.appendChild(valInput);
-        row.appendChild(upBtn);
-        row.appendChild(downBtn);
-        row.appendChild(removeBtn);
-
-        makeDraggable(row);
-        return row;
+    function moveButton(kind, glyph, label) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'btn btn-small btn-secondary ' + kind;
+        btn.textContent = glyph;
+        btn.setAttribute('aria-label', label);
+        return btn;
     }
 
-    // Enhance existing server-rendered rows with buttons and drag
-    container.querySelectorAll('.custom-field-row').forEach(function (row) {
+    // Give a row (saved or new) its drag handle, move buttons and dragging.
+    // The server markup has only the inputs and Remove; the rest is added here
+    // so a page without JS shows no control that does nothing.
+    function decorateRow(row) {
         var removeBtn = row.querySelector('.remove-field');
         if (removeBtn && !row.querySelector('.move-up')) {
-            var upBtn = document.createElement('button');
-            upBtn.type = 'button';
-            upBtn.className = 'btn btn-small btn-secondary move-up';
-            upBtn.textContent = '\u25B2';
-            upBtn.setAttribute('aria-label', 'Move field up');
-
-            var downBtn = document.createElement('button');
-            downBtn.type = 'button';
-            downBtn.className = 'btn btn-small btn-secondary move-down';
-            downBtn.textContent = '\u25BC';
-            downBtn.setAttribute('aria-label', 'Move field down');
-
+            var downBtn = moveButton('move-down', '\u25BC', 'Move field down');
             row.insertBefore(downBtn, removeBtn);
-            row.insertBefore(upBtn, downBtn);
+            row.insertBefore(moveButton('move-up', '\u25B2', 'Move field up'), downBtn);
         }
         if (!row.querySelector('.drag-handle')) {
             var handle = document.createElement('span');
             handle.className = 'drag-handle';
             handle.textContent = '\u2817';
+            // Mouse-only; the Move up/down buttons are the keyboard and
+            // screen-reader route, so the handle is hidden from assistive tech.
             handle.setAttribute('aria-hidden', 'true');
             handle.title = 'Drag to reorder';
             row.insertBefore(handle, row.firstChild);
         }
         makeDraggable(row);
-    });
+    }
+
+    container.querySelectorAll('.custom-field-row').forEach(decorateRow);
+    syncAddButton();
 
     addBtn.addEventListener('click', function () {
-        if (container.querySelectorAll('.custom-field-row').length >= MAX_CUSTOM_FIELDS) {
-            showModal('Maximum ' + MAX_CUSTOM_FIELDS + ' custom fields allowed.');
-            return;
-        }
-        container.appendChild(createRow());
-        var inputs = container.querySelectorAll('input[name="cf_name"]');
-        inputs[inputs.length - 1].focus();
+        if (rowCount() >= MAX_CUSTOM_FIELDS) return;
+        var row = rowTemplate.content.firstElementChild.cloneNode(true);
+        decorateRow(row);
+        container.appendChild(row);
+        syncAddButton();
+        row.querySelector('input[name="cf_name"]').focus();
     });
 
     container.addEventListener('click', function (e) {
@@ -555,6 +539,7 @@
 
         if (target.classList.contains('remove-field')) {
             row.remove();
+            syncAddButton();
         } else if (target.classList.contains('move-up')) {
             var prev = row.previousElementSibling;
             if (prev && prev.classList.contains('custom-field-row')) {
@@ -567,18 +552,12 @@
             }
         }
     });
-
 })();
 
 // =====================================================================
-// Sticky filter bar offset + back-to-top button (CL-0048) — its OWN IIFE.
-// These used to sit at the end of the custom-fields IIFE above, which
-// returns early on any page without #custom-fields. That element exists
-// only in contact_form.html, so both features ran on /contacts/new and
-// /contacts/<id>/edit and nowhere else — while #back-to-top ships in
-// base.html on EVERY page, and --header-h is consumed by .list-controls
-// on /contacts, the one page that could never set it. Same reasoning as
-// the tabs block below; keep them separate.
+// Sticky filter bar offset + back-to-top button (CL-0048) — its OWN IIFE:
+// both run on every page, so neither may share a block that returns early
+// (as the custom-fields block above does).
 // =====================================================================
 (function () {
     'use strict';
@@ -615,9 +594,8 @@
 })();
 
 // =====================================================================
-// Tabs (CL-0047) — its OWN IIFE: the custom-fields block above returns
-// early on pages without #custom-fields, so anything sharing that IIFE
-// would never run on the Settings page.
+// Tabs (CL-0047) — its OWN IIFE, for the same reason: it must run on the
+// Settings page.
 // =====================================================================
 (function () {
     'use strict';
