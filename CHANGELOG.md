@@ -17,6 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The tray icon closes when the server stops.** (CL-0108)
+  Stopping the app from outside (Ctrl-C, or a shutdown signal) used to leave
+  the icon up and the app still running. A server crash also left the icon
+  in front of nothing. Both now close the icon and end the app, and a crash
+  exits with an error code.
+
 - **A Google sync that stops part-way now says what it had already done.** (CL-0116)
   The error message adds, for example, "Before it stopped: 12 imported from Google, 3 created on Google."
 

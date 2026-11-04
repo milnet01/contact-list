@@ -79,7 +79,7 @@ def test_launcher_uses_make_server_threaded_loopback(monkeypatch):
 
     monkeypatch.setattr('werkzeug.serving.make_server', fake_make_server)
     # Tray returns immediately (as if Quit was pressed) → main() reaps the thread.
-    monkeypatch.setattr('tray.run_tray', lambda server, port: None)
+    monkeypatch.setattr('tray.run_tray', lambda server, port, stopper: None)
 
     assert launcher.main() == 0
     assert rec['host'] == '127.0.0.1'
@@ -116,7 +116,7 @@ def test_launcher_falls_back_to_headless_when_tray_fails(monkeypatch):
 
     monkeypatch.setattr('werkzeug.serving.make_server', lambda *a, **k: FakeServer())
 
-    def boom(server, port):
+    def boom(server, port, stopper):
         raise RuntimeError('no tray here')
 
     monkeypatch.setattr('tray.run_tray', boom)

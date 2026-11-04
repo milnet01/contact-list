@@ -1885,8 +1885,12 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   Kind: review-fix.
   Source: review-readability 2026-10-31.
 
-- 📋 [CL-0108] **Stop the tray when the server stops (signal or crash).**
-  launcher.py: _stop (SIGINT/SIGTERM) calls server.shutdown() but not the pystray icon.stop(), so icon.run() may keep the process alive; a crashed serve_forever thread (_serve) likewise leaves the icon up. Needs tray.run_tray to expose the icon or a stop hook, and a test with a fake tray. Not testable by hand here (no display). Hazard: icon.stop() from a signal handler must run on a thread pystray allows.
+- ✅ [CL-0108] **Stop the tray when the server stops (signal or crash).**
+  Done: tray.TrayStopper is handed to run_tray; the server thread stops the
+  icon whenever serve_forever ends, so the stop never runs in a signal
+  handler. A crash exits 1. Tests: tests/test_tray_stops_with_server.py.
+  Checked by hand on KDE Plasma Wayland, 2026-11-05: before the fix the app
+  was still running 10 s after SIGTERM; after it, it exits at once.
   **Layman:** If the server dies or is told to quit from outside, the tray icon can stay up in front of nothing.
   Kind: fix.
   Source: review-readability 2026-10-31.

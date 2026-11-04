@@ -189,7 +189,7 @@ def test_tray_runs_unless_lwsm_managed_is_1(monkeypatch, value):
         monkeypatch.setenv('LWSM_MANAGED', value)
     ran = {}
     monkeypatch.setattr(tray, 'run_tray',
-                        lambda server, port: ran.setdefault('port', port))
+                        lambda server, port, stopper: ran.setdefault('port', port))
     bound: dict = {}
     _stub_startup(monkeypatch, bound)
 

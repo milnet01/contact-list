@@ -8,6 +8,7 @@ Any tray-init failure raises so launcher.py can fall back to headless (INV-3).
 """
 from __future__ import annotations
 
+import threading
 from typing import TYPE_CHECKING, Protocol
 
 import server_control
@@ -46,10 +47,46 @@ def _quit(icon: pystray.Icon, server: _ServerHandle) -> None:
     icon.stop()        # makes run_tray's Icon.run() return on the main thread
 
 
-def run_tray(server: _ServerHandle, port: int) -> None:
+class TrayStopper:
+    """Lets another thread take the tray down when the server stops (CL-0108).
+
+    The server can stop before the icon's loop is up, so a stop that arrives
+    first is remembered and applied when the icon comes up. Icon.stop() is safe
+    off the main thread: the GTK backend queues it on its loop, Win32 posts a
+    message. That is why launcher.py calls stop() from the server thread and
+    never from a signal handler.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._icon: pystray.Icon | None = None
+        self._stopped = False
+
+    def stop(self) -> None:
+        with self._lock:
+            self._stopped = True
+            icon = self._icon
+        if icon is not None:
+            icon.stop()
+
+    def _attach(self, icon: pystray.Icon) -> None:
+        with self._lock:
+            self._icon = icon
+            stopped = self._stopped
+        if stopped:
+            icon.stop()
+
+
+def _on_ready(icon: pystray.Icon, stopper: TrayStopper) -> None:
+    """pystray's setup callback: runs once the loop is up, when stop() works."""
+    icon.visible = True  # a custom setup must show the icon itself
+    stopper._attach(icon)
+
+
+def run_tray(server: _ServerHandle, port: int, stopper: TrayStopper) -> None:
     """Build the icon and run the pystray event loop ON THE CALLING (main)
-    thread — blocks until Quit. Raises on any tray-init failure so the caller can
-    fall back to headless."""
+    thread — blocks until Quit or stopper.stop(). Raises on any tray-init
+    failure so the caller can fall back to headless."""
     import pystray  # lazy: backend is chosen at import time, after launcher sets PYSTRAY_BACKEND
 
     menu = pystray.Menu(
@@ -58,4 +95,4 @@ def run_tray(server: _ServerHandle, port: int) -> None:
         pystray.MenuItem('Quit', lambda icon, item: _quit(icon, server)),
     )
     icon = pystray.Icon('contact-list', _load_icon_image(), 'Contact List', menu)
-    icon.run()
+    icon.run(setup=lambda icon: _on_ready(icon, stopper))

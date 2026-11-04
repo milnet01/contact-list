@@ -154,15 +154,23 @@ def main() -> int:
     # on the path a process manager runs.
     _emit(f'Listening on http://127.0.0.1:{port}')
 
+    import tray
+    stopper = tray.TrayStopper()
+    crashed = threading.Event()
+
     def _serve() -> None:
-        # Nothing else observes this thread. The guard only records the crash in
-        # the log: threading.excepthook writes to a sys.stderr that is None on a
-        # frozen windowed build. It does not stop the tray, so a live icon can
-        # still sit in front of a dead server (CL-0108).
+        # The crash is logged here because threading.excepthook writes to a
+        # sys.stderr that is None on a frozen windowed build. However the server
+        # stops — Quit, a signal's shutdown() or a crash — the tray goes with it,
+        # so no icon sits in front of a dead server (CL-0108). The stop runs on
+        # this thread, never in the signal handler.
         try:
             server.serve_forever()
         except Exception:
+            crashed.set()
             log.exception('server thread died')
+        finally:
+            stopper.stop()
 
     server_thread = threading.Thread(target=_serve)
     server_thread.start()
@@ -191,11 +199,11 @@ def main() -> int:
         # No quit path without a tray is correct — a managed server must be
         # stoppable only by its manager.
         server_thread.join()
-        return 0
+        return 1 if crashed.is_set() else 0
 
     try:
-        import tray
-        tray.run_tray(server, port)  # blocks on the main thread until Quit
+        # Blocks on the main thread until Quit, or until the server stops.
+        tray.run_tray(server, port, stopper)
     except Exception:
         # Graceful fallback: no tray → still serve. INFO, not a warning: nobody is
         # worse off (2026-07-12-system-tray-icon.md INV-3).
@@ -212,12 +220,13 @@ def main() -> int:
         open_url(f'http://127.0.0.1:{port}')
         # Join the server thread so we live as long as the server does.
         server_thread.join()
-        return 0
+        return 1 if crashed.is_set() else 0
 
-    # Quit path: run_tray returned because on_quit called server.shutdown(); reap
-    # the now-finished server thread so the port is released (INV-1).
+    # run_tray returned: Quit called server.shutdown(), or the server stopped; reap
+    # the now-finished server thread so the port is released (INV-1). A crash
+    # also lands here, since it stops the tray too, and exits non-zero.
     server_thread.join()
-    return 0
+    return 1 if crashed.is_set() else 0
 
 
 if __name__ == '__main__':

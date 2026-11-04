@@ -53,7 +53,7 @@ def _stub_start(monkeypatch: pytest.MonkeyPatch, opened: list[str]) -> None:
     monkeypatch.setattr(launcher, 'open_url', lambda url: opened.append(url))
 
 
-def _boom(server: Any, port: int) -> None:
+def _boom(server: Any, port: int, stopper: Any) -> None:
     """A tray that cannot start — what a desktop with no StatusNotifier host does."""
     raise ImportError("No module named 'gi'")
 
@@ -65,7 +65,7 @@ def test_start_with_working_tray_opens_no_browser(monkeypatch: pytest.MonkeyPatc
     opened: list[str] = []
     _stub_start(monkeypatch, opened)
     # Returning immediately stands in for the user picking Quit.
-    monkeypatch.setattr(tray, 'run_tray', lambda server, port: None)
+    monkeypatch.setattr(tray, 'run_tray', lambda server, port, stopper: None)
 
     assert launcher.main() == 0
     assert opened == []
@@ -124,7 +124,7 @@ class TestPystrayBackendGuard:
         opened: list[str] = []
         _stub_start(monkeypatch, opened)
         # A working tray that returns immediately, like the user picking Quit.
-        monkeypatch.setattr(tray, 'run_tray', lambda server, port: None)
+        monkeypatch.setattr(tray, 'run_tray', lambda server, port, stopper: None)
 
         assert launcher.main() == 0
 
