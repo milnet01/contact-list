@@ -46,15 +46,18 @@ fi
 
 # Collect every file changed by the commits being pushed. git feeds the hook
 # "<local ref> <local sha> <remote ref> <remote sha>" lines on stdin.
+# A ref that forces a full run sets run_anyway and moves on, never breaks:
+# every later ref must still reach `pushed` for the is-it-HEAD check (CL-0110).
 changed=""
 pushed=""
 branches=""
+run_anyway=0
 while read -r local_ref local_sha remote_ref remote_sha; do
     [ -z "${local_sha:-}" ] && continue
     [ "$local_sha" = "$Z40" ] && continue          # branch deletion — nothing to check
     pushed="$pushed $local_sha"
     case "$local_ref" in
-        refs/tags/*) changed="RUN_ANYWAY"; break ;;   # a release is never docs-only
+        refs/tags/*) run_anyway=1; continue ;;   # a release is never docs-only
     esac
     branches="$branches ${remote_ref#refs/heads/}"
     if [ "$remote_sha" = "$Z40" ]; then
@@ -65,8 +68,8 @@ while read -r local_ref local_sha remote_ref remote_sha; do
         base="$remote_sha"
     fi
     if [ -z "$base" ]; then
-        changed="RUN_ANYWAY"
-        break
+        run_anyway=1
+        continue
     fi
     # A failing `git diff` must not read as "nothing changed". It fails whenever
     # $base names a commit this repo does not have -- the remote is ahead, a
@@ -74,11 +77,12 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     # whitespace-only, so the empty test below exited 0 and skipped local CI
     # entirely, indistinguishable from having nothing to push.
     if ! diff_out=$(git diff --name-only "$base" "$local_sha" 2>/dev/null); then
-        changed="RUN_ANYWAY"
-        break
+        run_anyway=1
+        continue
     fi
     changed="$changed$diff_out"$'\n'
 done <<<"$input"
+[ "$run_anyway" -eq 1 ] && changed="RUN_ANYWAY"
 
 # Nothing being pushed (e.g. already up to date) — let git get on with it.
 if [ -z "${changed//[[:space:]]/}" ]; then

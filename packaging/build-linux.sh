@@ -47,10 +47,16 @@ mkdir -p "$TOOLS"
 
 # Download to <dest> if missing, then verify the sha256 on EVERY run (so a
 # truncated/partial cached file from a killed prior run is caught, not reused).
+# A mismatch deletes the file and stops, so the next run fetches a fresh copy
+# instead of failing on the same bad one forever (CL-0110).
 fetch_verify() {  # fetch_verify <url> <dest> <sha256>
   local url="$1" dest="$2" sha="$3"
   [ -f "$dest" ] || curl -fL --retry 3 -m 120 "$url" -o "$dest"
-  echo "${sha}  ${dest}" | sha256sum -c -
+  if ! echo "${sha}  ${dest}" | sha256sum -c -; then
+    rm -f "$dest"
+    echo "Checksum mismatch: deleted ${dest}. Run again to download a fresh copy." >&2
+    return 1
+  fi
 }
 
 fetch_verify "$APPIMAGETOOL_URL" "$APPIMAGETOOL" "$APPIMAGETOOL_SHA256"

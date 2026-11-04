@@ -1905,8 +1905,17 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   Kind: refactor.
   Source: review-readability 2026-10-31.
 
-- 📋 [CL-0110] **Harden three shell-script edge cases found by the readability review.**
-  (1) .githooks/pre-push: the break at the tag, no-base and diff-failure cases stops collecting pushed refs, so later refs in the same push skip the is-it-HEAD check. (2) local-ci.sh: the tree is hashed after the checks finish, so a file edited during the run is recorded as passed; hash before the run and record that. (3) packaging/build-linux.sh and wine-setup.sh: a corrupt cached download fails sha256 on every run and is never re-fetched; the failure should tell the user to delete the file. Shell scripts, no test harness here; each needs a manual repro.
+- ✅ [CL-0110] **Harden three shell-script edge cases found by the readability review.**
+  Done, each shown failing first by hand on 2026-11-05.
+  (1) pre-push: a tag, no-base or diff-failure ref now sets run_anyway
+  and reads on, so every pushed ref gets the is-it-HEAD check. Repro: a
+  tag at HEAD then an older branch; before, exit 0; after, refused.
+  (2) local-ci.sh: the tree is hashed before the run and again after; a
+  change in between records no pass. Repro: a file added mid-run; before,
+  its tree was recorded; after, "Not recording a pass".
+  (3) build-linux.sh and wine-setup.sh: a checksum mismatch deletes the
+  cached file and says to run again, so the next run fetches a fresh
+  copy. Repro: a corrupt cached file; before, it failed on every run.
   **Layman:** Three small gaps in the push hook and build scripts that only bite in unusual runs.
   Kind: fix.
   Source: review-readability 2026-10-31.

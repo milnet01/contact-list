@@ -23,6 +23,24 @@ set -uo pipefail
 APP_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$APP_DIR" || exit 1
 
+# The working tree as `git add -A` would commit it, hashed through a throwaway
+# index; the real index is not touched. Prints nothing outside a git repository.
+worktree_hash() {
+    local gitdir idx tree
+    gitdir=$(git rev-parse --git-common-dir 2>/dev/null) || return 0
+    idx=$(mktemp "$gitdir/ants-gate-index.XXXXXX") || return 0
+    cp "$(git rev-parse --git-path index)" "$idx" 2>/dev/null
+    if GIT_INDEX_FILE="$idx" git add -A . 2>/dev/null \
+       && tree=$(GIT_INDEX_FILE="$idx" git write-tree 2>/dev/null); then
+        echo "$tree"
+    fi
+    rm -f "$idx"
+}
+
+# Hashed before the checks, so the pass recorded at the end is for the tree
+# that was tested (CL-0110).
+tree_before=$(worktree_hash)
+
 # The checks themselves are scripts/gate.sh, which ci.yml runs too; the dev-tool
 # pins are requirements-dev.txt, which both install. What this script owns is
 # the matrix loop, so it checks its list against ci.yml's below.
@@ -150,15 +168,14 @@ fi
 echo "CI PASSED: all checks green across the full Python matrix ($CI_PYTHONS)."
 
 # Record the exact tree that passed (local-gate.md § 7.1), so the pre-push hook
-# need not run this again for it. The tree is the working tree as `git add -A`
-# would commit it, hashed through a throwaway index; the real index is not
-# touched. Any change to any file, this script included, gives another hash.
-gitdir=$(git rev-parse --git-common-dir 2>/dev/null) || exit 0
-idx=$(mktemp "$gitdir/ants-gate-index.XXXXXX") || exit 0
-cp "$(git rev-parse --git-path index)" "$idx" 2>/dev/null
-if GIT_INDEX_FILE="$idx" git add -A . 2>/dev/null \
-   && tree=$(GIT_INDEX_FILE="$idx" git write-tree 2>/dev/null); then
-    mkdir -p "$gitdir/ants-gate-passed" && : > "$gitdir/ants-gate-passed/$tree"
-    echo "Recorded a full pass for tree $tree."
+# need not run this again for it. Any change to any file, this script included,
+# gives another hash. A file changed during the run means no one tree was
+# tested from start to end, so nothing is recorded.
+[ -n "$tree_before" ] || exit 0
+if [ "$(worktree_hash)" != "$tree_before" ]; then
+    echo "Not recording a pass: files changed during the run, so no one version was tested throughout."
+    exit 0
 fi
-rm -f "$idx"
+gitdir=$(git rev-parse --git-common-dir)
+mkdir -p "$gitdir/ants-gate-passed" && : > "$gitdir/ants-gate-passed/$tree_before"
+echo "Recorded a full pass for tree $tree_before."

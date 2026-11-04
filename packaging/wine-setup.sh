@@ -25,7 +25,12 @@ INST_SHA256="1206721601a62c925d4e4a0dcfc371e88f2ddbe8c0c07962ebb2be9b5bde4570"
 # silent -s, so progress is visible for a slow fetch).
 [ -f "$TOOLS/$INST" ] || \
   curl -fL --retry 3 -m 300 "https://www.python.org/ftp/python/${PYVER}/${INST}" -o "$TOOLS/$INST"
-echo "${INST_SHA256}  $TOOLS/$INST" | sha256sum -c -
+if ! echo "${INST_SHA256}  $TOOLS/$INST" | sha256sum -c -; then
+  # Delete the bad copy, or every later run fails on it (CL-0110).
+  rm -f "$TOOLS/$INST"
+  echo "Checksum mismatch: deleted $TOOLS/$INST. Run again to download a fresh copy." >&2
+  exit 1
+fi
 
 # Silent, PER-USER install (InstallAllUsers=0): inside a Wine prefix a per-user
 # install needs no elevated "admin", lands in the prefix's user AppData, and puts
