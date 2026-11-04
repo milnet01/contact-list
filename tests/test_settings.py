@@ -1,5 +1,8 @@
+import re
+
 import pytest
 
+import models
 import settings as settings_mod
 from app import create_app
 from db import get_db
@@ -125,6 +128,26 @@ class TestPhoneUtil:
     def test_unparseable_returns_raw(self):
         import phoneutil
         assert phoneutil.format_phone('not a phone', 'ZA') == 'not a phone'
+
+
+class TestChoicesHaveOneHome:
+    """CL-0109: each enum-like choice list is written once, in settings.py."""
+
+    def test_sort_columns_cover_exactly_the_sort_choices(self):
+        assert set(models.SORT_COLUMNS) == set(settings_mod.SORTS)
+
+    @pytest.mark.parametrize('key', [
+        'theme', 'density', 'view', 'sort', 'sort_dir', 'default_type',
+    ])
+    def test_page_offers_exactly_the_allowed_values(self, app, key):
+        html = app.test_client().get('/settings').get_data(as_text=True)
+        select = re.search(
+            rf'<select id="{key}" name="{key}">(.*?)</select>', html, re.S,
+        )
+        assert select is not None
+        offered = re.findall(r'<option value="([^"]*)"', select.group(1))
+        assert len(offered) == len(set(offered))
+        assert set(offered) == settings_mod._ALLOWED[key]
 
 
 class TestSettingsRoute:

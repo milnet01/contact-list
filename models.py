@@ -247,6 +247,16 @@ def _build_contact_query(
     return query, params
 
 
+# Sort key -> ORDER BY column. Keyed identically to settings.SORTS, which
+# owns the list of choices; tests/test_settings.py holds the two equal.
+SORT_COLUMNS: dict[str, str] = {
+    'name': 'name COLLATE NOCASE',
+    'type': 'type',
+    'created': 'created_at',
+    'updated': 'updated_at',
+}
+
+
 def list_contacts(
     db: sqlite3.Connection,
     page: int = 1,
@@ -275,13 +285,7 @@ def list_contacts(
     total_pages = max((total + per_page - 1) // per_page, 1)
     page = min(page, total_pages)
 
-    allowed_sorts = {
-        'name': 'name COLLATE NOCASE',
-        'type': 'type',
-        'created': 'created_at',
-        'updated': 'updated_at',
-    }
-    order_col = allowed_sorts.get(sort, 'name COLLATE NOCASE')
+    order_col = SORT_COLUMNS.get(sort, SORT_COLUMNS['name'])
     direction = 'DESC' if sort_dir == 'desc' else 'ASC'
     query += f' ORDER BY is_favourite DESC, {order_col} {direction}'
     query += ' LIMIT ? OFFSET ?'

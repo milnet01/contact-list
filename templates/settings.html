@@ -40,15 +40,17 @@
                 <div class="form-group">
                     <label for="density">Density</label>
                     <select id="density" name="density">
-                        <option value="comfortable" {{ 'selected' if settings.density == 'comfortable' }}>Comfortable</option>
-                        <option value="compact" {{ 'selected' if settings.density == 'compact' }}>Compact</option>
+                        {% for value, label in densities.items() %}
+                        <option value="{{ value }}" {{ 'selected' if settings.density == value }}>{{ label }}</option>
+                        {% endfor %}
                     </select>
                 </div>
                 <div class="form-group">
                     <label for="view">Contact view</label>
                     <select id="view" name="view">
-                        <option value="list" {{ 'selected' if settings.view == 'list' }}>List</option>
-                        <option value="card" {{ 'selected' if settings.view == 'card' }}>Card</option>
+                        {% for value, label in views.items() %}
+                        <option value="{{ value }}" {{ 'selected' if settings.view == value }}>{{ label }}</option>
+                        {% endfor %}
                     </select>
                 </div>
             </fieldset>
@@ -94,16 +96,17 @@
                 <div class="form-group">
                     <label for="sort">Default sort</label>
                     <select id="sort" name="sort">
-                        {% for s in ['name', 'type', 'created', 'updated'] %}
-                        <option value="{{ s }}" {{ 'selected' if settings.sort == s }}>{{ s }}</option>
+                        {% for value, label in sorts.items() %}
+                        <option value="{{ value }}" {{ 'selected' if settings.sort == value }}>{{ label }}</option>
                         {% endfor %}
                     </select>
                 </div>
                 <div class="form-group">
                     <label for="sort_dir">Sort direction</label>
                     <select id="sort_dir" name="sort_dir">
-                        <option value="asc" {{ 'selected' if settings.sort_dir == 'asc' }}>Ascending</option>
-                        <option value="desc" {{ 'selected' if settings.sort_dir == 'desc' }}>Descending</option>
+                        {% for value, label in sort_dirs.items() %}
+                        <option value="{{ value }}" {{ 'selected' if settings.sort_dir == value }}>{{ label }}</option>
+                        {% endfor %}
                     </select>
                 </div>
                 <div class="form-group">

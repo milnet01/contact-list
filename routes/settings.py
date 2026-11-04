@@ -30,6 +30,10 @@ def _choices() -> dict:
         'timezones': settings_mod.timezones(),
         'date_formats': settings_mod.DATE_FORMATS,
         'themes': list(settings_mod.THEMES),
+        'densities': settings_mod.DENSITIES,
+        'views': settings_mod.VIEWS,
+        'sorts': settings_mod.SORTS,
+        'sort_dirs': settings_mod.SORT_DIRS,
         'regions': sorted(phonenumbers.SUPPORTED_REGIONS),
         'max_per_page': Config.MAX_CONTACTS_PER_PAGE,
     }

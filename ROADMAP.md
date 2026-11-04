@@ -1895,8 +1895,12 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   Kind: fix.
   Source: review-readability 2026-10-31.
 
-- 📋 [CL-0109] **Derive the settings choices once instead of keeping three hand copies.**
-  settings.py _ALLOWED, models.py allowed_sorts and templates/settings.html each list the sort keys (density, view, direction and default type are hand-copied into settings.html). Pass the choices to the template and derive or check the model's keys against settings._ALLOWED. Touches models and templates, which belong to the data and frontend lanes of this review.
+- ✅ [CL-0109] **Derive the settings choices once instead of keeping three hand copies.**
+  Done: settings.py holds DENSITIES, VIEWS, SORTS and SORT_DIRS; _ALLOWED
+  and the Settings page's selects derive from them. models.SORT_COLUMNS is
+  held equal to SORTS by a test. Default type was already derived, not
+  hand-copied. The rendered page is unchanged apart from whitespace.
+  Tests: TestChoicesHaveOneHome in tests/test_settings.py.
   **Layman:** The allowed sort, density and view choices are typed out in three places, so adding one can silently half-work.
   Kind: refactor.
   Source: review-readability 2026-10-31.

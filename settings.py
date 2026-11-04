@@ -49,13 +49,24 @@ SETTINGS_DEFAULTS: dict[str, str] = {
     'default_type': 'individual',
 }
 
-# Literal allowed-value sets for the enum-like keys.
+# The other enum-like choices: stored value -> label, in the order the
+# Settings page lists them. The validator sets below and the page's <select>
+# options both derive from these (CL-0109). models.SORT_COLUMNS maps each
+# SORTS key to its column, and a test holds the two key sets equal.
+DENSITIES: dict[str, str] = {'comfortable': 'Comfortable', 'compact': 'Compact'}
+VIEWS: dict[str, str] = {'list': 'List', 'card': 'Card'}
+SORTS: dict[str, str] = {
+    'name': 'name', 'type': 'type', 'created': 'created', 'updated': 'updated',
+}
+SORT_DIRS: dict[str, str] = {'asc': 'Ascending', 'desc': 'Descending'}
+
+# Allowed-value sets for the enum-like keys.
 _ALLOWED: dict[str, set[str]] = {
     'theme': set(THEMES),
-    'density': {'comfortable', 'compact'},
-    'view': {'list', 'card'},
-    'sort': {'name', 'type', 'created', 'updated'},
-    'sort_dir': {'asc', 'desc'},
+    'density': set(DENSITIES),
+    'view': set(VIEWS),
+    'sort': set(SORTS),
+    'sort_dir': set(SORT_DIRS),
     'default_type': set(VALID_CONTACT_TYPES),
 }
 
