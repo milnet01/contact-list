@@ -47,6 +47,16 @@ class _Exec:
         return self._fn()
 
 
+# The body the People API sends when the token lacks the write scope.
+_SCOPE_DENIED_BODY = (
+    b'{"error": {"code": 403, "message": "Request had insufficient '
+    b'authentication scopes.", "errors": [{"message": "Insufficient Permission", '
+    b'"domain": "global", "reason": "insufficientPermissions"}], '
+    b'"status": "PERMISSION_DENIED", "details": [{"@type": '
+    b'"type.googleapis.com/google.rpc.ErrorInfo", '
+    b'"reason": "ACCESS_TOKEN_SCOPE_INSUFFICIENT"}]}}')
+
+
 class _FakeService:
     """One object standing in for people().connections()/createContact()/get()/
     updateContact()/deleteContact(). people()/connections() return self."""
@@ -186,10 +196,28 @@ class TestRateLimitRetries:
 
         class _ScopeErr(Exception):
             resp = _Resp()
-            content = b'{"error": {"status": "PERMISSION_DENIED"}}'
+            content = _SCOPE_DENIED_BODY
 
         assert google_sync._is_write_scope_denied(_Err()) is False
         assert google_sync._is_write_scope_denied(_ScopeErr()) is True
+
+    @pytest.mark.parametrize('body', [
+        # CL-0117: a daily quota refusal is not a lost write scope.
+        b'{"error": {"code": 403, "status": "PERMISSION_DENIED", "errors": '
+        b'[{"reason": "dailyLimitExceeded"}]}}',
+        # CL-0117: a read refused for another reason (no scope reason given).
+        b'{"error": {"code": 403, "message": "The caller does not have '
+        b'permission", "status": "PERMISSION_DENIED"}}',
+    ])
+    def test_a_403_without_a_scope_reason_is_not_lost_scope(self, body):
+        class _Resp:
+            status = 403
+
+        class _Err(Exception):
+            resp = _Resp()
+            content = body
+
+        assert google_sync._is_write_scope_denied(_Err()) is False
 
 
 class TestTombstoneForAnEditedContact:
@@ -604,7 +632,7 @@ class TestBaselineOnlyAdvancesOnACleanPush:
 class _Denied(Exception):
     """Looks like a 403 write-scope refusal to google_sync's duck-typing."""
     status_code = 403
-    content = b'insufficient authentication scopes'
+    content = _SCOPE_DENIED_BODY
 
 
 def _baseline(db):
@@ -676,3 +704,31 @@ class TestBaselineHeldOnlyForUnpushedLinkedEdits:
         result = _run_sync(app, db, service, monkeypatch)
         assert result.updated == 1
         assert _baseline(db) != '2020-01-01T00:00:00Z'
+
+
+class TestSyncFailedMessageShowsWhatWasDone:
+    """CL-0116: a sync that stops part-way still reports what it committed."""
+
+    def _start(self, app, monkeypatch, result):
+        monkeypatch.setattr(google_sync, 'sync_contacts', lambda *a: result)
+        client = app.test_client()
+        client.get('/contacts/new')  # a page with a form issues the token
+        with client.session_transaction() as sess:
+            token = sess['_csrf_token']
+        client.post('/sync/start', data={'_csrf_token': token})
+        with client.session_transaction() as sess:
+            return sess['_flashes']
+
+    def test_counts_before_the_error_are_shown(self, app, monkeypatch):
+        result = google_sync.SyncResult(
+            pulled=12, created=3, error=google_sync._SCOPE_DENIED_MESSAGE)
+        flashes = self._start(app, monkeypatch, result)
+        assert flashes == [('error',
+                            'Sync failed: Google needs the write permission — '
+                            'reconnect. Before it stopped: 12 imported from '
+                            'Google, 3 created on Google.')]
+
+    def test_an_error_with_nothing_done_says_only_the_error(self, app, monkeypatch):
+        result = google_sync.SyncResult(error='Not authenticated with Google.')
+        flashes = self._start(app, monkeypatch, result)
+        assert flashes == [('error', 'Sync failed: Not authenticated with Google.')]

@@ -89,28 +89,42 @@ def start_sync() -> ResponseReturnValue:
     db = get_db()
 
     r = google_sync.sync_contacts(config, db, g.settings['phone_region'])
-    if r.error:
-        flash(f'Sync failed: {r.error}', 'error')
+    summary = ', '.join(_summary_parts(r)) + '.'
+    if not r.error:
+        flash('Sync complete: ' + summary, 'success')
+    elif _did_any_work(r):
+        # CL-0116: work committed before the error stays done, so say what it was.
+        flash(f'Sync failed: {r.error} Before it stopped: {summary}', 'error')
     else:
-        parts = [f'{r.pulled} imported from Google']
-        if r.created:
-            parts.append(f'{r.created} created on Google')
-        if r.updated:
-            parts.append(f'{r.updated} updated')
-        conflicts = r.conflicts_local + r.conflicts_google
-        if conflicts:
-            parts.append(
-                f'{conflicts} conflict{"s" if conflicts != 1 else ""} resolved '
-                f'({r.conflicts_local} kept yours, {r.conflicts_google} kept Google)')
-        if r.push_no_time:
-            parts.append(
-                f"{r.push_no_time} edit{'s' if r.push_no_time != 1 else ''} "
-                "couldn't be pushed (Google's edit time was unavailable)")
-        if r.skipped:
-            parts.append(f'{r.skipped} skipped')
-        flash('Sync complete: ' + ', '.join(parts) + '.', 'success')
+        flash(f'Sync failed: {r.error}', 'error')
 
     return redirect(url_for('sync.sync_page'))
+
+
+def _did_any_work(r: google_sync.SyncResult) -> bool:
+    return any((r.pulled, r.created, r.updated, r.conflicts_local,
+                r.conflicts_google, r.push_no_time, r.skipped))
+
+
+def _summary_parts(r: google_sync.SyncResult) -> list[str]:
+    """The counts of one sync run, as phrases for the flash message."""
+    parts = [f'{r.pulled} imported from Google']
+    if r.created:
+        parts.append(f'{r.created} created on Google')
+    if r.updated:
+        parts.append(f'{r.updated} updated')
+    conflicts = r.conflicts_local + r.conflicts_google
+    if conflicts:
+        parts.append(
+            f'{conflicts} conflict{"s" if conflicts != 1 else ""} resolved '
+            f'({r.conflicts_local} kept yours, {r.conflicts_google} kept Google)')
+    if r.push_no_time:
+        parts.append(
+            f"{r.push_no_time} edit{'s' if r.push_no_time != 1 else ''} "
+            "couldn't be pushed (Google's edit time was unavailable)")
+    if r.skipped:
+        parts.append(f'{r.skipped} skipped')
+    return parts
 
 
 @bp.route('/sync/disconnect', methods=['POST'])

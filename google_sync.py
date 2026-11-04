@@ -583,21 +583,24 @@ def _push_update(
 
 # §9: surfaced verbatim to the user, so the wording is part of the contract.
 _SCOPE_DENIED_MESSAGE = 'Google needs the write permission — reconnect.'
+# The People API's machine-readable reasons for a token lacking the scope.
+_SCOPE_DENIED_REASONS = ('insufficientPermissions', 'ACCESS_TOKEN_SCOPE_INSUFFICIENT')
 
 
 def _is_write_scope_denied(exc: Exception) -> bool:
-    """True for a People API 403 refusing the write.
+    """True for a People API 403 whose reason is a missing scope.
 
     A token that has lost the write scope fails the same way on every contact,
     so without this the whole push reported as N per-contact skips with no clue
     that reconnecting is the fix.
 
-    A 403 whose reason is a rate limit is not a scope problem: the client
-    library retries it, and one that outlasts the retries must not tell the
-    user to reconnect (CL-0070).
+    Only Google's scope reasons count (CL-0117). Any other 403 -- a rate limit,
+    a daily quota, a read refused for one contact -- takes the per-contact
+    path, since reconnecting would not fix it.
     """
     status, content = _api_error_parts(exc)
-    return status == 403 and 'ratelimitexceeded' not in content.lower()
+    return status == 403 and any(
+        reason in content for reason in _SCOPE_DENIED_REASONS)
 
 
 def _push_local_changes(

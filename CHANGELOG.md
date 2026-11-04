@@ -17,6 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A Google sync that stops part-way now says what it had already done.** (CL-0116)
+  The error message adds, for example, "Before it stopped: 12 imported from Google, 3 created on Google."
+
+- **Only a missing Google permission tells you to reconnect.** (CL-0117)
+  A daily limit, or a refusal for one contact, used to show "reconnect" too. Those contacts are now counted as skipped.
+
 - **The Contacts list keeps your sort order when you page, pick a letter or a tag, or search, and a bulk delete returns to the filtered list (CL-0119).**
 
 - **A contact whose name starts with an accented letter now gets the neutral avatar colour on every page (CL-0119).**

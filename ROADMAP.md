@@ -1916,6 +1916,8 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
 
 - 📋 [CL-0112] **CSV import keeps a row with an email and no name, storing an empty name.**
   importer.apply_mapping skips only rows with neither name nor email. The form (validate_core_fields), vcard.parse and Google sync all refuse a nameless contact. Needs a design decision, not made now: skip the row (loses email-only lists), or use the email as the name. Either changes what a user's CSV import produces; no spec covers it. Hazard: tests/test_importer.py and the import summary count rows as skipped.
+  Decided by the user 2026-11-05: keep the row and use the email as the
+  name.
   **Layman:** A CSV row that has an email but no name creates a contact with a blank name, unlike every other way of adding a contact.
   Kind: fix.
   Source: review-readability 2026-10-31.
@@ -1953,18 +1955,29 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
 
 - 📋 [CL-0115] **A Google-pulled contact can exceed the field length caps, and a later edit is refused until it is shortened.**
   google_sync._upsert_person writes name, email, phone and notes with no length check. Measured: models.update_contact then raises 'Name exceeds 200 characters'. Truncating on pull would lose data; refusing the pull would drop the contact. Needs a decision. models._validate_field_lengths now says so.
+  Decided by the user 2026-11-05: keep the Google value as sent (no
+  truncation); a later edit allows an over-long field the user did not
+  change.
   **Layman:** A very long name or note from Google can be saved, but editing that contact is refused until the long value is trimmed.
   Kind: fix.
   Source: review-readability 2026-10-31.
 
-- 📋 [CL-0116] **Sync error page shows no counts although the sync returns what it committed.**
+- ✅ [CL-0116] **Sync error page shows no counts although the sync returns what it committed.**
   routes/sync.py start_sync flashes only 'Sync failed: ...' when SyncResult.error is set, though google_sync returns pulled/created counts for the work done before the error. Show them.
+  Shipped 2026-11-05: routes/sync.py start_sync adds 'Before it stopped:
+  <counts>' to the error flash when the run did any work (_did_any_work,
+  _summary_parts). Tests: TestSyncFailedMessageShowsWhatWasDone.
   **Layman:** When a sync stops part-way the message does not say how many contacts were already imported.
   Kind: ux.
   Source: review-readability 2026-10-31.
 
-- 📋 [CL-0117] **Any non-rate-limit 403 from the People API tells the user to reconnect.**
+- ✅ [CL-0117] **Any non-rate-limit 403 from the People API tells the user to reconnect.**
   google_sync._is_write_scope_denied treats a daily-quota refusal or a 403 on the read in the update path the same as a lost write scope. Check the error reason (insufficientPermissions / ACCESS_TOKEN_SCOPE_INSUFFICIENT) instead of excluding one reason.
+  Shipped 2026-11-05: google_sync._is_write_scope_denied matches
+  _SCOPE_DENIED_REASONS (insufficientPermissions,
+  ACCESS_TOKEN_SCOPE_INSUFFICIENT). Spec
+  docs/specs/2026-07-02-two-way-google-sync.md section 9 amended. Tests:
+  test_a_403_without_a_scope_reason_is_not_lost_scope.
   **Layman:** Some Google refusals that have nothing to do with permissions are reported as 'reconnect'.
   Kind: fix.
   Source: review-readability 2026-10-31.
@@ -2011,6 +2024,8 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   Windows these 0600/0700 calls do not restrict other accounts, so the secret
   key and Google token rely on the user folder's own permissions. Not fixed now:
   no Windows leg runs in CI, and the question needs a decision.
+  Decided by the user 2026-11-05: add tzdata for win32 only, and skip
+  the four permission tests on Windows with a reason.
   **Layman:** On Windows, a copy run from source rejects time zones such as Europe/London until an extra package is installed; the released Windows app is built with it.
   Kind: fix.
   Source: Windows test run 2026-10-31, after the review-readability fixes.
