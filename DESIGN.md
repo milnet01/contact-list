@@ -614,8 +614,10 @@ All routes are server-rendered HTML. No REST/JSON API in v1 (add in v2 if needed
 | `dir` | Sort direction: `asc` or `desc` (default: the Settings direction) |
 
 The contact routes that lead back to a list — new, create, detail, edit,
-update, delete, favourite and bulk delete — also take `ref`: the list URL to
-return to, carried through the navigation chain. Only a local path is
+update, delete, favourite and bulk delete — also take `ref`: the page to return
+to, carried through the navigation chain. It is usually a list URL; Birthdays
+and Duplicates pass their own, and the detail page's star passes the detail
+page (CL-0120). Only a local path is
 accepted (`_safe_ref` in `routes/contacts.py`); anything else is dropped.
 
 ---

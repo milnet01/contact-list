@@ -2024,8 +2024,15 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   Kind: review-fix.
   Source: review-readability 2026-10-31.
 
-- 📋 [CL-0120] **Back and ref are carried inconsistently between the detail, birthdays, duplicates and merge pages.**
+- ✅ [CL-0120] **Back and ref are carried inconsistently between the detail, birthdays, duplicates and merge pages.**
   The star form on the detail page sends no ref, and toggle_favourite then redirects to the detail page without one, so Back falls to the plain list (adding ref as it stands would redirect to the list instead of the detail). Links from Birthdays and Duplicates carry no ref, and the detail route only recovers a /contacts referrer. The merge page's Cancel and breadcrumb always go to Duplicates. Needs a design choice: let toggle_favourite and the detail route distinguish a list ref from a return-to-detail. Found by the frontend lane of review-readability 2026-10-31.
+  Done 2026-11-05. The outcome (Back returns where you came from) was
+  clear; only the mechanism was open, so it was decided here. The detail
+  star posts the detail page's own URL (with its ref) as ref; Birthdays
+  and Duplicates links carry their page as ref; the merge page's Cancel,
+  breadcrumb and refused applies follow the ref the merge started from.
+  Seen failing first. Tests: tests/test_back_navigation.py. Favourites
+  spec sections 4-5, merge spec 4.2 and DESIGN.md section 9 amended.
   **Layman:** After starring a contact, or coming from Birthdays or Duplicates, the Back button may not return to where you were.
   Kind: fix.
   Source: review-readability 2026-10-31.

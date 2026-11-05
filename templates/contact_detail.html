@@ -26,6 +26,8 @@
         {% endif %}
         <form method="post" action="{{ url_for('contacts.toggle_favourite', contact_id=contact.id) }}" class="fav-form-inline">
             <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+            {# Come back to this page, keeping its own Back target (CL-0120). #}
+            <input type="hidden" name="ref" value="{{ url_for('contacts.detail', contact_id=contact.id, ref=ref or none) }}">
             <input type="hidden" name="favourite" value="{{ 0 if is_favourite else 1 }}">
             <button type="submit" class="fav-toggle" aria-label="{{ 'Remove from favourites' if is_favourite else 'Add to favourites' }}">{{ '★' if is_favourite else '☆' }}</button>
         </form>

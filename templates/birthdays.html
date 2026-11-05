@@ -36,7 +36,7 @@
         <tbody>
             {% for r in upcoming %}
             <tr>
-                <td data-label="Name">{{ name_cell(r, url_for('contacts.detail', contact_id=r.id)) }}</td>
+                <td data-label="Name">{{ name_cell(r, url_for('contacts.detail', contact_id=r.id, ref=request.full_path.rstrip('?'))) }}</td>
                 <td data-label="Birthday">
                     {{ r.next_date|day_month }}{% if r.age is not none %} <small>(turns {{ r.age }})</small>{% endif %}
                 </td>

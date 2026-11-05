@@ -6,8 +6,10 @@
 <nav class="breadcrumb" aria-label="Breadcrumb">
     <a href="{{ url_for('contacts.contact_list') }}">Contacts</a>
     <span aria-hidden="true">/</span>
-    <a href="{{ url_for('contacts.duplicates') }}">Duplicates</a>
+    {% if back == url_for('contacts.duplicates') %}
+    <a href="{{ back }}">Duplicates</a>
     <span aria-hidden="true">/</span>
+    {% endif %}
     <span>Merge</span>
 </nav>
 {% endblock %}
@@ -25,6 +27,7 @@
 <form method="post" action="{{ url_for('contacts.merge_apply') }}">
     <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="survivor_id" value="{{ survivor_id }}">
+    <input type="hidden" name="ref" value="{{ back }}">
     {% for lid in loser_ids %}<input type="hidden" name="loser_id" value="{{ lid }}">{% endfor %}
 
     {% for field in ['name', 'type', 'email', 'phone', 'notes'] %}
@@ -85,7 +88,7 @@
 
     <div class="actions">
         <button type="submit" class="btn">Merge</button>
-        <a href="{{ url_for('contacts.duplicates') }}" class="btn btn-secondary">Cancel</a>
+        <a href="{{ back }}" class="btn btn-secondary">Cancel</a>
     </div>
 </form>
 {% endblock %}

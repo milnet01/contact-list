@@ -119,19 +119,21 @@ def merge_preview() -> ResponseReturnValue:
     return render_template(
         'merge.html', contacts=contacts, survivor_id=survivor_id,
         loser_ids=loser_ids, core=core, customs=list(union.values()),
-        tags_str=', '.join(tag_union),
+        tags_str=', '.join(tag_union), back=back,
     )
 
 
 @bp.route('/contacts/merge/apply', methods=['POST'])
 def merge_apply() -> ResponseReturnValue:
     db = get_db()
+    # Every refusal returns to the page the merge started from (CL-0120).
+    back = _safe_ref(request.form.get('ref', '')) or url_for('contacts.duplicates')
     try:
         survivor_id = int(request.form['survivor_id'])
         loser_ids = [int(x) for x in request.form.getlist('loser_id')]
     except (KeyError, ValueError):
         flash('Invalid merge request.', 'error')
-        return redirect(url_for('contacts.duplicates'))
+        return redirect(back)
 
     # An unknown type falls back to individual rather than failing the merge:
     # the field is a <select>, so only a tampered request sends anything else.
@@ -148,7 +150,7 @@ def merge_apply() -> ResponseReturnValue:
     if errors:
         for error in errors:
             flash(error, 'error')
-        return redirect(url_for('contacts.duplicates'))
+        return redirect(back)
 
     try:
         cf_count = max(int(request.form.get('cf_count', 0)), 0)
@@ -161,7 +163,7 @@ def merge_apply() -> ResponseReturnValue:
     # form agree on how many custom fields a contact may carry.
     if cf_count > MAX_CUSTOM_FIELDS:
         flash(_too_many_fields(cf_count), 'error')
-        return redirect(url_for('contacts.duplicates'))
+        return redirect(back)
     customs: list[tuple[str, str]] = []
     seen: set[str] = set()
     for i in range(cf_count):
@@ -181,7 +183,7 @@ def merge_apply() -> ResponseReturnValue:
     _preserve_extra(involved, 'phone', 'Phone', raw_phone, customs, used)
     if len(customs) > MAX_CUSTOM_FIELDS:
         flash(_too_many_fields(len(customs), extras=True), 'error')
-        return redirect(url_for('contacts.duplicates'))
+        return redirect(back)
 
     # Read loser photo exts before the merge deletes their rows, so we can
     # unlink the orphaned files afterwards (the survivor keeps its own photo).
@@ -192,7 +194,7 @@ def merge_apply() -> ResponseReturnValue:
         merge_contacts(db, survivor_id, loser_ids, fields, customs, tags)
     except ValueError as exc:
         flash(f'Could not merge: {exc}', 'error')
-        return redirect(url_for('contacts.duplicates'))
+        return redirect(back)
 
     for lid, lext in loser_photo_exts.items():
         photos.delete_photo(current_app.config, lid, lext)

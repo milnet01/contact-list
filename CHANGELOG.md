@@ -41,6 +41,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The time-zone data Windows lacks is now installed with the app's other
   requirements. The released Windows app already had it.
 
+- **Back returns to where you came from.** (CL-0120)
+  After starring a contact on its page, Back no longer resets to the plain
+  list. From Birthdays or Duplicates, Back returns there. Cancelling or
+  failing a merge returns to the page you started it from.
+
 - **A Google sync that stops part-way now says what it had already done.** (CL-0116)
   The error message adds, for example, "Before it stopped: 12 imported from Google, 3 created on Google."
 

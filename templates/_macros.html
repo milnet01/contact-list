@@ -79,7 +79,8 @@
 {%- endmacro %}
 
 {# One duplicates group: a table of its contacts. `bold` names the column the
-   group matched on (email or phone, empty for the name group). #}
+   group matched on (email or phone, empty for the name group). Only the
+   Duplicates page uses it, so its links name that page as Back (CL-0120). #}
 {% macro dup_group(group, bold='') -%}
 <table class="mb-md">
     <thead>
@@ -95,7 +96,7 @@
         {% for c in group %}
         <tr>
             <td data-label="" class="td-check"><input type="checkbox" name="selected" value="{{ c.id }}" class="row-select" aria-label="Select {{ c.name }}"></td>
-            <td data-label="Name">{{ name_cell(c, url_for('contacts.detail', contact_id=c.id)) }}</td>
+            <td data-label="Name">{{ name_cell(c, url_for('contacts.detail', contact_id=c.id, ref=url_for('contacts.duplicates'))) }}</td>
             <td data-label="Type"><span class="badge badge-{{ c.type }}">{{ c.type }}</span></td>
             <td data-label="Email">{% if bold == 'email' %}<strong>{{ c.email }}</strong>{% else %}{{ c.email or '' }}{% endif %}</td>
             <td data-label="Phone">{% if bold == 'phone' %}<strong>{{ c.phone }}</strong>{% else %}{{ c.phone or '' }}{% endif %}</td>

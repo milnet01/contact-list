@@ -158,10 +158,10 @@ def toggle_favourite(contact_id: int):
   is still CSRF-guarded, so this is not a security issue).
 - **Return target:** reuses `_safe_ref`/`_get_ref` (local-paths-only). The
   **list** row form submits a `ref` (see §5), so starring on list page 3 returns
-  to page 3 with filters intact. The **detail** page form deliberately submits
-  **no `ref`**, so the empty-ref branch redirects back to that contact's detail
-  page. (The `detail` view does compute a `ref` for its other links, but the star
-  form must not forward it, or the redirect would bounce to the list.) Note: after
+  to page 3 with filters intact. The **detail** page form submits as `ref` the
+  detail page's own URL, carrying the detail page's `ref`, so starring returns
+  to the same detail page with its Back target intact (CL-0120). A request with
+  no `ref` still redirects to the contact's detail page. Note: after
   starring from the list, the contact pins to the top (INV-2) and may move to
   page 1, so it can legitimately leave the page-3 view the user returns to —
   intended behaviour, not a bug (worth a comment in the test that asserts it).
@@ -203,14 +203,13 @@ def toggle_favourite(contact_id: int):
   wrapping form (only a separate inline delete form), so nesting is not a concern
   here — carrying `_csrf_token`, the desired `favourite` value
   (`{{ 0 if is_favourite else 1 }}` — the detail template uses the `is_favourite`
-  kwarg, not `c.is_favourite`), and its own `<button class="fav-toggle">`, but
-  **no `ref`** (so the empty-ref branch round-trips to detail per §4). The `detail`
+  kwarg, not `c.is_favourite`), its own `<button class="fav-toggle">`, and a
+  hidden `ref` =
+  `url_for('contacts.detail', contact_id=contact.id, ref=ref or none)`, per §4.
+  The `detail`
   view passes `is_favourite(db, contact_id)` so the template picks the ★/☆ glyph.
-  *Accepted trade-off:* with no `ref`, after starring on a detail page the page's
-  "Back to list" link reverts to the *unfiltered* list (the carried list filter is
-  lost). Preserving it would mean threading the list ref through the toggle without
-  triggering the route's list-redirect branch — not worth the complexity here;
-  starring happens mainly from the list, where the `ref` *is* preserved.
+  This replaced the original form with no `ref`, whose Back link reverted to the
+  unfiltered list after starring (CL-0120).
 - **CSS (`static/style.css`):** a small `.fav-toggle` rule for star colour and
   hover. The filled-vs-outline distinction is the glyph itself (★ vs ☆, chosen by
   a template `{% if c.is_favourite %}`), not CSS. No JavaScript — the toggle is a
