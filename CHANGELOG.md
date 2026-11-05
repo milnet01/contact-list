@@ -37,6 +37,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   used to be refused until you shortened them. Now the long value is kept as
   it is, and you can change the contact's other fields.
 
+- **Time zones work when running from source on Windows.** (CL-0122)
+  The time-zone data Windows lacks is now installed with the app's other
+  requirements. The released Windows app already had it.
+
 - **A Google sync that stops part-way now says what it had already done.** (CL-0116)
   The error message adds, for example, "Before it stopped: 12 imported from Google, 3 created on Google."
 

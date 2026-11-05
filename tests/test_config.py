@@ -19,10 +19,18 @@ from __future__ import annotations
 
 import concurrent.futures
 import os
+import sys
 
 import pytest
 
 import config
+
+# Decided by the user 2026-11-05 (CL-0122). tests/test_hardening.py has the same.
+posix_modes_only = pytest.mark.skipif(
+    sys.platform == 'win32',
+    reason='Windows does not apply POSIX file modes, so 0600/0700 cannot be '
+           'checked; the secret key and token rely on the user folder (CL-0122).',
+)
 
 
 @pytest.fixture(autouse=True)
@@ -143,6 +151,7 @@ class TestSecretKeyFloor:
         assert config._load_or_create_secret_key() == long_key
 
 
+@posix_modes_only
 class TestConfigDirIsPrivate:
     """CL-0069: create_app locked only the photos dir, so the credentials dir
     above it stayed at the umask's 0755 whenever SECRET_KEY was set -- the

@@ -2036,7 +2036,7 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   Kind: fix.
   Source: cold review of review-readability fixes 2026-10-31.
 
-- 📋 [CL-0122] **Running from source on Windows has no time-zone data, and four tests assume Linux file permissions.**
+- ✅ [CL-0122] **Running from source on Windows has no time-zone data, and four tests assume Linux file permissions.**
   Measured on the Windows 10 test machine, Python 3.13, from tracked source.
   requirements.txt does not install `tzdata`, so five tests in
   tests/test_settings.py fail there; with `tzdata` installed they pass. Likely
@@ -2054,6 +2054,13 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   no Windows leg runs in CI, and the question needs a decision.
   Decided by the user 2026-11-05: add tzdata for win32 only, and skip
   the four permission tests on Windows with a reason.
+  Done 2026-11-05: requirements.txt has `tzdata>=2026.6; sys_platform ==
+  "win32"`, recorded in DESIGN.md section 3 as the user-approved budget
+  exception, uncapped because its versions are dates. release.yml and
+  wine-setup.sh no longer install it separately. The four tests carry a
+  skipif on win32 with the reason. Checked here: the skip marks evaluate
+  True only under win32, and pip on Linux skips tzdata. Not yet run on
+  the Windows test machine.
   **Layman:** On Windows, a copy run from source rejects time zones such as Europe/London until an extra package is installed; the released Windows app is built with it.
   Kind: fix.
   Source: Windows test run 2026-10-31, after the review-readability fixes.

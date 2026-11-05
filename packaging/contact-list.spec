@@ -89,9 +89,8 @@ hiddenimports = [
 # `tzdata` package. Without it `available_timezones()` returns an empty set on
 # the shipped .exe: the Settings timezone control renders with no options, every
 # timezone save fails, and ZoneInfo() raises -- which app.py swallows, so every
-# timestamp in the app degrades to a raw ISO string. Build-time only (DESIGN.md §3 keeps
-# build deps out of the 8-package runtime budget), and only where it is needed;
-# Linux and macOS take their zone data from the OS.
+# timestamp in the app degrades to a raw ISO string. requirements.txt installs it
+# on Windows only (DESIGN.md §3); Linux and macOS take their zone data from the OS.
 if sys.platform == 'win32':
     _d, _b, _h = collect_all('tzdata')
     datas += _d

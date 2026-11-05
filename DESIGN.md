@@ -50,6 +50,7 @@ google-auth-httplib2>=0.4,<0.5
 phonenumbers>=9.0,<10.0
 pillow>=12.0,<13.0
 pystray>=0.19,<0.20
+tzdata>=2026.6; sys_platform == "win32"
 # Test-only (not counted against the runtime footprint)
 pytest>=9.0,<10.0
 ```
@@ -60,12 +61,16 @@ explicitly because the sync code imports it directly (`google.oauth2` /
 dependency and does not affect the running app.
 
 PyInstaller, appimagetool, and the OS icon tools (CL-0049, §15) are build-time
-only, not runtime deps; the 8-runtime budget is unaffected. `tzdata` joins them
-on the **Windows** build alone: Windows ships no system zone database, so
-CPython's `zoneinfo` falls back to that package, and without it the frozen
-`.exe` renders the Settings timezone control with no options and every timestamp
-as a raw ISO string. Linux and macOS take their zone data from the OS and never
-install it.
+only, not runtime deps; the 8-runtime budget is unaffected.
+
+`tzdata` is a runtime dependency on **Windows only** (`sys_platform == "win32"`).
+Windows ships no system zone database, so CPython's `zoneinfo` falls back to
+that package. Without it the Settings timezone control has no options and every
+timestamp shows as a raw ISO string, both in the `.exe` and when running from
+source (CL-0122). It holds data and no code. Linux and macOS take their zone data
+from the OS and never install it. The user approved it on 2026-11-05 as the one
+exception to the 8-package budget. It has no upper cap: its versions are dates
+(`2026.6`), so a cap would hold back each new year's zone data.
 
 ESLint (with `@eslint/js` and `globals`, declared in `package.json`) and djlint
 are development-only lint tools (CL-0077). They run in `local-ci.sh` and CI and

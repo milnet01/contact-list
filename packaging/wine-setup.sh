@@ -37,6 +37,6 @@ fi
 # python.exe on PATH via PrependPath — verified sufficient for `wine python`.
 wine "$TOOLS/$INST" /quiet InstallAllUsers=0 PrependPath=1 Include_test=0
 wine python -m pip install --upgrade pip
-# tzdata mirrors release.yml's Windows job; contact-list.spec collects it on win32.
-wine python -m pip install -r requirements.txt pyinstaller tzdata
+# requirements.txt brings tzdata on Windows; contact-list.spec collects it on win32.
+wine python -m pip install -r requirements.txt pyinstaller
 echo "wine python + deps ready"

@@ -4,11 +4,19 @@ from __future__ import annotations
 
 import os
 import stat
+import sys
 
 import pytest
 
 from app import create_app
 from db import get_db
+
+# Decided by the user 2026-11-05 (CL-0122). tests/test_config.py has the same.
+posix_modes_only = pytest.mark.skipif(
+    sys.platform == 'win32',
+    reason='Windows does not apply POSIX file modes, so 0600/0700 cannot be '
+           'checked; the secret key and token rely on the user folder (CL-0122).',
+)
 
 
 @pytest.fixture()
@@ -254,6 +262,7 @@ def _csrf(client) -> str:
         return sess.get('_csrf_token', '')
 
 
+@posix_modes_only
 class TestEnsurePrivateDir:
     def test_creates_dir_0700(self, tmp_path):
         import config
@@ -272,6 +281,7 @@ class TestEnsurePrivateDir:
         assert mode == 0o700, f'expected 0700, got {oct(mode)}'
 
 
+@posix_modes_only
 class TestWritePrivateText:
     def test_writes_0600_and_tightens_an_existing_file(self, tmp_path):
         import config
