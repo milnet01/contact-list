@@ -384,6 +384,72 @@ class TestMerge:
         assert resp.status_code == 403
 
 
+class TestMergeCustomFieldCap:
+    """CL-0118: a merge never drops custom fields past the cap silently, and
+    says plainly when the merged contact would hold too many."""
+
+    def _over_cap_pair(self, app) -> tuple[int, int]:
+        # Between them the two contacts hold one field more than the cap.
+        half = models.MAX_CUSTOM_FIELDS // 2 + 1
+        with app.app_context():
+            db = get_db()
+            a = models.create_contact(db, 'individual', 'Ann', custom_fields=[
+                (f'A{i}', 'v') for i in range(half)])
+            b = models.create_contact(db, 'individual', 'Ann', custom_fields=[
+                (f'B{i}', 'v') for i in range(models.MAX_CUSTOM_FIELDS + 1 - half)])
+        return a, b
+
+    def test_preview_refuses_a_union_over_the_cap(self, client, app):
+        a, b = self._over_cap_pair(app)
+        resp = client.post('/contacts/merge', data={
+            '_csrf_token': _csrf(client), 'selected': [str(a), str(b)],
+        }, follow_redirects=True)
+        assert b'name="cf_count"' not in resp.data   # no merge form offered
+        assert f'{models.MAX_CUSTOM_FIELDS + 1} custom fields'.encode() in resp.data
+
+    def test_apply_refuses_more_fields_than_the_cap(self, client, app):
+        a, b = self._over_cap_pair(app)
+        n = models.MAX_CUSTOM_FIELDS + 1
+        data = {
+            '_csrf_token': _csrf(client), 'survivor_id': str(a),
+            'loser_id': [str(b)], 'field_type': 'individual',
+            'field_name': 'Ann', 'cf_count': str(n),
+        }
+        for i in range(n):
+            data[f'cf_name_{i}'] = f'F{i}'
+            data[f'cf_value_{i}'] = 'v'
+        resp = client.post('/contacts/merge/apply', data=data,
+                           follow_redirects=True)
+        assert f'{n} custom fields'.encode() in resp.data
+        with app.app_context():
+            db = get_db()
+            assert models.get_contact(db, b) is not None   # nothing merged
+            assert len(models.get_custom_fields(db, a)) < n
+
+    def test_apply_explains_when_kept_emails_push_it_over(self, client, app):
+        cap = models.MAX_CUSTOM_FIELDS
+        with app.app_context():
+            db = get_db()
+            a = models.create_contact(db, 'individual', 'Ann', 'a@x.com',
+                                      custom_fields=[(f'F{i}', 'v') for i in range(cap)])
+            b = models.create_contact(db, 'individual', 'Ann', 'b@x.com')
+        data = {
+            '_csrf_token': _csrf(client), 'survivor_id': str(a),
+            'loser_id': [str(b)], 'field_type': 'individual',
+            'field_name': 'Ann', 'field_email': 'a@x.com', 'cf_count': str(cap),
+        }
+        for i in range(cap):
+            data[f'cf_name_{i}'] = f'F{i}'
+            data[f'cf_value_{i}'] = 'v'
+        resp = client.post('/contacts/merge/apply', data=data,
+                           follow_redirects=True)
+        # b@x.com would become "Email 2", the 51st field.
+        assert f'{cap + 1} custom fields'.encode() in resp.data
+        assert b'extra emails and phones' in resp.data
+        with app.app_context():
+            assert models.get_contact(get_db(), b) is not None   # nothing merged
+
+
 class TestExportStreaming:
     """CL-0067: DESIGN.md §7.2 requires both exports to stream, and the vCard
     export used to run one custom-field query per contact (an N+1)."""

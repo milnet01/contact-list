@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: CL=122 -->
+<!-- ants-roadmap-id-high-water: CL=123 -->
 
 # Contact List — Roadmap
 
@@ -1999,8 +1999,13 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   Kind: fix.
   Source: review-readability 2026-10-31.
 
-- 📋 [CL-0118] **Merge preview drops custom fields past the cap silently, and extras can push the merge over the cap.**
-  routes/merge.py merge_preview emits an uncapped union of custom fields (templates/merge.html) and merge_apply clamps cf_count to MAX_CUSTOM_FIELDS; _preserve_extra may add rows past models' cap, so merge_contacts refuses with 'Could not merge'. Also unchecked: merge ignores whether a loser is linked to Google; the Google copy of a deleted loser is untouched.
+- ✅ [CL-0118] **Merge preview drops custom fields past the cap silently, and extras can push the merge over the cap.**
+  Done: a merge whose contact would pass MAX_CUSTOM_FIELDS is refused
+  with a plain message, never trimmed. The preview refuses a union over
+  the cap; apply refuses a cf_count over it, and refuses when the extra
+  emails and phones kept as fields push the total over. Seen failing
+  first. Tests: TestMergeCustomFieldCap in tests/test_import_routes.py.
+  The Google half (a loser's Google copy stays) moved to CL-0123.
   **Layman:** Merging contacts with many extra fields can quietly lose some, or be refused with a short message.
   Kind: fix.
   Source: review-readability 2026-10-31.
@@ -2046,6 +2051,22 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   **Layman:** On Windows, a copy run from source rejects time zones such as Europe/London until an extra package is installed; the released Windows app is built with it.
   Kind: fix.
   Source: Windows test run 2026-10-31, after the review-readability fixes.
+
+- 📋 [CL-0123] **Merging leaves the removed contacts' Google copies on Google.**
+  merge_contacts deletes the losers locally and never calls Google,
+  which matches the two-way sync spec's non-goal "No contact deletions
+  pushed to Google" (INV-4). So a merge of Google-linked duplicates
+  leaves the duplicates on Google, and a full re-sync can bring them
+  back. Removing them on Google needs a spec amendment (section 15 lists
+  deletions as future work).
+  Waiting-on: user (Should merging also delete the removed contacts on
+  Google, or only say on the merge page that their Google copies stay?
+  Recommended: say so on the merge page now, naming the linked contacts;
+  leave deleting on Google to the deletions work, since it cannot be
+  undone. 2026-11-05)
+  **Layman:** After you merge contacts that are also on Google, the extra copies stay in your Google account.
+  Kind: fix.
+  Source: split from CL-0118, 2026-11-05.
 
 ## Efficiency & Refactoring
 

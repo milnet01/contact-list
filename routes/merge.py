@@ -59,6 +59,17 @@ def _preserve_extra(
         customs.append((label, value))
 
 
+def _too_many_fields(count: int, extras: bool = False) -> str:
+    """The message refusing a merge whose contact would pass MAX_CUSTOM_FIELDS.
+    A merge is refused rather than trimmed, so no field is lost (CL-0118)."""
+    why = ', counting the extra emails and phones kept as fields,' if extras else ''
+    return (
+        f'These contacts would have {count} custom fields{why} and a contact '
+        f'can hold at most {MAX_CUSTOM_FIELDS}. Remove some fields from one of '
+        'them, then merge again.'
+    )
+
+
 @bp.route('/contacts/merge', methods=['POST'])
 def merge_preview() -> ResponseReturnValue:
     ids = selected_ids(request.form.getlist('selected'))
@@ -93,6 +104,9 @@ def merge_preview() -> ResponseReturnValue:
             )
             if cf['field_value'] not in entry['values']:
                 entry['values'].append(cf['field_value'])
+    if len(union) > MAX_CUSTOM_FIELDS:
+        flash(_too_many_fields(len(union)), 'error')
+        return redirect(back)
 
     # CL-0037: pre-fill the merge form's tags field with the union of every
     # involved contact's tags, so the survivor keeps them all by default (the
@@ -137,13 +151,17 @@ def merge_apply() -> ResponseReturnValue:
         return redirect(url_for('contacts.duplicates'))
 
     try:
-        # Clamped: this is a loop bound taken straight from the request body, so
-        # an unbounded value spun a worker thread for as long as the caller
-        # liked (CL-0067). The cap is the model's, so merge and the contact form
-        # agree on how many custom fields a contact may carry.
-        cf_count = min(max(int(request.form.get('cf_count', 0)), 0), MAX_CUSTOM_FIELDS)
+        cf_count = max(int(request.form.get('cf_count', 0)), 0)
     except ValueError:
         cf_count = 0
+    # This is a loop bound taken straight from the request body, so an unbounded
+    # value spun a worker thread for as long as the caller liked (CL-0067). Past
+    # the cap it is refused, not clamped: a clamp dropped the later fields
+    # without a word (CL-0118). The cap is the model's, so merge and the contact
+    # form agree on how many custom fields a contact may carry.
+    if cf_count > MAX_CUSTOM_FIELDS:
+        flash(_too_many_fields(cf_count), 'error')
+        return redirect(url_for('contacts.duplicates'))
     customs: list[tuple[str, str]] = []
     seen: set[str] = set()
     for i in range(cf_count):
@@ -161,6 +179,9 @@ def merge_apply() -> ResponseReturnValue:
     # international form, and the other contacts still hold the raw one.
     _preserve_extra(involved, 'email', 'Email', raw_email, customs, used)
     _preserve_extra(involved, 'phone', 'Phone', raw_phone, customs, used)
+    if len(customs) > MAX_CUSTOM_FIELDS:
+        flash(_too_many_fields(len(customs), extras=True), 'error')
+        return redirect(url_for('contacts.duplicates'))
 
     # Read loser photo exts before the merge deletes their rows, so we can
     # unlink the orphaned files afterwards (the survivor keeps its own photo).

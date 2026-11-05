@@ -23,6 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in front of nothing. Both now close the icon and end the app, and a crash
   exits with an error code.
 
+- **Merging never quietly drops custom fields.** (CL-0118)
+  A contact holds at most 50 custom fields. When merged contacts had more
+  between them, the merge dropped the extras without a word, or failed with a
+  short "Could not merge". It now stops and says how many fields the merge
+  would make, so you can remove some first.
+
 - **A Google sync that stops part-way now says what it had already done.** (CL-0116)
   The error message adds, for example, "Before it stopped: 12 imported from Google, 3 created on Google."
 
