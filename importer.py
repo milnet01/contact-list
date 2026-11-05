@@ -140,10 +140,11 @@ def apply_mapping(
         # Only a row with neither name nor email is skipped. A row with an email
         # and no name is kept, named by its email: no contact has an empty name
         # (CL-0112, decided by the user 2026-11-05).
-        if not name and not email:
-            skipped += 1
-            continue
-        name = name or email
+        if not name:
+            if not email:
+                skipped += 1
+                continue
+            name = email
 
         used: set[str] = set()
         customs = [
