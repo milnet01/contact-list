@@ -24,13 +24,10 @@ import photos
 from config import VALID_CONTACT_TYPES, Config, megabytes_text
 from db import get_db
 from models import (
+    FIELD_CAPS,
     MAX_CF_NAME_LEN,
     MAX_CUSTOM_FIELDS,
     MAX_DUPLICATE_GROUPS,
-    MAX_EMAIL_LEN,
-    MAX_NAME_LEN,
-    MAX_NOTES_LEN,
-    MAX_PHONE_LEN,
     MAX_UPCOMING_BIRTHDAYS,
     _normalize_tags,
     clear_contact_photo,
@@ -38,6 +35,7 @@ from models import (
     create_contact,
     delete_contact,
     delete_contacts,
+    field_over_cap,
     find_all_duplicates,
     find_duplicates,
     get_all_tags,
@@ -120,11 +118,14 @@ def selected_ids(raw: list[str]) -> list[int]:
 
 def validate_core_fields(
     contact_type: str, name: str, email: str | None, phone: str | None, notes: str | None,
+    stored: sqlite3.Row | None = None,
 ) -> tuple[dict, list[str]]:
     """Check and normalise the five core contact fields. Returns (fields, errors).
 
     The one copy of these checks: the contact form and the merge screen both
     call it, so merge cannot write a value the form would reject (CL-0079).
+    `stored` is the contact's current row when editing, so a long value it
+    already holds is not refused (models.field_over_cap, CL-0115).
     """
     errors: list[str] = []
 
@@ -134,14 +135,14 @@ def validate_core_fields(
         errors.append('Name is required.')
     # The model enforces these for every caller (CL-0067); checking here too
     # turns a raw ValueError into a message on the form the user is looking at.
-    for label, value, cap in (
-        ('Name', name, MAX_NAME_LEN),
-        ('Email', email, MAX_EMAIL_LEN),
-        ('Phone', phone, MAX_PHONE_LEN),
-        ('Notes', notes, MAX_NOTES_LEN),
+    for key, label, value in (
+        ('name', 'Name', name),
+        ('email', 'Email', email),
+        ('phone', 'Phone', phone),
+        ('notes', 'Notes', notes),
     ):
-        if value and len(value) > cap:
-            errors.append(f'{label} must be {cap} characters or fewer.')
+        if field_over_cap(key, value, stored):
+            errors.append(f'{label} must be {FIELD_CAPS[key]} characters or fewer.')
     if email and not _EMAIL_RE.match(email):
         errors.append('Invalid email address.')
     if phone and not _PHONE_RE.match(phone):
@@ -159,14 +160,18 @@ def validate_core_fields(
     return fields, errors
 
 
-def _validate_form(form: MultiDict[str, str]) -> tuple[dict, list[tuple[str, str]], list[str]]:
-    """Parse and validate the contact form. Returns (fields, custom_fields, errors)."""
+def _validate_form(
+    form: MultiDict[str, str], stored: sqlite3.Row | None = None,
+) -> tuple[dict, list[tuple[str, str]], list[str]]:
+    """Parse and validate the contact form. Returns (fields, custom_fields, errors).
+    `stored` is the contact's current row when editing (validate_core_fields)."""
     fields, errors = validate_core_fields(
         form.get('type', '').strip(),
         form.get('name', '').strip(),
         form.get('email', '').strip() or None,
         form.get('phone', '').strip() or None,
         form.get('notes', '').strip() or None,
+        stored,
     )
     custom_fields, cf_errors = _validate_custom_fields(form)
     errors.extend(cf_errors)
@@ -447,7 +452,7 @@ def update(contact_id: int) -> ResponseReturnValue:
         abort(404)
 
     ref = _safe_ref(_get_ref())
-    fields, custom_fields, errors = _validate_form(request.form)
+    fields, custom_fields, errors = _validate_form(request.form, contact)
 
     if errors:
         return render_template(

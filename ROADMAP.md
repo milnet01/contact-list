@@ -1971,11 +1971,16 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   Kind: review-fix.
   Source: review-readability 2026-10-31.
 
-- 📋 [CL-0115] **A Google-pulled contact can exceed the field length caps, and a later edit is refused until it is shortened.**
-  google_sync._upsert_person writes name, email, phone and notes with no length check. Measured: models.update_contact then raises 'Name exceeds 200 characters'. Truncating on pull would lose data; refusing the pull would drop the contact. Needs a decision. models._validate_field_lengths now says so.
+- ✅ [CL-0115] **A Google-pulled contact can exceed the field length caps, and a later edit is refused until it is shortened.**
   Decided by the user 2026-11-05: keep the Google value as sent (no
   truncation); a later edit allows an over-long field the user did not
-  change.
+  change. Done: models.field_over_cap skips the cap for a value equal to
+  the stored one (line endings and outer spaces ignored); _write_contact
+  and the edit form both pass the stored row. A changed long value and a
+  new contact are still refused. Seen failing first. Tests:
+  tests/test_long_google_fields.py. Not checked in a real browser: the
+  form's maxlength should not block an untouched pre-filled value, per
+  the HTML standard's rule that it applies only to user edits.
   **Layman:** A very long name or note from Google can be saved, but editing that contact is refused until the long value is trimmed.
   Kind: fix.
   Source: review-readability 2026-10-31.

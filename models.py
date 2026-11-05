@@ -821,28 +821,58 @@ def _validate_custom_field_names(custom_fields: list[tuple[str, str]] | None) ->
         seen.add(key)
 
 
+FIELD_CAPS: dict[str, int] = {
+    'name': MAX_NAME_LEN,
+    'email': MAX_EMAIL_LEN,
+    'phone': MAX_PHONE_LEN,
+    'notes': MAX_NOTES_LEN,
+}
+
+
+def field_over_cap(
+    key: str, value: str | None, stored: sqlite3.Row | None = None,
+) -> bool:
+    """True when `value` is longer than FIELD_CAPS[key] and is not the value
+    the contact already holds (`stored`, its current row; None for a new one).
+
+    google_sync._upsert_person writes contacts without these caps, so a
+    Google-pulled name or note can exceed them. Such a value, left as it is,
+    must not block an edit of the contact's other fields (CL-0115, decided by
+    the user 2026-11-05). Line endings and outer spaces are ignored in the
+    comparison, since a browser sends a textarea's line breaks as CRLF.
+    """
+    if not value or len(value) <= FIELD_CAPS[key]:
+        return False
+    if stored is None:
+        return True
+
+    def norm(s: str) -> str:
+        return s.replace('\r\n', '\n').strip()
+
+    return norm(value) != norm(stored[key] or '')
+
+
 def _validate_field_lengths(
     name: str,
     email: str | None,
     phone: str | None,
     notes: str | None,
+    stored: sqlite3.Row | None = None,
 ) -> None:
     """Bound the core contact fields, for every caller of this module including
-    the importers. google_sync._upsert_person writes contacts directly and does
-    NOT call this, so a Google-pulled name or note can exceed these caps; a
-    later edit of that contact is then refused until the long value is shortened.
+    the importers; `stored` is passed when editing (see field_over_cap).
 
     Paired with _validate_contact_type at each write site, so the import paths
     get the same limits the contact form does (CL-0067).
     """
-    for label, value, cap in (
-        ('Name', name, MAX_NAME_LEN),
-        ('Email', email, MAX_EMAIL_LEN),
-        ('Phone', phone, MAX_PHONE_LEN),
-        ('Notes', notes, MAX_NOTES_LEN),
+    for key, label, value in (
+        ('name', 'Name', name),
+        ('email', 'Email', email),
+        ('phone', 'Phone', phone),
+        ('notes', 'Notes', notes),
     ):
-        if value is not None and len(value) > cap:
-            raise ValueError(f'{label} exceeds {cap} characters')
+        if field_over_cap(key, value, stored):
+            raise ValueError(f'{label} exceeds {FIELD_CAPS[key]} characters')
 
 
 def _validate_contact_type(contact_type: str) -> None:
@@ -857,7 +887,7 @@ def insert_custom_fields(
 ) -> None:
     """Insert (name, value) custom-field rows for one contact. Validates nothing
     and opens no transaction: callers run _validate_custom_field_names first
-    (google_sync does not, see _validate_field_lengths) and compose this into
+    (google_sync does not, see field_over_cap) and compose this into
     their own atomic block."""
     db.executemany(
         'INSERT INTO custom_fields (contact_id, field_name, field_value) VALUES (?, ?, ?)',
@@ -925,7 +955,10 @@ def _write_contact(
     alongside the loser deletes in one transaction. Validating here means every
     caller enforces the same contract (INV-4)."""
     _validate_contact_type(contact_type)
-    _validate_field_lengths(name, email, phone, notes)
+    stored = db.execute(
+        'SELECT name, email, phone, notes FROM contacts WHERE id = ?', [contact_id]
+    ).fetchone()
+    _validate_field_lengths(name, email, phone, notes, stored)
     _validate_custom_field_names(custom_fields)
 
     db.execute(
