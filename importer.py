@@ -138,12 +138,12 @@ def apply_mapping(
         email, email_extras = split_multivalue('Email', emails)
         phone, phone_extras = split_multivalue('Phone', phones)
         # Only a row with neither name nor email is skipped. A row with an email
-        # and no name is kept and stored with an empty name, unlike the contact
-        # form, the vCard parser and Google sync, which refuse a nameless
-        # contact (queued: CL-0112).
+        # and no name is kept, named by its email: no contact has an empty name
+        # (CL-0112, decided by the user 2026-11-05).
         if not name and not email:
             skipped += 1
             continue
+        name = name or email
 
         used: set[str] = set()
         customs = [

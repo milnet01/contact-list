@@ -29,6 +29,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   short "Could not merge". It now stops and says how many fields the merge
   would make, so you can remove some first.
 
+- **A CSV row with an email but no name gets the email as its name.** (CL-0112)
+  It used to create a contact with a blank name.
+
 - **A Google sync that stops part-way now says what it had already done.** (CL-0116)
   The error message adds, for example, "Before it stopped: 12 imported from Google, 3 created on Google."
 

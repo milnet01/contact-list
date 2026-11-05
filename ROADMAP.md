@@ -1931,10 +1931,11 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   Kind: review-fix.
   Source: review-readability 2026-10-31.
 
-- 📋 [CL-0112] **CSV import keeps a row with an email and no name, storing an empty name.**
-  importer.apply_mapping skips only rows with neither name nor email. The form (validate_core_fields), vcard.parse and Google sync all refuse a nameless contact. Needs a design decision, not made now: skip the row (loses email-only lists), or use the email as the name. Either changes what a user's CSV import produces; no spec covers it. Hazard: tests/test_importer.py and the import summary count rows as skipped.
+- ✅ [CL-0112] **CSV import keeps a row with an email and no name, storing an empty name.**
   Decided by the user 2026-11-05: keep the row and use the email as the
-  name.
+  name. Done: importer.apply_mapping names an email-only row by its email.
+  Seen failing first. Test: test_email_only_row_uses_the_email_as_name in
+  tests/test_importer.py.
   **Layman:** A CSV row that has an email but no name creates a contact with a blank name, unlike every other way of adding a contact.
   Kind: fix.
   Source: review-readability 2026-10-31.

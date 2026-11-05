@@ -136,6 +136,16 @@ class TestApplyMapping:
         assert len(built) == 1
         assert built[0][0]['name'] == 'Bob'
 
+    def test_email_only_row_uses_the_email_as_name(self):
+        # CL-0112, decided by the user 2026-11-05: keep the row, never store an
+        # empty name (every other way of adding a contact refuses one).
+        built, skipped = self._apply(
+            ['Name', 'Email'], [['', 'sam@x.com']], {0: 'name', 1: 'email'}
+        )
+        assert skipped == 0
+        assert built[0][0]['name'] == 'sam@x.com'
+        assert built[0][0]['email'] == 'sam@x.com'
+
     def test_ragged_row_padded(self):
         built, _ = self._apply(
             ['Name', 'Email', 'Notes'], [['Bob']], {0: 'name', 1: 'email', 2: 'notes'}
