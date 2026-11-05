@@ -47,6 +47,9 @@ enforces it once `core.hooksPath` is set. It runs `scripts/gate.sh`, the step
 list `ci.yml` also runs. A matrix Python it cannot obtain is a **failure**, not
 a warning. The hook refuses a push while the working tree differs from the
 commit being pushed, since it would test the wrong code: commit or stash first.
+`ROADMAP.md` is rendered from the Ants roadmap store: change it with
+`roadmap_log`, never by hand. A new item also rewrites `.roadmap-counter`;
+commit it with `ROADMAP.md`, or the hook refuses the push.
 
 Every push is secret-scanned first. A documentation-only push (every changed
 file a `*.md` or under `docs/`) skips local CI only when the branch's last

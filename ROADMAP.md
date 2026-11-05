@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: CL=123 -->
+<!-- ants-roadmap-id-high-water: CL=126 -->
 
 # Contact List — Roadmap
 
@@ -2048,6 +2048,10 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   TestPendingPushMarker in tests/test_two_way_sync.py; two baseline tests
   rewritten to the new rule. Two-way spec sections 4, 5, 7, 9 and INV-1
   amended (impl row, no reviewer). Not run against the live Google API.
+  Cold review by the oneup session 2026-11-05 found no path that loses
+  or overwrites data through the marker. Its three follow-ups are
+  CL-0124 (edit during a sync), CL-0125 (permanent push error) and
+  CL-0126 (no updateTime freezes the contact; waiting on the user).
   **Layman:** A failed Google push can cause one repeated false conflict message next sync; a per-contact marker would fix it.
   Kind: fix.
   Source: cold review of review-readability fixes 2026-10-31.
@@ -2096,6 +2100,55 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   **Layman:** After you merge contacts that are also on Google, the extra copies stay in your Google account.
   Kind: fix.
   Source: split from CL-0118, 2026-11-05.
+
+- 📋 [CL-0124] **An edit saved while a sync runs is never pushed to Google.**
+  google_sync.py computes dirty_linked at Step 0 (models.get_dirty_linked,
+  strict `e.edited_at > :prev`) but stamps last_synced_at with
+  strftime('now') at Step 3. An edit saved between the two, or in Step 3's
+  second, is in neither run's dirty set. Verified in the code 2026-11-05.
+  Pre-existing; CL-0121 made the Step 3 advance unconditional, removing
+  the old accidental rescue when the baseline was held. Likely fix: take
+  the new baseline's timestamp at Step 0 and write that value at Step 3;
+  then amend two-way spec section 5 Step 3. Write the red test first: an
+  edit stamped after Step 0 must be dirty on the next sync.
+  **Layman:** If you edit a Google-linked contact while a sync is running, that edit may never reach Google, and a later Google change can overwrite it.
+  Kind: fix.
+  Source: oneup cold review of CL-0121, 2026-11-05.
+
+- 📋 [CL-0125] **A pending contact that always fails to push stays pending forever.**
+  google_sync.py _push_local_changes: a persistent per-contact error is
+  logged, counted in skipped and marked pending again every run. Example:
+  the contact was deleted on Google and its tombstone was never seen
+  (token expired, full re-sync lists live contacts only), so get() 404s
+  every run instead of re-creating it as INV-9's tombstone path would.
+  Pre-existing (the old shared-baseline hold was worse). Recommended: on a
+  404 from get(), treat the contact as tombstoned (unlink, so the next
+  push re-creates it, as INV-9 does); keep retrying other errors. Needs a
+  small amendment to two-way spec section 9. Also minor: a crash after
+  _push_update commits but before clear_sync_pending commits leaves the
+  mark, so the next run reports one false "conflict (kept Google)"; no
+  data loss.
+  **Layman:** A contact Google keeps refusing is retried on every sync with no end, and the only sign is a skipped count.
+  Kind: fix.
+  Source: oneup cold review of CL-0121, 2026-11-05.
+
+- 📋 [CL-0126] **A contact Google gives no edit time for is frozen in both directions.**
+  Since CL-0121, google_sync.py marks such a contact pending
+  (push_no_time += 1; leave_pending([row])). Pending contacts are skipped
+  by the pull (INV-9), and Step 2 cannot push without a time, so the
+  contact is frozen for as long as Google omits updateTime. Before
+  CL-0121 the next pull imported Google's copy, losing the local edit.
+  Only the push_no_time count shows it. Two-way spec section 7 says this
+  should not happen but is not guaranteed.
+  Waiting-on: user (When Google gives no edit time, which side should win
+  after it has been pending a while: keep retrying forever (no loss, but
+  frozen), or let Google's copy win after a few syncs (unfreezes, loses
+  your local edit)? Recommended: Google wins after 3 pending syncs, and
+  the sync report names the contact so you can redo the edit. It unfreezes
+  the contact at the cost of one edit you are told about. 2026-11-05)
+  **Layman:** If Google never says when a contact was last changed, neither your edits nor Google's reach the other side for that contact.
+  Kind: fix.
+  Source: oneup cold review of CL-0121, 2026-11-05.
 
 ## Efficiency & Refactoring
 
