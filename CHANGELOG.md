@@ -46,6 +46,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   list. From Birthdays or Duplicates, Back returns there. Cancelling or
   failing a merge returns to the page you started it from.
 
+- **One failed Google push no longer upsets the next sync.** (CL-0121)
+  When a contact's changes couldn't reach Google, the next sync could report
+  false "conflict (kept Google)" results for contacts that had synced fine,
+  and could re-create a contact you had deleted on Google. Now only the
+  contact that failed is retried. An edit Google gave no edit time for is
+  retried too, instead of being dropped.
+
 - **A Google sync that stops part-way now says what it had already done.** (CL-0116)
   The error message adds, for example, "Before it stopped: 12 imported from Google, 3 created on Google."
 

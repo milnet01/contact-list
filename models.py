@@ -515,18 +515,42 @@ def get_edited_at(db: sqlite3.Connection, contact_id: int) -> str | None:
 
 
 def get_dirty_linked(db: sqlite3.Connection, prev_sync: str | None) -> list[sqlite3.Row]:
-    """Google-linked contacts the USER edited since the last sync — candidates
-    for push-update (CL-0033). A NULL prev_sync (never synced) yields zero rows:
-    nothing has diverged from a Google baseline yet, so the first sync only
-    creates local-only contacts. The `:prev IS NOT NULL` guard is
-    belt-and-braces over SQLite's 3VL (`edited_at > NULL` is already NULL)."""
+    """Google-linked contacts the USER edited since the last sync, plus those a
+    sync left pending (sync_pending, CL-0121) — candidates for push-update
+    (CL-0033). Each row's `since` is the baseline its edit dates from: the
+    pending row's own for a pending contact, else prev_sync.
+
+    A NULL prev_sync (never synced) yields no edited rows: nothing has diverged
+    from a Google baseline yet, so the first sync only creates local-only
+    contacts. The `:prev IS NOT NULL` guard is belt-and-braces over SQLite's 3VL
+    (`edited_at > NULL` is already NULL)."""
     return db.execute(
-        'SELECT c.id, c.google_id FROM contacts c '
-        'JOIN contact_edits e ON e.contact_id = c.id '
+        'SELECT c.id, c.google_id, '
+        '       CASE WHEN p.contact_id IS NULL THEN :prev ELSE p.since END AS since '
+        'FROM contacts c '
+        'LEFT JOIN contact_edits e ON e.contact_id = c.id '
+        'LEFT JOIN sync_pending p ON p.contact_id = c.id '
         'WHERE c.google_id IS NOT NULL '
-        '  AND :prev IS NOT NULL AND e.edited_at > :prev',
+        '  AND (p.contact_id IS NOT NULL '
+        '       OR (:prev IS NOT NULL AND e.edited_at > :prev))',
         {'prev': prev_sync},
     ).fetchall()
+
+
+def mark_sync_pending(db: sqlite3.Connection, contact_id: int, since: str | None) -> None:
+    """Record that a sync left this contact's edit unpushed (CL-0121). An
+    existing row keeps its older `since`, the baseline the edit dates from.
+    Caller commits."""
+    db.execute(
+        'INSERT INTO sync_pending (contact_id, since) VALUES (?, ?) '
+        'ON CONFLICT(contact_id) DO NOTHING',
+        [contact_id, since],
+    )
+
+
+def clear_sync_pending(db: sqlite3.Connection, contact_id: int) -> None:
+    """The contact's edit is reconciled with Google (CL-0121). Caller commits."""
+    db.execute('DELETE FROM sync_pending WHERE contact_id = ?', [contact_id])
 
 
 def get_local_only_ids(db: sqlite3.Connection) -> list[int]:

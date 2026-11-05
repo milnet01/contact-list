@@ -305,6 +305,17 @@ CREATE TABLE sync_state (
 );
 ```
 
+`sync_pending` (CL-0121) holds one row per Google-linked contact whose local
+edit a sync could not push, with the baseline that edit dates from. The rule is
+the two-way sync spec's §9, *Partial run*.
+
+```sql
+CREATE TABLE sync_pending (
+    contact_id  INTEGER PRIMARY KEY REFERENCES contacts(id) ON DELETE CASCADE,
+    since       TEXT
+);
+```
+
 ### 4.4 `contact_edits` Table (CL-0033)
 
 ```sql

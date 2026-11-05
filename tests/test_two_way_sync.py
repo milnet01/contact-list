@@ -590,9 +590,9 @@ class TestPullReplacesDifferentlyCasedLocalFields:
         assert rows == [('birthday', '1990-02-03')]
 
 
-class TestBaselineOnlyAdvancesOnACleanPush:
-    """Spec 2026-07-02-two-way-google-sync.md, partial run: last_synced_at moves
-    only on a clean finish, so a failed push is retried next sync."""
+class TestAFailedPushIsRetried:
+    """Spec 2026-07-02-two-way-google-sync.md, partial run: a failed push is
+    marked pending and retried next sync; the baseline still advances (CL-0121)."""
 
     def _failing_update_service(self):
         class _Failing(_FakeService):
@@ -606,7 +606,7 @@ class TestBaselineOnlyAdvancesOnACleanPush:
                                       'updateTime': '2019-06-01T00:00:00Z'}]},
         }})
 
-    def test_a_skipped_push_keeps_the_old_baseline(self, app, db, monkeypatch):
+    def test_a_skipped_push_is_marked_pending(self, app, db, monkeypatch):
         cid = models.create_contact(db, 'individual', 'Lee', 'lee@x.com')
         _link(db, cid, 'people/lee')
         _set_prev_sync(db, '2020-01-01T00:00:00Z')
@@ -615,8 +615,9 @@ class TestBaselineOnlyAdvancesOnACleanPush:
         assert result.skipped == 1
         ts, token = db.execute(
             'SELECT last_synced_at, sync_token FROM sync_state WHERE id=1').fetchone()
-        assert ts == '2020-01-01T00:00:00Z'
+        assert ts != '2020-01-01T00:00:00Z'
         assert token == 'TOK'  # the pull committed, so its token still moves
+        assert _pending(db) == {cid: '2020-01-01T00:00:00Z'}
 
     def test_the_retry_pushes_the_edit_once_it_works(self, app, db, monkeypatch):
         cid = models.create_contact(db, 'individual', 'Lee', 'lee@x.com')
@@ -635,14 +636,20 @@ class _Denied(Exception):
     content = _SCOPE_DENIED_BODY
 
 
+def _pending(db) -> dict:
+    return {r['contact_id']: r['since']
+            for r in db.execute('SELECT contact_id, since FROM sync_pending')}
+
+
 def _baseline(db):
     row = db.execute('SELECT last_synced_at FROM sync_state WHERE id=1').fetchone()
     return row[0] if row else None
 
 
-class TestBaselineHeldOnlyForUnpushedLinkedEdits:
-    """The baseline is held only when an edit to a linked contact is left unpushed.
-    Local-only creates are recomputed every sync, so they never hold it."""
+class TestBaselineAlwaysAdvances:
+    """The baseline advances on every finished sync; an edit to a linked contact
+    left unpushed is marked pending instead (CL-0121). Local-only creates are
+    recomputed every sync, so they are never marked."""
 
     @staticmethod
     def _create_refusing_service(exc):
@@ -670,7 +677,7 @@ class TestBaselineHeldOnlyForUnpushedLinkedEdits:
         assert result.skipped == 1
         assert _baseline(db) != '2020-01-01T00:00:00Z'
 
-    def test_scope_refusal_during_creates_with_dirty_linked_holds(
+    def test_scope_refusal_during_creates_marks_dirty_linked_pending(
             self, app, db, monkeypatch):
         models.create_contact(db, 'individual', 'Local', 'l@x.com')
         cid = models.create_contact(db, 'individual', 'Lee', 'lee@x.com')
@@ -680,7 +687,8 @@ class TestBaselineHeldOnlyForUnpushedLinkedEdits:
         service = self._create_refusing_service(_Denied())
         result = _run_sync(app, db, service, monkeypatch)
         assert result.error is not None
-        assert _baseline(db) == '2020-01-01T00:00:00Z'
+        assert _baseline(db) != '2020-01-01T00:00:00Z'
+        assert _pending(db) == {cid: '2020-01-01T00:00:00Z'}
 
     def test_scope_refusal_with_nothing_dirty_linked_advances(
             self, app, db, monkeypatch):
@@ -704,6 +712,96 @@ class TestBaselineHeldOnlyForUnpushedLinkedEdits:
         result = _run_sync(app, db, service, monkeypatch)
         assert result.updated == 1
         assert _baseline(db) != '2020-01-01T00:00:00Z'
+
+
+def _person(rn: str, update_time: str | None, name: str = '') -> dict:
+    person: dict = {'resourceName': rn, 'etag': 'e'}
+    if update_time:
+        person['metadata'] = {'sources': [{'type': 'CONTACT', 'updateTime': update_time}]}
+    if name:
+        person['names'] = [{'displayName': name, 'givenName': name}]
+    return person
+
+
+class TestPendingPushMarker:
+    """CL-0121: a linked contact whose edit a sync could not push is marked
+    pending on its own; the shared baseline always advances, so the contacts
+    that did push are not dirty again next sync."""
+
+    def _two_dirty(self, db) -> tuple[int, int]:
+        a = models.create_contact(db, 'individual', 'Ann', 'ann@x.com')
+        b = models.create_contact(db, 'individual', 'Bob', 'bob@x.com')
+        _link(db, a, 'people/ann')
+        _link(db, b, 'people/bob')
+        _set_prev_sync(db, '2020-01-01T00:00:00Z')
+        _make_dirty_edit(db, a, '2021-01-01T00:00:00Z')
+        _make_dirty_edit(db, b, '2021-01-01T00:00:00Z')
+        return a, b
+
+    @staticmethod
+    def _failing_for(google_id: str, gets: dict):
+        class _S(_FakeService):
+            def updateContact(self, resourceName=None, updatePersonFields=None, body=None):
+                if resourceName == google_id:
+                    def run():
+                        raise RuntimeError('boom')
+                    return _Exec(run, self.retries_seen)
+                return super().updateContact(resourceName, updatePersonFields, body)
+        return _S(get_responses=gets)
+
+    def test_a_pushed_contact_is_not_reported_as_a_conflict_next_sync(
+            self, app, db, monkeypatch):
+        self._two_dirty(db)
+        old = {'people/ann': _person('people/ann', '2019-06-01T00:00:00Z'),
+               'people/bob': _person('people/bob', '2019-06-01T00:00:00Z')}
+        first = _run_sync(app, db, self._failing_for('people/bob', old), monkeypatch)
+        assert first.updated == 1 and first.skipped == 1
+        # Google now stamps Ann with the time of our push, after her local edit.
+        later = {'people/ann': _person('people/ann', '2025-01-01T00:00:00Z'),
+                 'people/bob': _person('people/bob', '2019-06-01T00:00:00Z')}
+        service = _FakeService(get_responses=later)
+        second = _run_sync(app, db, service, monkeypatch)
+        assert second.conflicts_google == 0
+        assert 'people/ann' not in service.got     # Ann is no longer dirty
+        assert second.updated == 1                 # Bob's edit is retried and pushed
+
+    def test_an_edit_google_gave_no_time_for_is_retried(self, app, db, monkeypatch):
+        cid = models.create_contact(db, 'individual', 'Lee', 'lee@x.com')
+        _link(db, cid, 'people/lee')
+        _set_prev_sync(db, '2020-01-01T00:00:00Z')
+        _make_dirty_edit(db, cid, '2021-01-01T00:00:00Z')
+        first = _run_sync(app, db, _FakeService(get_responses={
+            'people/lee': _person('people/lee', None)}), monkeypatch)
+        assert first.push_no_time == 1
+        service = _FakeService(get_responses={
+            'people/lee': _person('people/lee', '2019-06-01T00:00:00Z')})
+        second = _run_sync(app, db, service, monkeypatch)
+        assert second.updated == 1 and len(service.updated) == 1
+
+    def test_a_pending_contact_is_not_overwritten_by_the_pull(
+            self, app, db, monkeypatch):
+        _a, b = self._two_dirty(db)
+        old = {'people/ann': _person('people/ann', '2019-06-01T00:00:00Z'),
+               'people/bob': _person('people/bob', '2019-06-01T00:00:00Z')}
+        _run_sync(app, db, self._failing_for('people/bob', old), monkeypatch)
+        pull = [{'connections': [_person('people/bob', '2019-06-01T00:00:00Z', 'Robert')],
+                 'nextSyncToken': 'TOK2'}]
+        service = _FakeService(pull_pages=pull, get_responses=old)
+        _run_sync(app, db, service, monkeypatch)
+        assert models.get_contact(db, b)['name'] == 'Bob'
+        assert [u[0] for u in service.updated] == ['people/bob']
+
+    def test_a_clean_push_clears_the_marker(self, app, db, monkeypatch):
+        _a, b = self._two_dirty(db)
+        old = {'people/ann': _person('people/ann', '2019-06-01T00:00:00Z'),
+               'people/bob': _person('people/bob', '2019-06-01T00:00:00Z')}
+        _run_sync(app, db, self._failing_for('people/bob', old), monkeypatch)
+        assert b in _pending(db)
+        _run_sync(app, db, _FakeService(get_responses=old), monkeypatch)
+        assert _pending(db) == {}
+        service = _FakeService(get_responses=old)
+        third = _run_sync(app, db, service, monkeypatch)
+        assert service.got == [] and third.updated == 0
 
 
 class TestSyncFailedMessageShowsWhatWasDone:

@@ -370,29 +370,21 @@ def sync_contacts(config: dict, db: sqlite3.Connection, region: str) -> SyncResu
     result.pulled = synced
 
     # --- Step 2: push local changes back to Google (per-contact commits inside).
-    hold_baseline = _push_local_changes(
-        service, db, region, dirty_linked, local_only, prev_sync, result)
+    _push_local_changes(service, db, region, dirty_linked, local_only, result)
 
     # --- Step 3: finalise. The pull has committed, so its sync token is saved
-    # whatever the push did. last_synced_at is the dirty-set baseline, and
-    # advancing past an unpushed edit would hide it from every later sync (spec
-    # 2026-07-02-two-way-google-sync.md, partial run). So it is held only when an
-    # edit to a LINKED contact is left unpushed: an update failed, or a scope
-    # refusal stopped the push while linked updates were still waiting. A
-    # local-only create that fails never holds it (those are recomputed and
-    # retried every sync whatever the baseline), and neither does a pull skip.
-    # A first sync has no dirty linked contacts, so a NULL baseline always gets
-    # set. Known cost, queued as CL-0121: while the baseline is held, contacts
-    # already pushed that run stay dirty, so the next sync can report a false
-    # "conflict (kept Google)" or re-create a contact deleted on Google; and an
-    # edit Google gave no timestamp for (push_no_time) is not retried.
+    # whatever the push did. last_synced_at is the dirty-set baseline, and it
+    # always advances: an edit Step 2 left unpushed is marked in sync_pending
+    # with the baseline it dates from, so the next sync still sees it (spec
+    # 2026-07-02-two-way-google-sync.md, partial run; CL-0121). Holding the
+    # shared baseline instead kept every contact pushed this run dirty too.
     db.execute(
         """INSERT INTO sync_state (id, sync_token, last_synced_at)
-           VALUES (1, ?, CASE WHEN ? THEN strftime('%Y-%m-%dT%H:%M:%SZ', 'now') END)
+           VALUES (1, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
            ON CONFLICT(id) DO UPDATE SET
                sync_token = COALESCE(excluded.sync_token, sync_state.sync_token),
-               last_synced_at = COALESCE(excluded.last_synced_at, sync_state.last_synced_at)""",
-        [new_sync_token, not hold_baseline],
+               last_synced_at = excluded.last_synced_at""",
+        [new_sync_token],
     )
     db.commit()
     log.info('Sync complete: pulled=%d created=%d updated=%d',
@@ -605,9 +597,8 @@ def _is_write_scope_denied(exc: Exception) -> bool:
 
 def _push_local_changes(
     service: Any, db: sqlite3.Connection, region: str,
-    dirty_linked: list[sqlite3.Row], local_only: list[int],
-    prev_sync: str | None, result: SyncResult,
-) -> bool:
+    dirty_linked: list[sqlite3.Row], local_only: list[int], result: SyncResult,
+) -> None:
     """Step 2: create local-only contacts on Google, and push locally-edited
     linked contacts with per-contact conflict resolution (§7). Each push is its own
     committed unit, isolated so one failure is logged + skipped, never fatal.
@@ -617,10 +608,12 @@ def _push_local_changes(
     skips tells the user nothing about the cause. It is recorded once on the
     result and the push stops.
 
-    Returns True when an edit to a linked contact was left unpushed (an update
-    failed, or a scope refusal came while linked updates were still waiting):
-    the caller then holds the sync baseline back. Failed creates never do."""
-    prev_dt = _parse_dt(prev_sync)
+    An edit to a linked contact left unpushed -- an update failed, Google gave
+    no timestamp, or a scope refusal came before its turn -- is marked pending
+    with the baseline it dates from (models.mark_sync_pending, CL-0121), so the
+    next sync retries it and its pull leaves it alone. A reconciled contact's
+    mark is cleared. Failed creates need no mark: local-only contacts are
+    recomputed every sync."""
 
     # §5 Step 2: a dirty contact the pull just unlinked (a tombstone, INV-9) is
     # local-only now, so it is created rather than updated -- a get on its old
@@ -635,6 +628,11 @@ def _push_local_changes(
         else:
             updates.append(row)
 
+    def leave_pending(rows: list[sqlite3.Row]) -> None:
+        for r in rows:
+            models.mark_sync_pending(db, r['id'], r['since'])
+        db.commit()
+
     for contact_id in creates:
         try:
             contact = models.get_contact(db, contact_id)
@@ -646,6 +644,7 @@ def _push_local_changes(
                 num_retries=_API_RETRIES)
             models.link_google_contact(
                 db, contact_id, created.get('resourceName'), created.get('etag'))
+            models.clear_sync_pending(db, contact_id)  # an unlinked dirty contact
             db.commit()  # persist the link at once so a re-run never re-creates
             result.created += 1
         except Exception as exc:
@@ -653,13 +652,14 @@ def _push_local_changes(
             if _is_write_scope_denied(exc):
                 result.error = _SCOPE_DENIED_MESSAGE
                 log.error('Google refused the write (403); token lacks the write scope')
-                return bool(updates)
+                leave_pending(updates)
+                return
             log.exception('Failed to create Google contact for %s', contact_id)
             result.skipped += 1
 
-    hold = False
-    for row in updates:
+    for i, row in enumerate(updates):
         contact_id, google_id = row['id'], row['google_id']
+        prev_dt = _parse_dt(row['since'])
         try:
             person = service.people().get(
                 resourceName=google_id, personFields=_MANAGED_FIELDS,
@@ -669,16 +669,20 @@ def _push_local_changes(
                 # Can't prove our edit is newer -> Google-wins, don't push. Counted
                 # so a systematic absence is visible, not a silent one-way sync.
                 result.push_no_time += 1
+                leave_pending([row])
                 continue
             local_dt = _parse_dt(models.get_edited_at(db, contact_id))
             google_changed = prev_dt is None or google_dt > prev_dt
             if google_changed and not (local_dt is not None and local_dt > google_dt):
                 # Both changed and Google is newer-or-equal -> Google wins.
                 _apply_google_to_local(db, person, region)
+                models.clear_sync_pending(db, contact_id)
                 db.commit()
                 result.conflicts_google += 1
             else:
                 pushed = _push_update(service, db, contact_id, google_id, person)
+                models.clear_sync_pending(db, contact_id)
+                db.commit()
                 if pushed and google_changed:
                     result.conflicts_local += 1  # local edit beat a concurrent Google edit
                 elif pushed:
@@ -688,11 +692,11 @@ def _push_local_changes(
             if _is_write_scope_denied(exc):
                 result.error = _SCOPE_DENIED_MESSAGE
                 log.error('Google refused the write (403); token lacks the write scope')
-                return True
+                leave_pending(updates[i:])
+                return
             log.exception('Failed to push contact %s', contact_id)
             result.skipped += 1
-            hold = True
-    return hold
+            leave_pending([row])
 
 
 def _is_allowed_photo_url(url: str) -> bool:
