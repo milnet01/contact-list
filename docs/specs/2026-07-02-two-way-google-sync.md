@@ -782,6 +782,12 @@ subquery adds no per-row cost on the count path (same as `has_photo`). A NULL
   (People API `createContact` has no client-supplied idempotency key, so the guard
   is "persist the link at once".)
 - **etag mismatch on update** → skip + report (§7), resolved next sync.
+- **A contact gone from Google.** A 404 while pushing a linked contact means it
+  was deleted on Google and its tombstone was never seen, for example after an
+  expired token's full re-sync, which lists live contacts only. It is treated as
+  a tombstone (INV-9): the contact is unlinked and its `sync_pending` row
+  deleted, so the next sync re-creates it. It is not counted as skipped. Any
+  other error stays pending and is retried (CL-0125).
 - **Partial run.** Contacts already pushed have their `google_id`/`etag`
   persisted. An edit to a linked contact that Step 2 leaves unpushed — a failed
   update, a missing `updateTime` (§7), or a scope 403 before its turn — gets a
@@ -1010,3 +1016,4 @@ older logs use.
 | impl | 2026-11-05 | 0 | — | — | — | — | — | — | Not a review loop; no reviewer was dispatched. CL-0117 amendment to §9: a scope 403 is one whose reason is `insufficientPermissions` or `ACCESS_TOKEN_SCOPE_INSUFFICIENT`, matched by `google_sync._SCOPE_DENIED_REASONS`; any other 403 takes the per-contact path. No invariant added or withdrawn. No gate: an amendment gets no automatic review (global rule 14). |
 | impl | 2026-11-05 | 0 | — | — | — | — | — | — | Not a review loop; no reviewer was dispatched. CL-0121 amendment to §4 (dirty_linked SQL adds sync_pending and `since`), §5 Step 3 (the baseline always advances), §7 (conflicts judged against `since`; a missing updateTime marks the contact pending), §9 Partial run (per-contact pending rows replace holding the baseline) and INV-1 (pending counts as dirty). No invariant added or withdrawn. |
 | impl | 2026-11-06 | 0 | — | — | — | — | — | — | Not a review loop; no reviewer was dispatched. CL-0124 amendment to §4 (dirty_linked uses `>=`), §5 Step 0 (snapshot under `BEGIN IMMEDIATE`, records `started`), §5 Step 3 (marks edits at or after `started` pending, `since` the new baseline), §7 (Google's time compared in whole seconds), §9 Partial run and INV-1. No invariant added or withdrawn. No gate: an amendment gets no automatic review (global rule 14). |
+| impl | 2026-11-06 | 0 | — | — | — | — | — | — | Not a review loop; no reviewer was dispatched. CL-0125 amendment to §9: a 404 while pushing a linked contact is treated as a tombstone (unlink, delete its `sync_pending` row, re-created next sync); other errors stay pending. No invariant added or withdrawn. No gate: an amendment gets no automatic review (global rule 14). |

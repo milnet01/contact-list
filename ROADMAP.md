@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: CL=127 -->
+<!-- ants-roadmap-id-high-water: CL=128 -->
 
 # Contact List — Roadmap
 
@@ -2123,7 +2123,7 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   Kind: fix.
   Source: oneup cold review of CL-0121, 2026-11-05.
 
-- 📋 [CL-0125] **A pending contact that always fails to push stays pending forever.**
+- ✅ [CL-0125] **A pending contact that always fails to push stays pending forever.**
   google_sync.py _push_local_changes: a persistent per-contact error is
   logged, counted in skipped and marked pending again every run. Example:
   the contact was deleted on Google and its tombstone was never seen
@@ -2136,6 +2136,12 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   _push_update commits but before clear_sync_pending commits leaves the
   mark, so the next run reports one false "conflict (kept Google)"; no
   data loss.
+  Shipped 2026-11-06, the recommended option: a 404 while pushing a
+  linked contact unlinks it and clears its pending mark, so the next
+  sync re-creates it (INV-9); other errors stay pending. Spec section 9
+  amended. Tests: TestContactGoneFromGoogle. Not done: the minor
+  crash-window false "conflict (kept Google)" this item notes (no data
+  loss).
   **Layman:** A contact Google keeps refusing is retried on every sync with no end, and the only sign is a skipped count.
   Kind: fix.
   Source: oneup cold review of CL-0121, 2026-11-05.
@@ -2157,6 +2163,18 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   **Layman:** If Google never says when a contact was last changed, neither your edits nor Google's reach the other side for that contact.
   Kind: fix.
   Source: oneup cold review of CL-0121, 2026-11-05.
+
+- 📋 [CL-0128] **A crash just after a push can report one false conflict next sync.**
+  google_sync.py _push_local_changes: _push_update commits the contact's
+  new etag before clear_sync_pending commits. A crash between the two
+  leaves the pending mark, so the next run judges the contact against its
+  old `since`, sees our own push as a Google change and reports one
+  "conflict (kept Google)". Google holds what we pushed, so no data is
+  lost. Likely fix: clear the mark in the same transaction as
+  _push_update's local write. Low priority.
+  **Layman:** If the app stops at an unlucky moment during a sync, the next sync may wrongly say it kept Google's copy of one contact; nothing is lost.
+  Kind: fix.
+  Source: oneup cold review of CL-0121, 2026-11-05 (split from CL-0125).
 
 ## Efficiency & Refactoring
 

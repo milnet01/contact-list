@@ -877,6 +877,59 @@ class TestEditDuringASync:
         assert result.conflicts_google == 0
 
 
+class _NotFound(Exception):
+    """Looks like a People API 404 to google_sync's duck-typing."""
+    status_code = 404
+    content = b'{"error": {"code": 404, "status": "NOT_FOUND"}}'
+
+
+class TestContactGoneFromGoogle:
+    """CL-0125: a pending contact Google answers 404 for was deleted there, and
+    its tombstone was never seen. It is treated as one (INV-9): unlinked, so the
+    next sync re-creates it, instead of failing and staying pending forever."""
+
+    @staticmethod
+    def _service(fail_get_for: str, exc: Exception) -> _FakeService:
+        class _S(_FakeService):
+            def get(self, resourceName=None, personFields=None):
+                if resourceName == fail_get_for:
+                    def run():
+                        raise exc
+                    return _Exec(run, self.retries_seen)
+                return super().get(resourceName, personFields)
+        return _S()
+
+    def _dirty_ann(self, db) -> int:
+        cid = models.create_contact(db, 'individual', 'Ann', 'ann@x.com')
+        _link(db, cid, 'people/ann')
+        _set_prev_sync(db, '2020-01-01T00:00:00Z')
+        _make_dirty_edit(db, cid, '2021-01-01T00:00:00Z')
+        return cid
+
+    def test_a_404_unlinks_the_contact_and_the_next_sync_recreates_it(
+            self, app, db, monkeypatch):
+        cid = self._dirty_ann(db)
+        models.mark_sync_pending(db, cid, '2020-01-01T00:00:00Z')  # an earlier run failed
+        db.commit()
+        first = _run_sync(app, db, self._service('people/ann', _NotFound()), monkeypatch)
+        assert first.skipped == 0
+        assert cid not in _pending(db)
+        assert models.get_contact(db, cid)['google_id'] is None
+        service = _FakeService()
+        _run_sync(app, db, service, monkeypatch)
+        assert len(service.created) == 1
+        assert models.get_contact(db, cid)['google_id'] == 'people/new1'
+
+    def test_any_other_error_keeps_the_contact_linked_and_pending(
+            self, app, db, monkeypatch):
+        cid = self._dirty_ann(db)
+        result = _run_sync(app, db, self._service('people/ann', RuntimeError('boom')),
+                           monkeypatch)
+        assert result.skipped == 1
+        assert cid in _pending(db)
+        assert models.get_contact(db, cid)['google_id'] == 'people/ann'
+
+
 class TestSyncFailedMessageShowsWhatWasDone:
     """CL-0116: a sync that stops part-way still reports what it committed."""
 

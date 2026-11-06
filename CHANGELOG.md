@@ -46,6 +46,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   list. From Birthdays or Duplicates, Back returns there. Cancelling or
   failing a merge returns to the page you started it from.
 
+- **A contact deleted on Google is no longer retried forever.** (CL-0125)
+  If the app missed the deletion, every sync failed to update that contact
+  and only counted it as skipped. Now the next sync adds it back to Google
+  with your edits, as it already did when it saw the deletion.
+
 - **An edit saved while a sync is running now reaches Google.** (CL-0124)
   Before, such an edit could be skipped by that sync and by every later one,
   and a later change on Google could then overwrite it. The next sync now

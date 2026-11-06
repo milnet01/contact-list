@@ -706,6 +706,16 @@ def _push_local_changes(
                 log.error('Google refused the write (403); token lacks the write scope')
                 leave_pending(updates[i:])
                 return
+            if _api_error_parts(exc)[0] == 404:
+                # Deleted on Google, and its tombstone was never seen (an expired
+                # token's full re-sync lists live contacts only). Treat it as one
+                # (INV-9): unlink, so the next sync re-creates it (CL-0125).
+                log.info('Contact %s is gone from Google; unlinked', contact_id)
+                db.execute('UPDATE contacts SET google_id = NULL, etag = NULL '
+                           'WHERE id = ?', [contact_id])
+                models.clear_sync_pending(db, contact_id)
+                db.commit()
+                continue
             log.exception('Failed to push contact %s', contact_id)
             result.skipped += 1
             leave_pending([row])
