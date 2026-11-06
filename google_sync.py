@@ -257,6 +257,11 @@ def sync_contacts(config: dict, db: sqlite3.Connection, region: str) -> SyncResu
     # --- Step 0: snapshot BEFORE the pull writes or Step 3 advances the baseline.
     # prev_sync is captured now because Step 3 overwrites last_synced_at; the dirty
     # sets are computed once here and never recomputed after that advance.
+    # BEGIN IMMEDIATE waits for any edit still being saved, so every edit stamped
+    # before `started` is in the snapshot; Step 3 marks the later ones (CL-0124).
+    db.execute('BEGIN IMMEDIATE')
+    started: str = db.execute(
+        "SELECT strftime('%Y-%m-%dT%H:%M:%SZ', 'now')").fetchone()[0]
     row = db.execute(
         'SELECT sync_token, last_synced_at FROM sync_state WHERE id = 1'
     ).fetchone()
@@ -267,6 +272,7 @@ def sync_contacts(config: dict, db: sqlite3.Connection, region: str) -> SyncResu
         r['google_id'] for r in dirty_linked if r['google_id']
     )
     local_only = models.get_local_only_ids(db)
+    db.commit()
 
     log.info('Starting Google Contacts sync')
 
@@ -386,6 +392,9 @@ def sync_contacts(config: dict, db: sqlite3.Connection, region: str) -> SyncResu
                last_synced_at = excluded.last_synced_at""",
         [new_sync_token],
     )
+    # An edit saved after Step 0 is in no snapshot, and Step 2 may have pushed
+    # its contact as it was before the edit: mark it pending (CL-0124).
+    models.mark_edited_during_sync(db, started)
     db.commit()
     log.info('Sync complete: pulled=%d created=%d updated=%d',
              result.pulled, result.created, result.updated)
@@ -672,7 +681,10 @@ def _push_local_changes(
                 leave_pending([row])
                 continue
             local_dt = _parse_dt(models.get_edited_at(db, contact_id))
-            google_changed = prev_dt is None or google_dt > prev_dt
+            # Whole seconds, as the baseline has: a push this app made in the
+            # baseline's own second is not a newer Google change (CL-0124).
+            google_changed = (prev_dt is None
+                              or google_dt.replace(microsecond=0) > prev_dt)
             if google_changed and not (local_dt is not None and local_dt > google_dt):
                 # Both changed and Google is newer-or-equal -> Google wins.
                 _apply_google_to_local(db, person, region)

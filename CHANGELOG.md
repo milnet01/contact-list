@@ -46,6 +46,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   list. From Birthdays or Duplicates, Back returns there. Cancelling or
   failing a merge returns to the page you started it from.
 
+- **An edit saved while a sync is running now reaches Google.** (CL-0124)
+  Before, such an edit could be skipped by that sync and by every later one,
+  and a later change on Google could then overwrite it. The next sync now
+  sends it.
+
 - **One failed Google push no longer upsets the next sync.** (CL-0121)
   When a contact's changes couldn't reach Google, the next sync could report
   false "conflict (kept Google)" results for contacts that had synced fine,

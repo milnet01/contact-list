@@ -321,7 +321,9 @@ SELECT last_synced_at FROM sync_state WHERE id = 1;          -- prev_sync (may b
 -- creates local-only rows (matching the §5 Step 0 prose). A NULL edited_at
 -- never matches. The `:prev_sync IS NOT NULL` guard is the canonical source of
 -- the "dirty_linked is empty on a never-synced DB" rule that §5 Step 0 and §7
--- both rely on; it is belt-and-braces over SQLite's 3VL (`x > NULL` is NULL).
+-- both rely on; it is belt-and-braces over SQLite's 3VL (`x >= NULL` is NULL).
+-- `>=`, not `>`: an edit saved in the baseline's own second, after the last
+-- sync committed, was never pushed (CL-0124).
 SELECT c.id, c.google_id,
        CASE WHEN p.contact_id IS NULL THEN :prev_sync ELSE p.since END AS since
 FROM contacts c
@@ -329,7 +331,7 @@ LEFT JOIN contact_edits e ON e.contact_id = c.id
 LEFT JOIN sync_pending p ON p.contact_id = c.id
 WHERE c.google_id IS NOT NULL
   AND (p.contact_id IS NOT NULL
-       OR (:prev_sync IS NOT NULL AND e.edited_at > :prev_sync));  -- dirty_linked
+       OR (:prev_sync IS NOT NULL AND e.edited_at >= :prev_sync));  -- dirty_linked
 
 -- every local-only contact -> candidates for push-create (all of them, §2)
 SELECT id FROM contacts WHERE google_id IS NULL;              -- local_only
@@ -358,7 +360,10 @@ runs. `prev_sync` is captured here **specifically because Step 3 overwrites
 recomputed** after Step 3 advances the baseline (recomputing post-Step-3 would find
 zero dirty rows and skip the pushes). On the first-ever sync `prev_sync` is NULL, so
 `dirty_linked` is empty (§4 SQL) — the guarantee §4/§7 rely on holds precisely
-because this snapshot precedes the Step-3 write.
+because this snapshot precedes the Step-3 write. The snapshot runs inside
+`BEGIN IMMEDIATE`, which waits for any edit still being saved, and also records
+`started`, the current second. Every edit stamped before `started` is therefore
+in the snapshot; Step 3 marks the later ones pending (CL-0124).
 
 **Step 1 — Pull (existing loop, one change).** `_upsert_person` currently has the
 signature `_upsert_person(db, person, region, config)` and matches an existing row
@@ -447,9 +452,17 @@ sync-token write. Today the code writes
 returns no new token would leave `last_synced_at` stale; that must change, or the
 next run's `prev_sync` is old and it re-pushes edits it already pushed. So: always
 update `last_synced_at` on success; update `sync_token` too when present. Advancing
-`last_synced_at` re-baselines dirtiness: a contact is dirty only when `edited_at >
+`last_synced_at` re-baselines dirtiness: a contact is dirty only when `edited_at >=
 prev_sync` or it is pending (§4), and the next sync's `prev_sync` becomes this
 `now`, so nothing this run reconciled counts as dirty next time.
+
+In the same transaction, Step 3 marks pending every linked contact whose
+`edited_at >= started` (Step 0), with `since` set to the new `last_synced_at`
+(`models.mark_edited_during_sync`, CL-0124). Such an edit was saved after the
+snapshot, so Step 2 either never saw it or pushed the contact as it was before
+the edit. `since` is the new baseline, not Step 0's, so this run's own push does
+not count as a Google change (§7). An edit saved in `started`'s second before the
+snapshot is marked too and pushed once more next sync, which is harmless.
 
 **Ordering rationale:** pull-before-push means Step 1 refreshes local data +
 etags for non-conflicting contacts, and Step 2's per-contact `get` always reads
@@ -614,12 +627,17 @@ run that left it unpushed). Detected in Step 2 via the per-contact `get`:
 google_updated = parse(metadata.sources[type==CONTACT].updateTime)   # datetime
 local_edited   = parse(contact_edits.edited_at)                       # datetime
 prev_sync_dt   = parse(since)                                         # datetime
-google_changed_since_sync = google_updated > prev_sync_dt
+google_changed_since_sync = google_updated (whole seconds) > prev_sync_dt
 ```
+
+`google_updated` drops its fractional seconds before this one comparison
+(CL-0124). The baseline has whole seconds only, so a push this app made in the
+baseline's own second would otherwise count as a newer Google change. The cost
+is that a real Google edit in that same second is not seen as a change.
 
 **Compare parsed datetimes, not strings.** All three values are parsed to
 timezone-aware UTC `datetime`s **before** any comparison — do **not** string-compare
-them the way §4's dirty-detection SQL compares `edited_at > :prev_sync` (that SQL
+them the way §4's dirty-detection SQL compares `edited_at >= :prev_sync` (that SQL
 compare is safe only because both operands are the app's own second-precision
 `'%Y-%m-%dT%H:%M:%SZ'` strings). Google's `updateTime` is RFC3339 with **fractional
 seconds** and possibly a numeric offset (e.g. `2026-07-01T12:00:00.123456Z` or
@@ -772,7 +790,8 @@ subquery adds no per-row cost on the count path (same as `has_photo`). A NULL
   Google won. So the next sync re-attempts exactly the unpushed edits, judged
   against the baseline they date from, and its pull leaves them alone (INV-9).
   `last_synced_at` still advances (§5 Step 3), so the contacts that did push
-  are not dirty next sync (CL-0121). A failed create needs no row: local-only
+  are not dirty next sync (CL-0121). An edit saved while the sync ran is
+  marked pending at Step 3 (§5, CL-0124). A failed create needs no row: local-only
   contacts are recomputed every sync. If the process dies mid-push, before
   Step 3, `last_synced_at` is unchanged and the next run recomputes as before.
   This mirrors the pull's "commit each page; token last" robustness (CL-0020).
@@ -920,9 +939,9 @@ Test-first (TDD), mocking the Google API client at the external boundary (DESIGN
 - **INV-1** — A contact's honest last-user-edit time lives in
   `contact_edits.edited_at`, written **only** by the user-facing `models.py`
   writers (`create_contact`, `_write_contact`, `import_contact`) and **never** by
-  the sync pull (`_upsert_person`). "Locally dirty" = `edited_at > prev_sync`
+  the sync pull (`_upsert_person`). "Locally dirty" = `edited_at >= prev_sync`
   (`last_synced_at` read at sync start), or a `sync_pending` row, which only the
-  push writes (§9, CL-0121). A pull can therefore never make a contact
+  sync writes (§5 Step 3, §9; CL-0121, CL-0124). A pull can therefore never make a contact
   look user-edited, and the displayed "Last edited" is never moved by a sync.
 - **INV-2** — A push never removes a value the app does not manage: multi-valued
   Google fields (emails, phones) are read-modify-written to preserve secondary
@@ -990,3 +1009,4 @@ older logs use.
 | 6 | 2026-09-25 | 3 | 1 | 4 | 0 | 0 | 5 | 5 | Gate armed by the CL-0070 amendment (commit `6f7bc2b`: §3 outage vs lost grant, §5 Step 1 tombstone before deferral, §5 Step 2 re-routing, §9, §13, INV-9). **One loop only, at the user's standing instruction** — not run to convergence. Partition: every lane held all four questions; no lane lost. All three lanes independently found that §3 still called `is_authenticated` "unchanged in shape" while the amendment had it catch `GoogleUnreachable` and return True — followed literally, the /sync page crashes during an outage. All three also found §5 Step 1's deferral still said `return False`, where the code returns `None` since CL-0070's first commit; one lane found the same sentence still put the deferral "at its top", against the new tombstone-first order. One lane found INV-9's "never deletes a contact the user edited since the last sync" wider than the rule, since §4's dirty set is empty until a sync completes; INV-9 now names Step 0's `dirty_linked` set. Three lanes' open question about a refresh failing mid-sync became a verified finding: §9 is scoped to the refresh at the start of a sync (§3). 4 of 5 findings anchor inside the armed span; the `return False` one was stale text from CL-0070's code commit. Open questions resolved clean, not tallied: `_push_update` passes `num_retries`; DESIGN §6.2's revoke wording changes no path; the unlink branch's return value is local. All three lanes disclosed arriving with the git snapshot naming this amendment's commit subject. |
 | impl | 2026-11-05 | 0 | — | — | — | — | — | — | Not a review loop; no reviewer was dispatched. CL-0117 amendment to §9: a scope 403 is one whose reason is `insufficientPermissions` or `ACCESS_TOKEN_SCOPE_INSUFFICIENT`, matched by `google_sync._SCOPE_DENIED_REASONS`; any other 403 takes the per-contact path. No invariant added or withdrawn. No gate: an amendment gets no automatic review (global rule 14). |
 | impl | 2026-11-05 | 0 | — | — | — | — | — | — | Not a review loop; no reviewer was dispatched. CL-0121 amendment to §4 (dirty_linked SQL adds sync_pending and `since`), §5 Step 3 (the baseline always advances), §7 (conflicts judged against `since`; a missing updateTime marks the contact pending), §9 Partial run (per-contact pending rows replace holding the baseline) and INV-1 (pending counts as dirty). No invariant added or withdrawn. |
+| impl | 2026-11-06 | 0 | — | — | — | — | — | — | Not a review loop; no reviewer was dispatched. CL-0124 amendment to §4 (dirty_linked uses `>=`), §5 Step 0 (snapshot under `BEGIN IMMEDIATE`, records `started`), §5 Step 3 (marks edits at or after `started` pending, `since` the new baseline), §7 (Google's time compared in whole seconds), §9 Partial run and INV-1. No invariant added or withdrawn. No gate: an amendment gets no automatic review (global rule 14). |

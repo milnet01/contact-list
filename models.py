@@ -520,10 +520,14 @@ def get_dirty_linked(db: sqlite3.Connection, prev_sync: str | None) -> list[sqli
     (CL-0033). Each row's `since` is the baseline its edit dates from: the
     pending row's own for a pending contact, else prev_sync.
 
+    The baseline's own second counts (`>=`, CL-0124): an edit saved in that
+    second after the last sync committed was never pushed. An edit that sync
+    did push may be pushed once more, which is harmless.
+
     A NULL prev_sync (never synced) yields no edited rows: nothing has diverged
     from a Google baseline yet, so the first sync only creates local-only
     contacts. The `:prev IS NOT NULL` guard is belt-and-braces over SQLite's 3VL
-    (`edited_at > NULL` is already NULL)."""
+    (`edited_at >= NULL` is already NULL)."""
     return db.execute(
         'SELECT c.id, c.google_id, '
         '       CASE WHEN p.contact_id IS NULL THEN :prev ELSE p.since END AS since '
@@ -532,9 +536,27 @@ def get_dirty_linked(db: sqlite3.Connection, prev_sync: str | None) -> list[sqli
         'LEFT JOIN sync_pending p ON p.contact_id = c.id '
         'WHERE c.google_id IS NOT NULL '
         '  AND (p.contact_id IS NOT NULL '
-        '       OR (:prev IS NOT NULL AND e.edited_at > :prev))',
+        '       OR (:prev IS NOT NULL AND e.edited_at >= :prev))',
         {'prev': prev_sync},
     ).fetchall()
+
+
+def mark_edited_during_sync(db: sqlite3.Connection, started: str) -> None:
+    """Mark pending every linked contact edited at or after `started`, the
+    second a sync took its snapshot (CL-0124). That sync's snapshot missed the
+    edit, or its push may have sent the contact as it was before the edit.
+    `since` is the baseline the sync has just written, so the sync's own
+    pushes do not count as Google changes. Run in the transaction that writes
+    the baseline. Caller commits."""
+    db.execute(
+        'INSERT INTO sync_pending (contact_id, since) '
+        'SELECT c.id, s.last_synced_at FROM contacts c '
+        'JOIN contact_edits e ON e.contact_id = c.id '
+        'JOIN sync_state s ON s.id = 1 '
+        'WHERE c.google_id IS NOT NULL AND e.edited_at >= ? '
+        'ON CONFLICT(contact_id) DO NOTHING',
+        [started],
+    )
 
 
 def mark_sync_pending(db: sqlite3.Connection, contact_id: int, since: str | None) -> None:

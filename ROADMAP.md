@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: CL=126 -->
+<!-- ants-roadmap-id-high-water: CL=127 -->
 
 # Contact List — Roadmap
 
@@ -2101,7 +2101,7 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   Kind: fix.
   Source: split from CL-0118, 2026-11-05.
 
-- 📋 [CL-0124] **An edit saved while a sync runs is never pushed to Google.**
+- ✅ [CL-0124] **An edit saved while a sync runs is never pushed to Google.**
   google_sync.py computes dirty_linked at Step 0 (models.get_dirty_linked,
   strict `e.edited_at > :prev`) but stamps last_synced_at with
   strftime('now') at Step 3. An edit saved between the two, or in Step 3's
@@ -2111,6 +2111,14 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   the new baseline's timestamp at Step 0 and write that value at Step 3;
   then amend two-way spec section 5 Step 3. Write the red test first: an
   edit stamped after Step 0 must be dirty on the next sync.
+  Shipped 2026-11-06. The item's suggested fix (Step 0's time as the new
+  baseline) would count this sync's own push as a Google change and lose
+  an edit made during that push. Instead: Step 0 snapshots under BEGIN
+  IMMEDIATE and records `started`; Step 3 marks pending every linked
+  contact edited at or after `started`, with since = the new baseline;
+  the dirty query uses >=; Google's time is compared in whole seconds.
+  Spec sections 4, 5, 7, 9 and INV-1 amended. Tests:
+  TestEditDuringASync.
   **Layman:** If you edit a Google-linked contact while a sync is running, that edit may never reach Google, and a later Google change can overwrite it.
   Kind: fix.
   Source: oneup cold review of CL-0121, 2026-11-05.
@@ -2204,5 +2212,21 @@ they reduce duplication and query count.
   Kind: refactor.
   Source: in-session-2026-07-02.
   Resolved (2026-07-03): split into routes/contacts.py (core CRUD + list/detail/photo), routes/import_export.py (CSV+vCard import/export), and routes/merge.py — all attached to the same 'contacts' blueprint, so every endpoint name and URL is unchanged. 276 tests + ruff + mypy all green (zero behaviour change). Correction: the "exceeds the §14 file-size cap" premise was inaccurate — §14 is a ~100 KB *total* soft budget across shipped .py, not a per-file cap (contacts.py was ~24 KB / 716 lines), so this was a readability split, not a cap violation.
+
+- 📋 [CL-0127] **Run the local gate's three Python legs at the same time.**
+  local-gate.md section 9, test-parallelism row. local-ci.sh runs
+  scripts/gate.sh for each of CI_PYTHONS in turn. One pytest leg measured
+  21 s warm and 51 s cold on 2026-11-06 (.ci-venvs/py3.13); the cold time
+  is first-import reads from the spinning /mnt/Games disk, not test waits.
+  Plan: time a full local-ci.sh first; confirm the legs share no state
+  (.pytest_cache, .ruff_cache, tmp paths); run each leg in the background
+  with its own log, print the logs in order, keep the failure count and
+  the unobtainable-Python-fails rule; time it again and record both. If
+  parallel reads on the spinning disk gain little, record that as measured
+  and not worth it. No pytest-xdist: a new dependency DESIGN.md section 3
+  would need justified, for little gain on a 21 s leg.
+  **Layman:** The check before each push tests three Python versions one after another; running them side by side could make pushes quicker.
+  Kind: perf.
+  Source: claude-config CI-tuning request, 2026-11-05.
 
 ## Shipped

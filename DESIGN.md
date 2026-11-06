@@ -306,7 +306,8 @@ CREATE TABLE sync_state (
 ```
 
 `sync_pending` (CL-0121) holds one row per Google-linked contact whose local
-edit a sync could not push, with the baseline that edit dates from. The rule is
+edit a sync could not push, or that was edited while a sync ran (CL-0124), with
+the baseline that edit dates from. The rule is
 the two-way sync spec's §9, *Partial run*.
 
 ```sql

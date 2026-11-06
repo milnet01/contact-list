@@ -804,6 +804,79 @@ class TestPendingPushMarker:
         assert service.got == [] and third.updated == 0
 
 
+class TestEditDuringASync:
+    """CL-0124: an edit saved while a sync runs, after Step 0's snapshot, is
+    pushed by the next sync. The edit is stamped with the real clock, as a
+    user's would be, so it shares a second with the sync's own baseline."""
+
+    @staticmethod
+    def _user_edit(db, cid) -> str:
+        models._mark_edited(db, cid)  # what every user-facing writer calls
+        db.commit()
+        return models.get_edited_at(db, cid)
+
+    def test_an_edit_saved_during_the_pull_is_pushed_next_sync(
+            self, app, db, monkeypatch):
+        cid = models.create_contact(db, 'individual', 'Ann', 'ann@x.com')
+        _link(db, cid, 'people/ann')
+        _set_prev_sync(db, '2020-01-01T00:00:00Z')
+        _make_dirty_edit(db, cid, '2019-01-01T00:00:00Z')  # clean at Step 0
+
+        class _EditDuringPull(_FakeService):
+            def list(self, **kwargs):
+                TestEditDuringASync._user_edit(db, cid)
+                return super().list(**kwargs)
+
+        first = _run_sync(app, db, _EditDuringPull(), monkeypatch)
+        assert first.updated == 0  # not in Step 0's snapshot
+        assert cid in _pending(db)
+        service = _FakeService(get_responses={
+            'people/ann': _person('people/ann', '2019-06-01T00:00:00Z')})
+        second = _run_sync(app, db, service, monkeypatch)
+        assert [u[0] for u in service.updated] == ['people/ann']
+        assert second.updated == 1
+
+    def test_an_edit_saved_during_its_own_push_is_pushed_next_sync(
+            self, app, db, monkeypatch):
+        # The push sent the contact as it was before the edit, so Google's copy
+        # is stamped with the push time, in the edit's second. The next sync
+        # must still push the edit, not count the push as a newer Google change.
+        cid = models.create_contact(db, 'individual', 'Ann', 'ann@x.com')
+        _link(db, cid, 'people/ann')
+        _set_prev_sync(db, '2020-01-01T00:00:00Z')
+        _make_dirty_edit(db, cid, '2021-01-01T00:00:00Z')
+        edited: list[str] = []
+
+        class _EditDuringPush(_FakeService):
+            def updateContact(self, resourceName=None, updatePersonFields=None, body=None):
+                edited.append(TestEditDuringASync._user_edit(db, cid))
+                return super().updateContact(resourceName, updatePersonFields, body)
+
+        first = _run_sync(app, db, _EditDuringPush(get_responses={
+            'people/ann': _person('people/ann', '2019-06-01T00:00:00Z')}), monkeypatch)
+        assert first.updated == 1
+        assert cid in _pending(db)
+        service = _FakeService(get_responses={
+            'people/ann': _person('people/ann', edited[0])})
+        second = _run_sync(app, db, service, monkeypatch)
+        assert [u[0] for u in service.updated] == ['people/ann']
+        assert second.conflicts_google == 0
+
+    def test_an_edit_in_the_baselines_own_second_is_pushed(
+            self, app, db, monkeypatch):
+        # Saved just after the last sync committed, in the same second. Google's
+        # copy carries that sync's own push, a fraction of a second later.
+        cid = models.create_contact(db, 'individual', 'Ann', 'ann@x.com')
+        _link(db, cid, 'people/ann')
+        _set_prev_sync(db, '2021-01-01T00:00:00Z')
+        _make_dirty_edit(db, cid, '2021-01-01T00:00:00Z')
+        service = _FakeService(get_responses={
+            'people/ann': _person('people/ann', '2021-01-01T00:00:00.500Z')})
+        result = _run_sync(app, db, service, monkeypatch)
+        assert [u[0] for u in service.updated] == ['people/ann']
+        assert result.conflicts_google == 0
+
+
 class TestSyncFailedMessageShowsWhatWasDone:
     """CL-0116: a sync that stops part-way still reports what it committed."""
 
