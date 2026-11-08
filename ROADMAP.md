@@ -2167,7 +2167,7 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   Kind: fix.
   Source: oneup cold review of CL-0121, 2026-11-05.
 
-- 📋 [CL-0128] **A crash just after a push can report one false conflict next sync.**
+- 🚫 [CL-0128] **A crash just after a push can report one false conflict next sync.**
   google_sync.py _push_local_changes: _push_update commits the contact's
   new etag before clear_sync_pending commits. A crash between the two
   leaves the pending mark, so the next run judges the contact against its
@@ -2175,6 +2175,13 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   "conflict (kept Google)". Google holds what we pushed, so no data is
   lost. Likely fix: clear the mark in the same transaction as
   _push_update's local write. Low priority.
+  Dropped by the user 2026-11-08. The proposed fix closes only one of
+  two windows: _push_local_changes sends the whole contact
+  (_person_body_for_push is not a diff), so a crash after updateContact
+  returns but before the local commit leaves the same stale pending mark
+  and the same false "kept Google". Removing it fully needs a content
+  comparison in §7. Nothing is lost either way (Google holds what we
+  pushed), and both windows are a split second wide.
   **Layman:** If the app stops at an unlucky moment during a sync, the next sync may wrongly say it kept Google's copy of one contact; nothing is lost.
   Kind: fix.
   Source: oneup cold review of CL-0121, 2026-11-05 (split from CL-0125).
