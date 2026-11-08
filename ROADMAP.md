@@ -2092,11 +2092,9 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   leaves the duplicates on Google, and a full re-sync can bring them
   back. Removing them on Google needs a spec amendment (section 15 lists
   deletions as future work).
-  Waiting-on: user (Should merging also delete the removed contacts on
-  Google, or only say on the merge page that their Google copies stay?
-  Recommended: say so on the merge page now, naming the linked contacts;
-  leave deleting on Google to the deletions work, since it cannot be
-  undone. 2026-11-05)
+  Decided by the user 2026-11-08: the merge page names the Google-linked
+  contacts and says their Google copies stay. Deleting on Google is left
+  to the deletions work (spec section 15), since it cannot be undone.
   **Layman:** After you merge contacts that are also on Google, the extra copies stay in your Google account.
   Kind: fix.
   Source: split from CL-0118, 2026-11-05.
@@ -2154,12 +2152,9 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   CL-0121 the next pull imported Google's copy, losing the local edit.
   Only the push_no_time count shows it. Two-way spec section 7 says this
   should not happen but is not guaranteed.
-  Waiting-on: user (When Google gives no edit time, which side should win
-  after it has been pending a while: keep retrying forever (no loss, but
-  frozen), or let Google's copy win after a few syncs (unfreezes, loses
-  your local edit)? Recommended: Google wins after 3 pending syncs, and
-  the sync report names the contact so you can redo the edit. It unfreezes
-  the contact at the cost of one edit you are told about. 2026-11-05)
+  Decided by the user 2026-11-08: Google's copy wins after 3 pending
+  syncs with no edit time, and the sync report names the contact so the
+  edit can be redone. Needs a two-way sync spec section 7 amendment.
   **Layman:** If Google never says when a contact was last changed, neither your edits nor Google's reach the other side for that contact.
   Kind: fix.
   Source: oneup cold review of CL-0121, 2026-11-05.
