@@ -317,6 +317,18 @@ CREATE TABLE sync_pending (
 );
 ```
 
+`sync_no_time` (CL-0126) counts the syncs that found no Google edit time for a
+pending contact. It is deleted with the contact's `sync_pending` row. The rule
+is the two-way sync spec's §7.
+
+```sql
+CREATE TABLE sync_no_time (
+    contact_id  INTEGER PRIMARY KEY
+                REFERENCES sync_pending(contact_id) ON DELETE CASCADE,
+    misses      INTEGER NOT NULL
+);
+```
+
 ### 4.4 `contact_edits` Table (CL-0033)
 
 ```sql

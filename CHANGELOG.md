@@ -34,6 +34,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   now names each removed contact that has a Google copy, and says to delete
   it in Google Contacts if you don't want it there.
 
+- **A contact Google never dates no longer stops syncing.** (CL-0126)
+  When Google gives no edit time for a contact you changed, the app cannot
+  tell whose copy is newer, so it waits. Waiting used to last for ever, and
+  that contact synced in neither direction. Now, on the third sync, Google's
+  copy is kept and the sync message names the contact, so you can redo your
+  edit.
+
 - **A CSV row with an email but no name gets the email as its name.** (CL-0112)
   It used to create a contact with a blank name.
 

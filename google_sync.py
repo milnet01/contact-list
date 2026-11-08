@@ -11,7 +11,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from http.client import HTTPMessage
 from typing import IO, Any
 
@@ -37,6 +37,8 @@ class SyncResult:
     conflicts_local: int = 0   # conflicts resolved local-wins
     skipped: int = 0           # per-contact push failures (logged, not fatal)
     push_no_time: int = 0      # linked contacts whose Google updateTime was absent
+    # Names given Google's copy after NO_TIME_GIVE_UP misses (spec §7, CL-0126).
+    no_time_google: list[str] = field(default_factory=list)
     error: str | None = None   # fatal error (else None)
 
 # Read-WRITE scope (CL-0033): covers reading too, so the old .readonly scope is
@@ -604,6 +606,11 @@ def _is_write_scope_denied(exc: Exception) -> bool:
         reason in content for reason in _SCOPE_DENIED_REASONS)
 
 
+# Syncs a pending contact may go without a Google updateTime before Google's
+# copy wins (spec §7, CL-0126). Settled by the user 2026-11-08.
+NO_TIME_GIVE_UP = 3
+
+
 def _push_local_changes(
     service: Any, db: sqlite3.Connection, region: str,
     dirty_linked: list[sqlite3.Row], local_only: list[int], result: SyncResult,
@@ -675,10 +682,19 @@ def _push_local_changes(
             ).execute(num_retries=_API_RETRIES)
             google_dt = _contact_update_time(person)
             if google_dt is None:
-                # Can't prove our edit is newer -> Google-wins, don't push. Counted
-                # so a systematic absence is visible, not a silent one-way sync.
+                # Can't prove our edit is newer -> don't push. Counted so a
+                # systematic absence is visible, not a silent one-way sync.
                 result.push_no_time += 1
-                leave_pending([row])
+                models.mark_sync_pending(db, contact_id, row['since'])
+                if models.count_no_time_miss(db, contact_id) >= NO_TIME_GIVE_UP:
+                    # The pull skips a pending contact, so give Google the win
+                    # rather than freeze it both ways; the report names it so
+                    # the edit can be redone (spec §7, CL-0126).
+                    name = models.get_contact(db, contact_id)['name']
+                    _apply_google_to_local(db, person, region)
+                    models.clear_sync_pending(db, contact_id)
+                    result.no_time_google.append(name)
+                db.commit()
                 continue
             local_dt = _parse_dt(models.get_edited_at(db, contact_id))
             # Whole seconds, as the baseline has: a push this app made in the

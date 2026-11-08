@@ -2147,7 +2147,7 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   Kind: fix.
   Source: oneup cold review of CL-0121, 2026-11-05.
 
-- 📋 [CL-0126] **A contact Google gives no edit time for is frozen in both directions.**
+- ✅ [CL-0126] **A contact Google gives no edit time for is frozen in both directions.**
   Since CL-0121, google_sync.py marks such a contact pending
   (push_no_time += 1; leave_pending([row])). Pending contacts are skipped
   by the pull (INV-9), and Step 2 cannot push without a time, so the
@@ -2158,6 +2158,11 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   Decided by the user 2026-11-08: Google's copy wins after 3 pending
   syncs with no edit time, and the sync report names the contact so the
   edit can be redone. Needs a two-way sync spec section 7 amendment.
+  Shipped 2026-11-08: migration 012 adds sync_no_time (cascades from
+  sync_pending); on the third miss (google_sync.NO_TIME_GIVE_UP)
+  Google's copy is applied and the name lands in
+  SyncResult.no_time_google, shown in the sync flash. Spec §7/§8.1/§9
+  amended. Tests in tests/test_two_way_sync.py.
   **Layman:** If Google never says when a contact was last changed, neither your edits nor Google's reach the other side for that contact.
   Kind: fix.
   Source: oneup cold review of CL-0121, 2026-11-05.

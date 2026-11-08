@@ -122,6 +122,12 @@ def _summary_parts(r: google_sync.SyncResult) -> list[str]:
         parts.append(
             f"{r.push_no_time} edit{'s' if r.push_no_time != 1 else ''} "
             "couldn't be pushed (Google's edit time was unavailable)")
+    if r.no_time_google:
+        # Spec §7, CL-0126: Google's copy won after repeated misses, so name
+        # the contacts whose local edit was lost.
+        parts.append(
+            f"Google's copy was kept for {', '.join(r.no_time_google)}, since "
+            'Google gave no edit time; redo those edits')
     if r.skipped:
         parts.append(f'{r.skipped} skipped')
     return parts

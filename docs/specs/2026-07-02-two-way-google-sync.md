@@ -665,6 +665,17 @@ in the report ("N edits couldn't be pushed — Google's edit time was unavailabl
 `updateTime` (which would quietly turn push-updates into a no-op) is visible, not
 hidden. Creates are unaffected (they don't read `updateTime`).
 
+**Google wins after three misses (CL-0126).** A pending contact is skipped by
+the pull (INV-9), so a contact Google never gives a time for would be frozen in
+both directions. Each sync that finds no `updateTime` for a contact counts one
+miss in a `sync_no_time` row tied to its `sync_pending` row
+(`google_sync.NO_TIME_GIVE_UP` is the limit). On the third miss Google wins:
+apply Google→local as for a conflict, delete the pending row (which deletes the
+count), and add the contact's local name to `SyncResult.no_time_google`. The
+report names those contacts, so the user can redo the lost edit. A contact
+reconciled any other way loses its count with its pending row. Settled by the
+user 2026-11-08.
+
 - **Not `google_changed_since_sync`** → no conflict → push local (overlay +
   `updateContact`).
 - **Conflict** (both changed) → **newest wins** (tie → Google, the safe default):
@@ -706,6 +717,7 @@ class SyncResult:
     conflicts_local: int   # conflicts resolved local-wins
     skipped: int         # per-contact push failures (logged, not fatal)
     push_no_time: int    # linked contacts whose Google updateTime was absent (§7 fallback)
+    no_time_google: list[str]  # names given Google's copy after three misses (§7)
     error: str | None    # fatal error (unchanged semantics from today)
 ```
 
@@ -793,7 +805,7 @@ subquery adds no per-row cost on the count path (same as `has_photo`). A NULL
   update, a missing `updateTime` (§7), or a scope 403 before its turn — gets a
   `sync_pending` row holding its `since` (§4); an existing row keeps its older
   `since`. A reconciled contact's row is deleted: pushed, nothing to write, or
-  Google won. So the next sync re-attempts exactly the unpushed edits, judged
+  Google won, including after three missing `updateTime`s (§7). So the next sync re-attempts exactly the unpushed edits, judged
   against the baseline they date from, and its pull leaves them alone (INV-9).
   `last_synced_at` still advances (§5 Step 3), so the contacts that did push
   are not dirty next sync (CL-0121). An edit saved while the sync ran is
@@ -1017,3 +1029,4 @@ older logs use.
 | impl | 2026-11-05 | 0 | — | — | — | — | — | — | Not a review loop; no reviewer was dispatched. CL-0121 amendment to §4 (dirty_linked SQL adds sync_pending and `since`), §5 Step 3 (the baseline always advances), §7 (conflicts judged against `since`; a missing updateTime marks the contact pending), §9 Partial run (per-contact pending rows replace holding the baseline) and INV-1 (pending counts as dirty). No invariant added or withdrawn. |
 | impl | 2026-11-06 | 0 | — | — | — | — | — | — | Not a review loop; no reviewer was dispatched. CL-0124 amendment to §4 (dirty_linked uses `>=`), §5 Step 0 (snapshot under `BEGIN IMMEDIATE`, records `started`), §5 Step 3 (marks edits at or after `started` pending, `since` the new baseline), §7 (Google's time compared in whole seconds), §9 Partial run and INV-1. No invariant added or withdrawn. No gate: an amendment gets no automatic review (global rule 14). |
 | impl | 2026-11-06 | 0 | — | — | — | — | — | — | Not a review loop; no reviewer was dispatched. CL-0125 amendment to §9: a 404 while pushing a linked contact is treated as a tombstone (unlink, delete its `sync_pending` row, re-created next sync); other errors stay pending. No invariant added or withdrawn. No gate: an amendment gets no automatic review (global rule 14). |
+| impl | 2026-11-08 | 0 | — | — | — | — | — | — | Not a review loop; no reviewer was dispatched. CL-0126 amendment to §7 (a pending contact with no `updateTime` on three syncs, counted in `sync_no_time`, takes Google's copy and is named in the report), §8.1 (`SyncResult.no_time_google`) and §9 Partial run. Decided by the user 2026-11-08. No invariant added or withdrawn. No gate: an amendment gets no automatic review (global rule 14). |

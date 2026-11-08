@@ -778,6 +778,50 @@ class TestPendingPushMarker:
         second = _run_sync(app, db, service, monkeypatch)
         assert second.updated == 1 and len(service.updated) == 1
 
+    def _timeless_lee(self, db):
+        cid = models.create_contact(db, 'individual', 'Lee', 'lee@x.com')
+        _link(db, cid, 'people/lee')
+        _set_prev_sync(db, '2020-01-01T00:00:00Z')
+        _make_dirty_edit(db, cid, '2021-01-01T00:00:00Z')
+        return cid
+
+    def _no_time_sync(self, app, db, monkeypatch):
+        service = _FakeService(get_responses={
+            'people/lee': _person('people/lee', None, 'Google Lee')})
+        return _run_sync(app, db, service, monkeypatch), service
+
+    def test_google_wins_on_the_third_sync_without_a_time(
+            self, app, db, monkeypatch):
+        # CL-0126: a pending contact is skipped by the pull, so without a limit
+        # one Google never dates is frozen both ways. Spec §7: three misses.
+        cid = self._timeless_lee(db)
+        for _ in range(2):
+            result, service = self._no_time_sync(app, db, monkeypatch)
+            assert result.push_no_time == 1 and result.no_time_google == []
+            assert models.get_contact(db, cid)['name'] == 'Lee'
+            assert cid in _pending(db)
+        result, service = self._no_time_sync(app, db, monkeypatch)
+        assert result.no_time_google == ['Lee']
+        assert models.get_contact(db, cid)['name'] == 'Google Lee'
+        assert cid not in _pending(db)
+        assert service.updated == []
+
+    def test_the_miss_count_restarts_once_the_contact_is_reconciled(
+            self, app, db, monkeypatch):
+        cid = self._timeless_lee(db)
+        for _ in range(2):
+            self._no_time_sync(app, db, monkeypatch)
+        pushed = _run_sync(app, db, _FakeService(get_responses={
+            'people/lee': _person('people/lee', '2019-06-01T00:00:00Z')}),
+            monkeypatch)
+        assert pushed.updated == 1 and cid not in _pending(db)
+        _set_prev_sync(db, '2020-01-01T00:00:00Z')  # the 2021 edit is dirty again
+        for _ in range(2):
+            result, _service = self._no_time_sync(app, db, monkeypatch)
+            assert result.no_time_google == []
+        assert models.get_contact(db, cid)['name'] == 'Lee'
+        assert cid in _pending(db)
+
     def test_a_pending_contact_is_not_overwritten_by_the_pull(
             self, app, db, monkeypatch):
         _a, b = self._two_dirty(db)
@@ -951,6 +995,15 @@ class TestSyncFailedMessageShowsWhatWasDone:
                             'Sync failed: Google needs the write permission — '
                             'reconnect. Before it stopped: 12 imported from '
                             'Google, 3 created on Google.')]
+
+    def test_contacts_given_googles_copy_are_named(self, app, monkeypatch):
+        # CL-0126: a lost edit is named, so the user can redo it (spec §7).
+        result = google_sync.SyncResult(
+            pulled=1, push_no_time=2, no_time_google=['Lee', 'Ann'])
+        flashes = self._start(app, monkeypatch, result)
+        assert len(flashes) == 1 and flashes[0][0] == 'success'
+        assert ("Google's copy was kept for Lee, Ann, since Google gave no "
+                "edit time; redo those edits") in flashes[0][1]
 
     def test_an_error_with_nothing_done_says_only_the_error(self, app, monkeypatch):
         result = google_sync.SyncResult(error='Not authenticated with Google.')

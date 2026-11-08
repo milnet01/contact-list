@@ -570,6 +570,18 @@ def mark_sync_pending(db: sqlite3.Connection, contact_id: int, since: str | None
     )
 
 
+def count_no_time_miss(db: sqlite3.Connection, contact_id: int) -> int:
+    """Count one sync that found no Google updateTime for this pending contact,
+    and return the total (CL-0126). The contact must already be marked
+    pending: the count is deleted with its sync_pending row. Caller commits."""
+    return db.execute(
+        'INSERT INTO sync_no_time (contact_id, misses) VALUES (?, 1) '
+        'ON CONFLICT(contact_id) DO UPDATE SET misses = misses + 1 '
+        'RETURNING misses',
+        [contact_id],
+    ).fetchone()[0]
+
+
 def clear_sync_pending(db: sqlite3.Connection, contact_id: int) -> None:
     """The contact's edit is reconciled with Google (CL-0121). Caller commits."""
     db.execute('DELETE FROM sync_pending WHERE contact_id = ?', [contact_id])
