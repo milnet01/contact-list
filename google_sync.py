@@ -690,10 +690,11 @@ def _push_local_changes(
                     # The pull skips a pending contact, so give Google the win
                     # rather than freeze it both ways; the report names it so
                     # the edit can be redone (spec §7, CL-0126).
-                    name = models.get_contact(db, contact_id)['name']
+                    contact = models.get_contact(db, contact_id)
                     _apply_google_to_local(db, person, region)
                     models.clear_sync_pending(db, contact_id)
-                    result.no_time_google.append(name)
+                    result.no_time_google.append(
+                        contact['name'] if contact else google_id)
                 db.commit()
                 continue
             local_dt = _parse_dt(models.get_edited_at(db, contact_id))
