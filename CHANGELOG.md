@@ -29,6 +29,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   short "Could not merge". It now stops and says how many fields the merge
   would make, so you can remove some first.
 
+- **The merge page says which contacts stay on Google.** (CL-0123)
+  Merging deletes the removed contacts here, never on Google. The merge page
+  now names each removed contact that has a Google copy, and says to delete
+  it in Google Contacts if you don't want it there.
+
 - **A CSV row with an email but no name gets the email as its name.** (CL-0112)
   It used to create a contact with a blank name.
 

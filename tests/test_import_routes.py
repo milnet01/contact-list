@@ -299,6 +299,54 @@ class TestMerge:
         assert b'ann@x.com' in resp.data
         assert b'555-1' in resp.data
 
+    def test_preview_warns_google_copies_of_removed_contacts_stay(
+        self, client, app,
+    ):
+        # CL-0123: merge never deletes on Google (two-way sync spec INV-4), so
+        # the page names each removed contact that is on Google. The survivor
+        # keeps its own link, so a linked survivor is not named.
+        with app.app_context():
+            db = get_db()
+            keep = models.create_contact(db, 'individual', 'Keeper Linked')
+            linked = models.create_contact(db, 'individual', 'Gone Linked')
+            local = models.create_contact(db, 'individual', 'Gone Local')
+            models.link_google_contact(db, keep, 'people/c1', 'e1')
+            models.link_google_contact(db, linked, 'people/c2', 'e2')
+            db.commit()
+        token = _csrf(client)
+        resp = client.post('/contacts/merge', data={
+            '_csrf_token': token,
+            'selected': [str(keep), str(linked), str(local)],
+        })
+        assert resp.status_code == 200
+        page = resp.data.decode()
+        warning = re.search(
+            r'<div class="[^"]*\bmerge-google-note\b[^"]*"[^>]*>(.*?)</div>',
+            page, re.S,
+        )
+        assert warning, 'no Google-copies warning on the merge page'
+        text = warning.group(1)
+        assert 'Gone Linked' in text
+        assert 'Gone Local' not in text
+        assert 'Keeper Linked' not in text
+        assert 'stay' in text and 'Google' in text
+
+    def test_preview_has_no_google_warning_when_no_removed_contact_is_linked(
+        self, client, app,
+    ):
+        a, b = self._two_dupes(app)
+        with app.app_context():
+            db = get_db()
+            models.link_google_contact(db, a, 'people/c1', 'e1')
+            db.commit()
+        token = _csrf(client)
+        resp = client.post('/contacts/merge', data={
+            '_csrf_token': token, 'selected': [str(a), str(b)],
+        })
+        assert resp.status_code == 200
+        assert b'Ann' in resp.data
+        assert b'merge-google-note' not in resp.data
+
     def test_apply_merges(self, client, app):
         a, b = self._two_dupes(app)
         token = _csrf(client)

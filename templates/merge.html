@@ -24,6 +24,15 @@
     custom-field value you don't pick is dropped.
 </p>
 
+{% if google_losers %}
+<div class="card merge-google-note" role="note">
+    <p><strong>These copies stay on Google:</strong>
+    {{ google_losers|join(', ') }}.
+    Merging deletes them here only. Delete them in Google Contacts if you
+    don't want them there.</p>
+</div>
+{% endif %}
+
 <form method="post" action="{{ url_for('contacts.merge_apply') }}">
     <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="survivor_id" value="{{ survivor_id }}">

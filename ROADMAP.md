@@ -2085,7 +2085,7 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   Kind: fix.
   Source: Windows test run 2026-10-31, after the review-readability fixes.
 
-- 📋 [CL-0123] **Merging leaves the removed contacts' Google copies on Google.**
+- ✅ [CL-0123] **Merging leaves the removed contacts' Google copies on Google.**
   merge_contacts deletes the losers locally and never calls Google,
   which matches the two-way sync spec's non-goal "No contact deletions
   pushed to Google" (INV-4). So a merge of Google-linked duplicates
@@ -2095,6 +2095,9 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   Decided by the user 2026-11-08: the merge page names the Google-linked
   contacts and says their Google copies stay. Deleting on Google is left
   to the deletions work (spec section 15), since it cannot be undone.
+  Shipped 2026-11-08: merge_preview passes the Google-linked losers;
+  merge.html names them in a merge-google-note card. Tests in
+  tests/test_import_routes.py TestMerge.
   **Layman:** After you merge contacts that are also on Google, the extra copies stay in your Google account.
   Kind: fix.
   Source: split from CL-0118, 2026-11-05.

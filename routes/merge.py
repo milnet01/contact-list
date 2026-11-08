@@ -85,6 +85,12 @@ def merge_preview() -> ResponseReturnValue:
     # choice ignores Google links: merge_contacts takes any survivor.
     survivor_id = min(c['id'] for c in contacts)
     loser_ids = [c['id'] for c in contacts if c['id'] != survivor_id]
+    # Merge never deletes on Google (two-way sync spec INV-4), so the page
+    # names each removed contact whose Google copy will stay (CL-0123).
+    google_losers = [
+        c['name'] for c in contacts
+        if c['id'] != survivor_id and c['google_id']
+    ]
 
     def distinct(key: str) -> list[str]:
         seen: list[str] = []
@@ -119,7 +125,7 @@ def merge_preview() -> ResponseReturnValue:
     return render_template(
         'merge.html', contacts=contacts, survivor_id=survivor_id,
         loser_ids=loser_ids, core=core, customs=list(union.values()),
-        tags_str=', '.join(tag_union), back=back,
+        tags_str=', '.join(tag_union), back=back, google_losers=google_losers,
     )
 
 
