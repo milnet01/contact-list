@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: CL=128 -->
+<!-- ants-roadmap-id-high-water: CL=129 -->
 
 # Contact List — Roadmap
 
@@ -2186,6 +2186,20 @@ Items deferred from `/audit` and `/indie-review` sweeps that are not fixed inlin
   Kind: fix.
   Source: oneup cold review of CL-0121, 2026-11-05 (split from CL-0125).
 
+- ✅ [CL-0129] **Tests that run launcher.main() leave its SIGINT and SIGTERM handlers installed, so pytest ignores Ctrl-C.**
+  launcher.main() installs _stop for SIGINT and SIGTERM, which calls
+  server.shutdown(). The tests give it a fake server, so the handler
+  does nothing and the pytest process keeps running. Seen 2026-11-15:
+  after tests/test_packaging.py and tests/test_port.py, both signals
+  still point at main.<locals>._stop. Fix: an autouse fixture in
+  tests/conftest.py restores both handlers after each test.
+  Shipped 2026-11-15. tests/conftest.py restores both handlers after
+  each test. Proved by a probe before and after: _stop before, the
+  defaults after.
+  **Layman:** After certain tests run, pressing Ctrl-C no longer stops the test run.
+  Kind: fix.
+  Source: found-while-working CL-0127, 2026-11-15.
+
 ## Efficiency & Refactoring
 
 Performance and code-health opportunities surfaced during the 2026-06-30 review.
@@ -2241,7 +2255,7 @@ they reduce duplication and query count.
   Source: in-session-2026-07-02.
   Resolved (2026-07-03): split into routes/contacts.py (core CRUD + list/detail/photo), routes/import_export.py (CSV+vCard import/export), and routes/merge.py — all attached to the same 'contacts' blueprint, so every endpoint name and URL is unchanged. 276 tests + ruff + mypy all green (zero behaviour change). Correction: the "exceeds the §14 file-size cap" premise was inaccurate — §14 is a ~100 KB *total* soft budget across shipped .py, not a per-file cap (contacts.py was ~24 KB / 716 lines), so this was a readability split, not a cap violation.
 
-- 📋 [CL-0127] **Run the local gate's three Python legs at the same time.**
+- ✅ [CL-0127] **Run the local gate's three Python legs at the same time.**
   local-gate.md section 9, test-parallelism row. local-ci.sh runs
   scripts/gate.sh for each of CI_PYTHONS in turn. One pytest leg measured
   21 s warm and 51 s cold on 2026-11-06 (.ci-venvs/py3.13); the cold time
@@ -2253,6 +2267,12 @@ they reduce duplication and query count.
   parallel reads on the spinning disk gain little, record that as measured
   and not worth it. No pytest-xdist: a new dependency DESIGN.md section 3
   would need justified, for little gain on a 21 s leg.
+  Shipped 2026-11-15. local-ci.sh runs each leg in the background with
+  its own log, printed in matrix order; each leg has its own mypy, ruff
+  and pytest caches under .ci-venvs/. Measured full local-ci.sh: 96.7 s
+  one after another; 39.6 s side by side with empty caches, 25.0 s and
+  18.2 s warm. A break in the 3.14 leg alone still fails the run and
+  records no pass. Stopping the run stops every leg (needs CL-0129).
   **Layman:** The check before each push tests three Python versions one after another; running them side by side could make pushes quicker.
   Kind: perf.
   Source: claude-config CI-tuning request, 2026-11-05.

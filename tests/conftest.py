@@ -9,6 +9,10 @@ from __future__ import annotations
 # hosting the test runner. `setdefault` lets a CI override
 # (e.g. QT_QPA_PLATFORM=minimal) still win.
 import os
+import signal
+from collections.abc import Iterator
+
+import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -20,3 +24,16 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 # At least config.MIN_SECRET_KEY_LEN characters, or config ignores it and
 # persists a real key after all (CL-0069).
 os.environ.setdefault("SECRET_KEY", "test-key-not-persisted-padded-to-the-minimum-length")
+
+
+@pytest.fixture(autouse=True)
+def _restore_signal_handlers() -> Iterator[None]:
+    """Put back the SIGINT and SIGTERM handlers launcher.main() installs.
+
+    Left in place, they call shutdown() on a test's fake server and swallow
+    the signal, so Ctrl-C no longer stops pytest (CL-0129).
+    """
+    saved = {sig: signal.getsignal(sig) for sig in (signal.SIGINT, signal.SIGTERM)}
+    yield
+    for sig, handler in saved.items():
+        signal.signal(sig, handler)
