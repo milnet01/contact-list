@@ -89,18 +89,14 @@ run_step() {  # run_step "<label>" <command...>
     echo
 }
 
-for ver in $CI_PYTHONS; do
-    if ! py=$(resolve_python "$ver"); then
-        echo "!!! ERROR: cannot obtain Python ${ver} — CI's ${ver} job is NOT mirrored."
-        echo "    Install uv (https://docs.astral.sh/uv/) so this script can fetch it,"
-        echo "    or install python${ver} yourself."
-        echo
-        unobtainable="$unobtainable $ver"
-        continue
-    fi
-
+# One matrix leg: refresh its venv, then run the checks; exits with its failure
+# count. The legs run at once, so each has its own tool caches: mypy keys its
+# cache by pyproject's python_version, which all legs share.
+run_leg() {  # run_leg <version> <interpreter>
+    local ver="$1" py="$2" venv="$VENV_ROOT/py$1" cache="$VENV_ROOT/py$1-cache"
+    local stamp want
+    failures=0
     echo "########## Python ${ver} ($("$py" --version 2>&1)) ##########"
-    venv="$VENV_ROOT/py${ver}"
 
     # CI builds a FRESH environment every run; reusing a venv here would drift
     # from that. Most importantly, a dependency REMOVED from requirements.txt
@@ -134,12 +130,44 @@ for ver in $CI_PYTHONS; do
         # environment, and the run still printed "CI PASSED".
         echo "!!! ERROR: dependency install failed for Python ${ver} -- its checks did NOT run against the intended environment."
         echo
-        failures=$((failures + 1))
-        continue
+        return 1
     fi
     printf '%s' "$want" > "$stamp"
 
-    run_step "[$ver] Checks (scripts/gate.sh python)" env PATH="$venv/bin:$PATH" scripts/gate.sh python
+    run_step "[$ver] Checks (scripts/gate.sh python)" env PATH="$venv/bin:$PATH" \
+        MYPY_CACHE_DIR="$cache/mypy" RUFF_CACHE_DIR="$cache/ruff" \
+        PYTEST_ADDOPTS="${PYTEST_ADDOPTS:-} -o cache_dir=$cache/pytest" \
+        scripts/gate.sh python
+    return "$failures"
+}
+
+# A background job ignores Ctrl-C, and so do the tools it starts: stop them.
+trap 'trap "" TERM; kill -TERM 0 2>/dev/null; exit 130' INT TERM
+mkdir -p "$VENV_ROOT"
+pids=""
+legs=""
+for ver in $CI_PYTHONS; do
+    if ! py=$(resolve_python "$ver"); then
+        echo "!!! ERROR: cannot obtain Python ${ver} — CI's ${ver} job is NOT mirrored."
+        echo "    Install uv (https://docs.astral.sh/uv/) so this script can fetch it,"
+        echo "    or install python${ver} yourself."
+        echo
+        unobtainable="$unobtainable $ver"
+        continue
+    fi
+    run_leg "$ver" "$py" > "$VENV_ROOT/py$ver.log" 2>&1 &
+    pids="$pids $!"
+    legs="$legs $ver"
+done
+# Print each leg's log in matrix order once it ends.
+# shellcheck disable=SC2086  # one word per process id
+set -- $pids
+for ver in $legs; do
+    wait "$1"
+    rc=$?
+    shift
+    cat "$VENV_ROOT/py$ver.log"
+    failures=$((failures + rc))
 done
 
 # Mirrors ci.yml's js-lint job (CL-0077). A missing Node is a failure, not a
